@@ -14,28 +14,26 @@
 
 .PHONY: cluster-up cluster-down cluster-sync cluster-clean
 
+DOCKER_REPO?=kubevirt
 ARTIFACTS_PATH?=_out
 IMAGE?=kubevirt-csi-driver
 TAG?=latest
 
-all: build
+all: image
 
 build: clean
-	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' -o _out/kubevirt-csi-driver cmd/main.go
+	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' -o $(ARTIFACTS_PATH)/kubevirt-csi-driver cmd/main.go
 
-image: hostpath-provisioner
+image: build
 	docker build -t $(DOCKER_REPO)/$(IMAGE):$(TAG) -f Dockerfile .
 
-push: hostpath-provisioner image
+push: image
 	docker push $(DOCKER_REPO)/$(IMAGE):$(TAG)
 
 clean:
-	rm -rf _out
+	rm -rf $(ARTIFACTS_PATH)
 
 .PHONY: test
 test:
 	go test -v ./cmd/... ./pkg/...
 	hack/run-lint-checks.sh
-
-test-functional:
-	gotestsum --format short-verbose --junitfile ${ARTIFACTS_PATH}/junit.functest.xml -- ./tests/... -master="" -kubeconfig="../_ci-configs/$(KUBEVIRT_PROVIDER)/.kubeconfig"
