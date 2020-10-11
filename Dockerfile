@@ -1,9 +1,13 @@
-FROM registry.fedoraproject.org/fedora-minimal:32
+FROM registry.svc.ci.openshift.org/openshift/release:golang-1.15 AS builder
+WORKDIR /src/kubevirt-csi-driver
+COPY . .
+RUN make build
+
+FROM registry.fedoraproject.org/fedora-minimal:33
 LABEL maintainers="The KubeVirt Project <kubevirt-dev@googlegroups.com>"
 LABEL description="KubeVirt CSI Driver"
 
-ARG binary=./_out/kubevirt-csi-driver
+RUN microdnf install -y e2fsprogs xfsprogs && microdnf clean all
+COPY --from=builder /src/kubevirt-csi-driver/bin/kubevirt-csi-driver .
 
-COPY ${binary} /kubevirt-csi-driver
-
-ENTRYPOINT ["/kubevirt-csi-driver"]
+ENTRYPOINT ["./kubevirt-csi-driver"]

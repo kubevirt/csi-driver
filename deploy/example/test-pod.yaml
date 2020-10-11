@@ -1,0 +1,17 @@
+apiVersion: v1 
+kind: Pod 
+metadata:
+  name: testpodwithcsi
+spec:
+  containers:
+  - image: busybox
+    name: testpodwithcsi
+    command: ["sh", "-c", "while true; do ls -la /opt; echo this file system was made availble using kubevirt-csi-driver; mktmp /opt/test-XXXXXX; sleep 1m; done"]
+    imagePullPolicy: Always
+    volumeMounts:
+    - name: pv0002
+      mountPath: "/opt"
+  volumes:
+  - name: pv0002
+    persistentVolumeClaim:
+      claimName: 1g-kubevirt-disk
