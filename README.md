@@ -8,7 +8,19 @@ This repository hosts the CSI KubeVirt driver and all of its build and dependent
 - Access to terminal with `kubectl` installed
 
 ## Deployment
-
+//TODO WIP
+- create a service-account with name on the kubevirt cluster (infra-cluster)
+- set RBAC rules for the service account (//TODO supply file, doc)
+- designate a namespace to deploy the VMs for the tenant cluster nodes
+- deploy tenant cluster
+- deploy files under `deploy/*`
+- edit the secret `infra-cluster-credentials` in namespace `kubevirt-csi-driver`
+    - set apiUrl: [base64 of https://<infra-cluster-api-url>]  
+    - set service-ca.crt : [base64 of <infra-cluster serivce-ca.crt>] (copy service-ca.crt value from infra-cluster-sa secret)
+    - set namespace: [base64 of <infra-cluster namespace>]
+    - set token : [base64 of <infra-cluser token>] (copy token value from infra-cluster-sa secret )
+- create StorageClass and PersistentVolumeClaim - see `deploy/example`
+    
 ## Examples
 
 ## Building the binaries
@@ -63,4 +75,3 @@ KubeVirt CSI Driver is distributed under the
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
-

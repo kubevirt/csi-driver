@@ -1,0 +1,116 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: kubevirt-csi-controller
+  namespace: kubevirt-csi-driver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kubevirt-csi-driver
+  template:
+    metadata:
+      labels:
+        app: kubevirt-csi-driver
+    spec:
+      hostNetwork: true
+      serviceAccount: kubevirt-csi-controller-sa
+      priorityClassName: system-cluster-critical
+      nodeSelector:
+        node-role.kubernetes.io/master: ""
+      tolerations:
+        - key: CriticalAddonsOnly
+          operator: Exists
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: "NoSchedule"
+      containers:
+        - name: csi-driver
+          imagePullPolicy: Always
+#          image: quay.io/kubevirt/csi-driver:latest
+          image: quay.io/rgolangh/kubevirt-csi-driver:latest
+          args:
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--namespace=kubevirt-csi-driver"
+            - "--infra-cluster-namespace=$(INFRACLUSTER_NAMESPACE)"
+            - "--infra-cluster-api-url=$(INFRACLUSTER_API_URL)"
+            - "--infra-cluster-token=/var/run/secrets/infracluster/token"
+            - "--infra-cluster-ca=/var/run/secrets/infracluster/ca.crt"
+            - --v=5
+          ports:
+            - name: healthz
+              # Due to hostNetwork, this port is open on a node!
+              containerPort: 10301
+              protocol: TCP
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///var/lib/csi/sockets/pluginproxy/csi.sock
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: INFRACLUSTER_NAMESPACE
+              valueFrom:
+                secretKeyRef:
+                  name: infra-cluster-credentials
+                  key: namespace
+            - name: INFRACLUSTER_API_URL
+              valueFrom:
+                secretKeyRef:
+                  name: infra-cluster-credentials
+                  key: apiUrl
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+            - name: infracluster
+              mountPath: "/var/run/secrets/infracluster"
+          resources:
+            requests:
+              memory: 50Mi
+              cpu: 10m
+        - name: csi-provisioner
+          image: quay.io/openshift/origin-csi-external-provisioner:latest
+          args:
+            - --csi-address=$(ADDRESS)
+            - --default-fstype=ext4
+            - --v=5
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+        - name: csi-attacher
+          image: quay.io/openshift/origin-csi-external-attacher:latest
+          args:
+            - --csi-address=$(ADDRESS)
+            - --v=5
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+          resources:
+            requests:
+              memory: 50Mi
+              cpu: 10m
+        - name: csi-liveness-probe
+          image: quay.io/openshift/origin-csi-livenessprobe:latest
+          args:
+            - --csi-address=/csi/csi.sock
+            - --probe-timeout=3s
+            - --health-port=10301
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+          resources:
+            requests:
+              memory: 50Mi
+              cpu: 10m
+      volumes:
+        - name: socket-dir
+          emptyDir: {}
+        - name: infracluster
+          secret:
+            secretName: infra-cluster-credentials

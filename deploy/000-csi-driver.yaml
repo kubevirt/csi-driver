@@ -1,0 +1,8 @@
+#TODO v1beta is deprecated in 1.19+ and promoted to v1
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: csi.kubevirt.io
+spec:
+  attachRequired: true
+  podInfoOnMount: true

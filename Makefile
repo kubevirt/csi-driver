@@ -12,28 +12,44 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-.PHONY: cluster-up cluster-down cluster-sync cluster-clean
-
-DOCKER_REPO?=kubevirt
-ARTIFACTS_PATH?=_out
+BINDIR=bin
+REPO?=kubevirt
 IMAGE?=kubevirt-csi-driver
 TAG?=latest
+REV=$(shell git describe --long --tags --match='v*' --always --dirty)
 
 all: image
 
-build: clean
-	CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' -o $(ARTIFACTS_PATH)/kubevirt-csi-driver cmd/main.go
-
-image: build
-	docker build -t $(DOCKER_REPO)/$(IMAGE):$(TAG) -f Dockerfile .
-
-push: image
-	docker push $(DOCKER_REPO)/$(IMAGE):$(TAG)
-
-clean:
-	rm -rf $(ARTIFACTS_PATH)
-
 .PHONY: test
 test:
-	go test -v ./cmd/... ./pkg/...
+	go test -v ./pkg/... ./cmd/... -coverprofile cover.out
 	hack/run-lint-checks.sh
+
+.PHONY: build
+build:
+	CGO_ENABLED=0 go build -o $(BINDIR)/kubevirt-csi-driver -ldflags '-extldflags "-static" -X version.Version=$(REV)' cmd/kubevirt-csi-driver/kubevirt-csi-driver.go
+
+.PHONY: verify
+verify: fmt vet
+
+.PHONY: fmt
+fmt:
+	hack/verify-gofmt.sh
+
+.PHONY: vet
+vet:
+	hack/verify-govet.sh
+
+.PHONY: image
+image:
+	docker build . -f Dockerfile -t $(REPO)/$(IMAGE):$(TAG)
+
+.PHONY: push
+push: image
+	podman push $(REPO)/$(IMAGE):$(TAG)
+
+.PHONY: vendor
+vendor:
+	go mod tidy
+	go mod vendor
+	go mod verify
