@@ -22,19 +22,18 @@ type kubevirtCSIDriver struct {
 }
 
 // NewkubevirtCSIDriver creates a driver instance
-func NewkubevirtCSIDriver(infraClusterClient kubernetes.Clientset, virtClient kubevirt.Client, infraClusterNamespace string, nodeId string) *kubevirtCSIDriver {
+func NewkubevirtCSIDriver(internalInfraClient kubevirt.Client, nodeId string, infraClusterNamespace string) *kubevirtCSIDriver {
 	d := kubevirtCSIDriver{
 		IdentityService: &IdentityService{
-			infraClusterClient: virtClient,
+			infraClusterClient: internalInfraClient,
 		},
 		ControllerService: &ControllerService{
 			infraClusterNamespace: infraClusterNamespace,
-			infraClusterClient:    infraClusterClient,
-			kubevirtClient:        virtClient,
+			infraClient:    internalInfraClient,
 		},
 		NodeService: &NodeService{
 			infraClusterClient: kubernetes.Clientset{},
-			kubevirtClient:     virtClient,
+			kubevirtClient:     internalInfraClient,
 			nodeId:             nodeId,
 		},
 	}
