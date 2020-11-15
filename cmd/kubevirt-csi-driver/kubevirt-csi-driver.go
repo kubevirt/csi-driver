@@ -87,6 +87,7 @@ func handle() {
 		}
 		// systemUUID is the VM ID
 		nodeId = node.Status.NodeInfo.SystemUUID
+		klog.Infof("Node name: %s, Node ID: %s", nodeName, nodeId)
 	}
 
 	driver := service.NewkubevirtCSIDriver(virtClient, nodeId, *infraClusterNamespace)
