@@ -27,8 +27,7 @@ spec:
       containers:
         - name: csi-driver
           imagePullPolicy: Always
-#          image: quay.io/kubevirt/csi-driver:latest
-          image: quay.io/rgolangh/kubevirt-csi-driver:latest
+          image: quay.io/kubevirt/csi-driver:latest
           args:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--namespace=kubevirt-csi-driver"
