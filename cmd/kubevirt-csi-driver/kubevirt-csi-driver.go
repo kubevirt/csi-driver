@@ -74,11 +74,6 @@ func handle() {
 		klog.Fatalf("Failed to build infra cluster config: %v", err)
 	}
 
-	infraClusterClientSet, err := kubernetes.NewForConfig(infraClusterConfig)
-	if err != nil {
-		klog.Fatalf("Failed to initialize KubeVirt client: %s", err)
-	}
-
 	virtClient, err := kubevirt.NewClient(infraClusterConfig)
 	if err != nil {
 		klog.Fatal(err)
@@ -94,7 +89,7 @@ func handle() {
 		nodeId = node.Status.NodeInfo.SystemUUID
 	}
 
-	driver := service.NewkubevirtCSIDriver(*infraClusterClientSet, virtClient, *infraClusterNamespace, nodeId)
+	driver := service.NewkubevirtCSIDriver(virtClient, nodeId, *infraClusterNamespace)
 
 	driver.Run(*endpoint)
 }

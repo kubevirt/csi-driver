@@ -37,7 +37,7 @@ func (n *NodeService) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 	// get the VMI volumes which are under VMI.spec.volumes
 	// serialID = kubevirt's DataVolume.UID
 
-	device, err := getDeviceBySerialID(req.VolumeContext[serialContextParameter])
+	device, err := getDeviceBySerialID(req.VolumeContext[serialParameter])
 	if err != nil {
 		klog.Errorf("Failed to fetch device by serialID %s", req.VolumeId)
 		return nil, err
@@ -70,7 +70,7 @@ func (n *NodeService) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	// volumeID = serialID = kubevirt's DataVolume.metadata.uid
 	// TODO link to kubevirt code
-	device, err := getDeviceBySerialID(req.VolumeContext[serialContextParameter])
+	device, err := getDeviceBySerialID(req.VolumeContext[serialParameter])
 	if err != nil {
 		klog.Errorf("Failed to fetch device by serialID %s ", req.VolumeId)
 		return nil, err
