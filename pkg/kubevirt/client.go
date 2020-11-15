@@ -49,14 +49,17 @@ func NewClient(config *rest.Config) (Client, error) {
 	return result, nil
 }
 
+//AddVolumeToVM performs a hotplug of a DataVolume to a VM
 func (c *client) AddVolumeToVM(namespace string, vmName string, hotPlugRequest *kubevirtapiv1.HotplugVolumeRequest) error {
 	return c.virtClient.VirtualMachine(namespace).AddVolume(vmName, hotPlugRequest)
 }
 
+//RemoveVolumeFromVM perform hotunplug of a DataVolume from a VM
 func (c *client) RemoveVolumeFromVM(namespace string, vmName string, hotPlugRequest *kubevirtapiv1.HotplugVolumeRequest) error {
 	return c.virtClient.VirtualMachine(namespace).RemoveVolume(vmName, hotPlugRequest)
 }
 
+//ListVirtualMachines fetches a list of VMIs from a namespace
 func (c *client) ListVirtualMachines(namespace string) ([]kubevirtapiv1.VirtualMachineInstance, error) {
 	list, err := c.virtClient.VirtualMachineInstance(namespace).List(&metav1.ListOptions{})
 	if err != nil {
@@ -65,15 +68,18 @@ func (c *client) ListVirtualMachines(namespace string) ([]kubevirtapiv1.VirtualM
 	return list.Items, nil
 }
 
+//CreateDataVolume creates a new DataVolume under a namespace
 func (c *client) CreateDataVolume(namespace string, dataVolume *cdiv1alpha1.DataVolume) (*cdiv1alpha1.DataVolume, error) {
 	return c.virtClient.CdiClient().CdiV1alpha1().DataVolumes(namespace).Create(dataVolume)
 }
 
+//Ping performs a minimal request to the infra-cluster k8s api
 func (c *client) Ping(ctx context.Context) error {
 	_, err := c.kubernetesClient.ServerVersion()
 	return err
 }
 
+//DeleteDataVolume deletes a DataVolume from a namespace by name
 func (c *client) DeleteDataVolume(namespace string, name string) error {
 	return c.virtClient.CdiClient().CdiV1alpha1().DataVolumes(namespace).Delete(name, &metav1.DeleteOptions{})
 }

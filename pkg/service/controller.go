@@ -31,12 +31,14 @@ type ControllerService struct {
 	infraClusterNamespace string
 }
 
-var ControllerCaps = []csi.ControllerServiceCapability_RPC_Type{
+var controllerCaps = []csi.ControllerServiceCapability_RPC_Type{
 	csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 	csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME, // attach/detach
 }
 
-// CreateVolume creates the disk for the request, unattached from any VM
+// CreateVolume Create a new DataVolume.
+// The new DataVolume.Name is csi.Volume.VolumeID.
+// The new DataVolume.ID is used as the disk serial.
 func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	log.Infof("Creating volume %s", req.Name)
 
@@ -230,10 +232,10 @@ func (c *ControllerService) ControllerExpandVolume(context.Context, *csi.Control
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-//ControllerGetCapabilities
+//ControllerGetCapabilities returns the driver's controller capabilities
 func (c *ControllerService) ControllerGetCapabilities(context.Context, *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
-	caps := make([]*csi.ControllerServiceCapability, 0, len(ControllerCaps))
-	for _, capability := range ControllerCaps {
+	caps := make([]*csi.ControllerServiceCapability, 0, len(controllerCaps))
+	for _, capability := range controllerCaps {
 		caps = append(
 			caps,
 			&csi.ControllerServiceCapability{
@@ -248,19 +250,14 @@ func (c *ControllerService) ControllerGetCapabilities(context.Context, *csi.Cont
 	return &csi.ControllerGetCapabilitiesResponse{Capabilities: caps}, nil
 }
 
-func (c *ControllerService) ControllerGetVolume(ctx context.Context, request *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
-
-	return &csi.ControllerGetVolumeResponse{
-		Volume: &csi.Volume{
-			CapacityBytes: 0,
-			VolumeId:      "TODO",
-		},
-	}, nil
+//ControllerGetVolume
+func (c *ControllerService) ControllerGetVolume(_ context.Context, _ *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
 }
 
 // getVmNameByCSINodeID
-// Find a VM in infra cluster by its firmware uuid. The uid is the ID that the CSI node
-// part publishes in NodeGetInfo and then used by CSINode.spec.drivers[].nodeID
+// Find a VM in infra cluster by its firmware uuid. The uid is the ID that the CSI
+// node publishes in NodeGetInfo and then used by CSINode.spec.drivers[].nodeID
 func (c *ControllerService) getVmNameByCSINodeID(nodeID string) (string, error) {
 	list, err := c.infraClient.ListVirtualMachines(c.infraClusterNamespace)
 	if err != nil {
