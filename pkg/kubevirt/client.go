@@ -2,7 +2,6 @@ package kubevirt
 
 import (
 	"context"
-	//"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -32,6 +31,24 @@ type client struct {
 	virtClient       kubecli.KubevirtClient
 }
 
+// New creates our client wrapper object for the actual kubeVirt and kubernetes clients we use.
+func NewClient(config *rest.Config) (Client, error) {
+	result := &client{}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	result.kubernetesClient = clientset
+
+	kubevirtClient, err := kubecli.GetKubevirtClientFromRESTConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	result.virtClient = kubevirtClient
+	return result, nil
+}
+
 func (c *client) AddVolumeToVM(namespace string, vmName string, hotPlugRequest *kubevirtapiv1.HotplugVolumeRequest) error {
 	return c.virtClient.VirtualMachine(namespace).AddVolume(vmName, hotPlugRequest)
 }
@@ -50,24 +67,6 @@ func (c *client) ListVirtualMachines(namespace string) ([]kubevirtapiv1.VirtualM
 
 func (c *client) CreateDataVolume(namespace string, dataVolume *cdiv1alpha1.DataVolume) (*cdiv1alpha1.DataVolume, error) {
 	return c.virtClient.CdiClient().CdiV1alpha1().DataVolumes(namespace).Create(dataVolume)
-}
-
-// New creates our client wrapper object for the actual kubeVirt and kubernetes clients we use.
-func NewClient(config *rest.Config) (Client, error) {
-	result := &client{}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, err
-	}
-	result.kubernetesClient = clientset
-
-	kubevirtClient, err := kubecli.GetKubevirtClientFromRESTConfig(config)
-	if err != nil {
-		return nil, err
-	}
-	result.virtClient = kubevirtClient
-	return result, nil
 }
 
 func (c *client) Ping(ctx context.Context) error {
