@@ -150,7 +150,7 @@ func (c *ControllerService) ControllerPublishVolume(
 				},
 			},
 		},
-		Ephemeral: false,
+		Ephemeral: true,
 	}
 	err = c.infraClient.AddVolumeToVM(c.infraClusterNamespace, vmName, hotplugRequest)
 	if err != nil {
