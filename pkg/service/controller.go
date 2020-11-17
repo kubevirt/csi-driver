@@ -150,7 +150,7 @@ func (c *ControllerService) ControllerPublishVolume(
 				},
 			},
 		},
-		Ephemeral: false,
+		Ephemeral: true,
 	}
 	err = c.infraClient.AddVolumeToVM(c.infraClusterNamespace, vmName, hotplugRequest)
 	if err != nil {
@@ -285,7 +285,7 @@ func getVolumeModeFromRequest(req *csi.CreateVolumeRequest) corev1.PersistentVol
 			continue
 		}
 
-		if cap.GetBlock() != nil {
+		if _, ok := cap.GetAccessType().(*csi.VolumeCapability_Block); ok {
 			volumeMode = corev1.PersistentVolumeBlock
 			break
 		}
