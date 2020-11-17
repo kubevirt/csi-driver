@@ -46,7 +46,7 @@ image:
 
 .PHONY: push
 push: image
-	podman push $(REPO)/$(IMAGE):$(TAG)
+	docker push $(REPO)/$(IMAGE):$(TAG)
 
 .PHONY: vendor
 vendor:
