@@ -27,7 +27,7 @@ test:
 
 .PHONY: build
 build:
-	CGO_ENABLED=0 go build -o $(BINDIR)/kubevirt-csi-driver -ldflags '-extldflags "-static" -X version.Version=$(REV)' cmd/kubevirt-csi-driver/kubevirt-csi-driver.go
+	go build -o $(BINDIR)/kubevirt-csi-driver -ldflags '-X version.Version=$(REV)' cmd/kubevirt-csi-driver/kubevirt-csi-driver.go
 
 .PHONY: verify
 verify: fmt vet
