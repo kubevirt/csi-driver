@@ -14,7 +14,7 @@
 
 BINDIR=bin
 REPO?=kubevirt
-IMAGE?=kubevirt-csi-driver
+IMAGE?=csi-driver
 TAG?=latest
 REV=$(shell git describe --long --tags --match='v*' --always --dirty)
 

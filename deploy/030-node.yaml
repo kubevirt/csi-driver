@@ -26,8 +26,7 @@ spec:
             privileged: true
             allowPrivilegeEscalation: true
           imagePullPolicy: Always
-#          image: quay.io/kubevirt/csi-driver:latest
-          image: quay.io/rgolangh/kubevirt-csi-driver:latest
+          image: quay.io/kubevirt/csi-driver:latest
           args:
             - "--endpoint=unix:/csi/csi.sock"
             - "--namespace=kubevirt-csi-driver"
