@@ -34,7 +34,7 @@ spec:
             - "--infra-cluster-namespace=$(INFRACLUSTER_NAMESPACE)"
             - "--infra-cluster-api-url=$(INFRACLUSTER_API_URL)"
             - "--infra-cluster-token=/var/run/secrets/infracluster/token"
-            - "--infra-cluster-ca=/var/run/secrets/infracluster/ca.crt"
+            - "--infra-cluster-ca=/var/run/secrets/infracluster/service-ca.crt"
           env:
             - name: KUBE_NODE_NAME
               valueFrom:
