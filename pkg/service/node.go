@@ -31,8 +31,7 @@ var NodeCaps = []csi.NodeServiceCapability_RPC_Type{
 
 // NodeStageVolume prepares the volume for usage. If it's an FS type it creates a file system on the volume.
 func (n *NodeService) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
-	// TODO remove the req struct from the log, it may contain sentitive info like secrets
-	klog.Infof("Staging volume %s with %+v", req.VolumeId, req)
+	klog.Infof("Staging volume %s", req.VolumeId)
 
 	// get the VMI volumes which are under VMI.spec.volumes
 	// serialID = kubevirt's DataVolume.UID
