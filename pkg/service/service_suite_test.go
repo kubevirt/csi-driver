@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -10,17 +11,15 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"k8s.io/utils/mount"
+
+	"github.com/kubevirt/csi-driver/pkg/kubevirt"
 )
 
 const serialID = "4b13cebc-7406-4c19-8832-7fcb1d4ac8c5"
 
-var ctrl *gomock.Controller
-
 func TestService(t *testing.T) {
-	ctrl := gomock.NewController(t)
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Service Suite")
-	defer ctrl.Finish()
 }
 
 var _ = Describe("NodeService", func() {
@@ -164,6 +163,82 @@ var _ = Describe("NodeService", func() {
 		})
 	})
 
+})
+
+var _ = Describe("IdentityService", func() {
+	var (
+		mockCtrl           *gomock.Controller
+		mockKubevirtClient *kubevirt.MockClient
+		underTest          IdentityService
+	)
+
+	BeforeEach(func() {
+		mockCtrl = gomock.NewController(GinkgoT())
+		mockKubevirtClient = kubevirt.NewMockClient(mockCtrl)
+		underTest = IdentityService{infraClusterClient: mockKubevirtClient}
+	})
+
+	Describe("Get Plugin Info", func() {
+		res, err := underTest.GetPluginInfo(context.Background(), &csi.GetPluginInfoRequest{})
+		It("should not fail", func() {
+			Expect(err).NotTo(HaveOccurred())
+		})
+		It("should return vendor name", func() {
+			Expect(res.Name).To(Equal(VendorName))
+		})
+		It("should return vendor version", func() {
+			Expect(res.VendorVersion).To(Equal(VendorVersion))
+		})
+	})
+
+	Describe("Get Plugin Capabilities", func() {
+		res, err := underTest.GetPluginCapabilities(context.Background(), &csi.GetPluginCapabilitiesRequest{})
+		It("should not fail", func() {
+			Expect(err).NotTo(HaveOccurred())
+		})
+		It("should return list of capabilities", func() {
+			Expect(res.Capabilities).Should(Not(BeEmpty()))
+		})
+	})
+
+	Describe("Call Probe", func() {
+		var (
+			err error
+			res *csi.ProbeResponse
+		)
+		Context("When the probe fails", func() {
+			BeforeEach(func() {
+				mockKubevirtClient.EXPECT().Ping(gomock.Any()).Return(fmt.Errorf("failed to contact infra cluster"))
+				res, err = underTest.Probe(context.Background(), &csi.ProbeRequest{})
+			})
+			It("should fail with error", func() {
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("should return a nil response", func() {
+				Expect(res).To(BeNil())
+			})
+
+		})
+		Context("When the probe succeeds", func() {
+			BeforeEach(func() {
+				mockKubevirtClient.EXPECT().Ping(gomock.Any()).Return(nil)
+				res, err = underTest.Probe(context.Background(), &csi.ProbeRequest{})
+			})
+			It("should not return error", func() {
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("should return a Ready response", func() {
+				Expect(res.GetReady().Value).Should(Equal(true))
+			})
+
+		})
+	})
+
+	AfterEach(func() {
+		mockCtrl.Finish()
+	})
 })
 
 func newPublishRequest() *csi.NodePublishVolumeRequest {
