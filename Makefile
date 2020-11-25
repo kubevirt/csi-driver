@@ -53,3 +53,7 @@ vendor:
 	go mod tidy
 	go mod vendor
 	go mod verify
+
+.PHONY: mockgen
+mockgen:
+	mockgen -source=pkg/kubevirt/client.go -destination=pkg/kubevirt/mocked_client.go -package=kubevirt

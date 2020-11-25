@@ -90,7 +90,7 @@ func handle() {
 		klog.Infof("Node name: %s, Node ID: %s", nodeName, nodeID)
 	}
 
-	driver := service.NewKubevirtCSIDriver(*infraClusterClientSet, virtClient, *infraClusterNamespace, nodeID)
+	driver := service.NewKubevirtCSIDriver(virtClient, *infraClusterNamespace, nodeID)
 
 	driver.Run(*endpoint)
 }

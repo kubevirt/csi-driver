@@ -5,6 +5,7 @@ go 1.15
 require (
 	github.com/container-storage-interface/spec v1.3.0
 	github.com/go-kit/kit v0.10.0 // indirect
+	github.com/golang/mock v1.4.4
 	github.com/golang/protobuf v1.4.2
 	github.com/kubernetes-csi/csi-lib-utils v0.7.0
 	github.com/onsi/ginkgo v1.12.1
