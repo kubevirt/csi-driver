@@ -19,13 +19,14 @@ import (
 	"github.com/kubevirt/csi-driver/pkg/kubevirt"
 )
 
+// NodeService implements the CSI Driver node service
 type NodeService struct {
 	infraClusterClient kubernetes.Clientset
 	kubevirtClient     kubevirt.Client
-	nodeId             string
+	nodeID             string
 }
 
-var NodeCaps = []csi.NodeServiceCapability_RPC_Type{
+var nodeCaps = []csi.NodeServiceCapability_RPC_Type{
 	csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 }
 
@@ -60,6 +61,7 @@ func (n *NodeService) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
+// NodeUnstageVolume unstages a volume from the node
 func (n *NodeService) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	// nothing to do here, we don't erase the filesystem of a device.
 	return &csi.NodeUnstageVolumeResponse{}, nil
@@ -110,22 +112,26 @@ func (n *NodeService) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 
+// NodeGetVolumeStats unimplemented
 func (n *NodeService) NodeGetVolumeStats(context.Context, *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
 	panic("implement me")
 }
 
+// NodeExpandVolume unimplemented
 func (n *NodeService) NodeExpandVolume(context.Context, *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
 	panic("implement me")
 }
 
+// NodeGetInfo returns the node ID
 func (n *NodeService) NodeGetInfo(context.Context, *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	// the nodeId is the VM's ID in kubevirt or VMI.spec.domain.firmware.uuid
-	return &csi.NodeGetInfoResponse{NodeId: n.nodeId}, nil
+	// the nodeID is the VM's ID in kubevirt or VMI.spec.domain.firmware.uuid
+	return &csi.NodeGetInfoResponse{NodeId: n.nodeID}, nil
 }
 
+//NodeGetCapabilities returns the supported capabilities of the node service
 func (n *NodeService) NodeGetCapabilities(context.Context, *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
-	caps := make([]*csi.NodeServiceCapability, 0, len(NodeCaps))
-	for _, c := range NodeCaps {
+	caps := make([]*csi.NodeServiceCapability, 0, len(nodeCaps))
+	for _, c := range nodeCaps {
 		caps = append(
 			caps,
 			&csi.NodeServiceCapability{
@@ -140,16 +146,17 @@ func (n *NodeService) NodeGetCapabilities(context.Context, *csi.NodeGetCapabilit
 	return &csi.NodeGetCapabilitiesResponse{Capabilities: caps}, nil
 }
 
-type Devices struct {
-	BlockDevices []Device `json:"blockdevices"`
+type devices struct {
+	BlockDevices []device `json:"blockdevices"`
 }
-type Device struct {
+
+type device struct {
 	SerialID string `json:"serial"`
 	Path     string `json:"path"`
 	Fstype   string `json:"fstype"`
 }
 
-func getDeviceBySerialID(serialID string) (Device, error) {
+func getDeviceBySerialID(serialID string) (device, error) {
 	klog.Infof("Get the device details by serialID %s", serialID)
 	klog.V(5).Info("lsblk -nJo SERIAL,PATH,FSTYPE")
 
@@ -158,14 +165,14 @@ func getDeviceBySerialID(serialID string) (Device, error) {
 	out, err := cmd.Output()
 	exitError, incompleteCmd := err.(*exec.ExitError)
 	if err != nil && incompleteCmd {
-		return Device{}, errors.New(err.Error() + "lsblk failed with " + string(exitError.Stderr))
+		return device{}, errors.New(err.Error() + "lsblk failed with " + string(exitError.Stderr))
 	}
 
-	devices := Devices{}
+	devices := devices{}
 	err = json.Unmarshal(out, &devices)
 	if err != nil {
 		klog.Errorf("Failed to parse json output from lsblk: %s", err)
-		return Device{}, err
+		return device{}, err
 	}
 
 	for _, d := range devices.BlockDevices {
@@ -173,7 +180,7 @@ func getDeviceBySerialID(serialID string) (Device, error) {
 			return d, nil
 		}
 	}
-	return Device{}, errors.New("couldn't find device by serial id")
+	return device{}, errors.New("couldn't find device by serial id")
 }
 
 func makeFS(device string, fsType string) error {
