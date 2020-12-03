@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package v1beta1
 
 import (
 	corev1 "k8s.io/api/core/v1"
@@ -26,6 +26,7 @@ import (
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
+// +kubebuilder:storageversion
 // +kubebuilder:resource:shortName=dv;dvs,categories=all
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase",description="The phase the data volume is in"
 // +kubebuilder:printcolumn:name="Progress",type="string",JSONPath=".status.progress",description="Transfer progress in percentage if known, N/A otherwise"
@@ -244,6 +245,7 @@ const DataVolumeCloneSourceSubresource = "source"
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
+// +kubebuilder:storageversion
 // +kubebuilder:resource:shortName=cdi;cdis,scope=Cluster
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
@@ -291,29 +293,6 @@ type CDIStatus struct {
 	sdkapi.Status `json:",inline"`
 }
 
-const (
-	// CDIPhaseDeploying signals that the CDI resources are being deployed
-	CDIPhaseDeploying CDIPhase = "Deploying"
-
-	// CDIPhaseDeployed signals that the CDI resources are successflly deployed
-	CDIPhaseDeployed CDIPhase = "Deployed"
-
-	// CDIPhaseDeleting signals that the CDI resources are being removed
-	CDIPhaseDeleting CDIPhase = "Deleting"
-
-	// CDIPhaseDeleted signals that the CDI resources are deleted
-	CDIPhaseDeleted CDIPhase = "Deleted"
-
-	// CDIPhaseError signals that the CDI deployment is in an error state
-	CDIPhaseError CDIPhase = "Error"
-
-	// CDIPhaseUpgrading signals that the CDI resources are being deployed
-	CDIPhaseUpgrading CDIPhase = "Upgrading"
-
-	// CDIPhaseEmpty is an uninitialized phase
-	CDIPhaseEmpty CDIPhase = ""
-)
-
 //CDIList provides the needed parameters to do request a list of CDIs from the system
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type CDIList struct {
@@ -332,6 +311,7 @@ type CDIList struct {
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
+// +kubebuilder:storageversion
 // +kubebuilder:resource:scope=Cluster
 type CDIConfig struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -362,6 +342,8 @@ type CDIConfigSpec struct {
 	ScratchSpaceStorageClass *string `json:"scratchSpaceStorageClass,omitempty"`
 	// ResourceRequirements describes the compute resource requirements.
 	PodResourceRequirements *corev1.ResourceRequirements `json:"podResourceRequirements,omitempty"`
+	// FeatureGates are a list of specific enabled feature gates
+	FeatureGates []string `json:"featureGates,omitempty"`
 	// FilesystemOverhead describes the space reserved for overhead when using Filesystem volumes. A value is between 0 and 1, if not defined it is 0.055 (5.5% overhead)
 	FilesystemOverhead *FilesystemOverhead `json:"filesystemOverhead,omitempty"`
 }
