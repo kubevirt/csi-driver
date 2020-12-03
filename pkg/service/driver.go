@@ -8,12 +8,14 @@ import (
 )
 
 var (
-	// set by ldflags
+	// VendorVersion is the vendor version set by ldflags at build time
 	VendorVersion = "0.1.0"
+	// VendorName is the CSI driver unique name, must match the storage class provisioner value.
 	VendorName    = "csi.kubevirt.io"
 )
 
-type kubevirtCSIDriver struct {
+// KubevirtCSIDriver implements a complete CSI service
+type KubevirtCSIDriver struct {
 	*IdentityService
 	*ControllerService
 	*NodeService
@@ -21,27 +23,22 @@ type kubevirtCSIDriver struct {
 	Client             kubevirt.Client
 }
 
-// NewkubevirtCSIDriver creates a driver instance
-func NewkubevirtCSIDriver(internalInfraClient kubevirt.Client, nodeId string, infraClusterNamespace string) *kubevirtCSIDriver {
-	d := kubevirtCSIDriver{
+func NewKubevirtCSIDriver(infraClusterClient kubevirt.Client, infraClusterNamespace string, nodeID string) *KubevirtCSIDriver {
+	d := KubevirtCSIDriver{
 		IdentityService: &IdentityService{
-			infraClusterClient: internalInfraClient,
+			infraClusterClient: infraClusterClient,
 		},
 		ControllerService: &ControllerService{
 			infraClusterNamespace: infraClusterNamespace,
-			infraClient:    internalInfraClient,
+			infraClient:    infraClusterClient,
 		},
-		NodeService: &NodeService{
-			infraClusterClient: kubernetes.Clientset{},
-			kubevirtClient:     internalInfraClient,
-			nodeId:             nodeId,
-		},
+		NodeService: NewNodeService(infraClusterClient, nodeID),
 	}
 	return &d
 }
 
 // Run will initiate the grpc services Identity, Controller, and Node.
-func (driver *kubevirtCSIDriver) Run(endpoint string) {
+func (driver *KubevirtCSIDriver) Run(endpoint string) {
 	// run the gRPC server
 	klog.Info("Setting the rpc server")
 

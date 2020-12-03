@@ -37,7 +37,8 @@ github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/sortkeys
 # github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 github.com/golang/glog
-# github.com/golang/mock v1.3.1
+# github.com/golang/mock v1.4.4
+## explicit
 github.com/golang/mock/gomock
 # github.com/golang/protobuf v1.4.2
 ## explicit

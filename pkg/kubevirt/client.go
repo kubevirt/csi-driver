@@ -31,7 +31,7 @@ type client struct {
 	virtClient       kubecli.KubevirtClient
 }
 
-// New creates our client wrapper object for the actual kubeVirt and kubernetes clients we use.
+// NewClient New creates our client wrapper object for the actual kubeVirt and kubernetes clients we use.
 func NewClient(config *rest.Config) (Client, error) {
 	result := &client{}
 

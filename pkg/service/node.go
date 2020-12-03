@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/mount"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -19,25 +19,69 @@ import (
 	"github.com/kubevirt/csi-driver/pkg/kubevirt"
 )
 
-type NodeService struct {
-	infraClusterClient kubernetes.Clientset
-	kubevirtClient     kubevirt.Client
-	nodeId             string
-}
-
-var NodeCaps = []csi.NodeServiceCapability_RPC_Type{
+var nodeCaps = []csi.NodeServiceCapability_RPC_Type{
 	csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 }
+// NodeService implements the CSI Driver node service
+type NodeService struct {
+	nodeID             string
+	deviceLister       deviceLister
+	fsMaker            fsMaker
+	fsMounter          mount.Interface
+	dirMaker           dirMaker
+}
+
+type deviceLister interface{ List() ([]byte, error) }
+type fsMaker interface { Make(device string, fsType string) error }
+type dirMaker interface { Make(path string, perm os.FileMode) error }
+
+func NewNodeService(infraClusterClient kubevirt.Client, nodeId string) *NodeService {
+	return &NodeService{
+		nodeID: nodeId,
+		deviceLister: deviceListerFunc(func() ([]byte, error) {
+			// must be lsblk recent enough for json format
+			return exec.Command("lsblk", "-nJo", "SERIAL,PATH,FSTYPE").Output()
+		}),
+		fsMaker: fsMakerFunc(func(device, fsType string) error {
+			return makeFS(device, fsType)
+		}),
+		fsMounter: mount.New(""),
+		dirMaker: dirMakerFunc(func(path string, perm os.FileMode) error {
+			// MkdirAll returns nil if path already exists
+			return os.MkdirAll(path, perm)
+		}),
+	}
+}
+
+type deviceListerFunc func() ([]byte, error)
+func (d deviceListerFunc) List() ([]byte, error) {
+	return d()
+}
+
+type fsMakerFunc func(device, fsType string) error
+func (f fsMakerFunc) Make(device, fsType string) error {
+	return f(device, fsType)
+}
+
+type dirMakerFunc func(path string, perm os.FileMode) error
+ func (d dirMakerFunc) Make(path string, perm os.FileMode) error {
+ 	return d(path, perm)
+ }
 
 // NodeStageVolume prepares the volume for usage. If it's an FS type it creates a file system on the volume.
 func (n *NodeService) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
-	// TODO remove the req struct from the log, it may contain sentitive info like secrets
-	klog.Infof("Staging volume %s with %+v", req.VolumeId, req)
+	klog.Infof("Staging volume %s", req.VolumeId)
+
+	if req.VolumeCapability.GetBlock() != nil {
+		err := fmt.Errorf("block mode is not supported")
+		klog.Error(err)
+		return nil, err
+	}
 
 	// get the VMI volumes which are under VMI.spec.volumes
 	// serialID = kubevirt's DataVolume.UID
 
-	device, err := getDeviceBySerialID(req.VolumeContext[serialParameter])
+	device, err := getDeviceBySerialID(req.VolumeContext[serialParameter], n.deviceLister)
 	if err != nil {
 		klog.Errorf("Failed to fetch device by serialID %s", req.VolumeId)
 		return nil, err
@@ -52,7 +96,7 @@ func (n *NodeService) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 	fsType := req.VolumeCapability.GetMount().FsType
 	// no filesystem - create it
 	klog.Infof("Creating FS %s on device %s", fsType, device)
-	err = makeFS(device.Path, fsType)
+	err = n.fsMaker.Make(device.Path, fsType)
 	if err != nil {
 		klog.Errorf("Could not create filesystem %s on %s", fsType, device)
 		return nil, err
@@ -61,6 +105,7 @@ func (n *NodeService) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
+// NodeUnstageVolume unstages a volume from the node
 func (n *NodeService) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	// nothing to do here, we don't erase the filesystem of a device.
 	return &csi.NodeUnstageVolumeResponse{}, nil
@@ -70,14 +115,14 @@ func (n *NodeService) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	// volumeID = serialID = kubevirt's DataVolume.metadata.uid
 	// TODO link to kubevirt code
-	device, err := getDeviceBySerialID(req.VolumeContext[serialParameter])
+	device, err := getDeviceBySerialID(req.VolumeContext[serialParameter], n.deviceLister)
 	if err != nil {
 		klog.Errorf("Failed to fetch device by serialID %s ", req.VolumeId)
 		return nil, err
 	}
 
 	targetPath := req.GetTargetPath()
-	err = os.MkdirAll(targetPath, 0750)
+	err = n.dirMaker.Make(targetPath, 0750)
 	// MkdirAll returns nil if path already exists
 	if err != nil {
 		return nil, err
@@ -88,8 +133,7 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	fsType := req.VolumeCapability.GetMount().FsType
 	klog.Infof("Mounting devicePath %s, on targetPath: %s with FS type: %s",
 		device, targetPath, fsType)
-	mounter := mount.New("")
-	err = mounter.Mount(device.Path, targetPath, fsType, []string{})
+	err = n.fsMounter.Mount(device.Path, targetPath, fsType, []string{})
 	if err != nil {
 		klog.Errorf("Failed mounting %v", err)
 		return nil, err
@@ -100,9 +144,8 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 //NodeUnpublishVolume unmount the volume from the worker node
 func (n *NodeService) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
-	mounter := mount.New("")
 	klog.Infof("Unmounting %s", req.GetTargetPath())
-	err := mounter.Unmount(req.GetTargetPath())
+	err := n.fsMounter.Unmount(req.GetTargetPath())
 	if err != nil {
 		klog.Infof("Failed to unmount")
 		return nil, err
@@ -111,22 +154,26 @@ func (n *NodeService) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 
+// NodeGetVolumeStats unimplemented
 func (n *NodeService) NodeGetVolumeStats(context.Context, *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
 	panic("implement me")
 }
 
+// NodeExpandVolume unimplemented
 func (n *NodeService) NodeExpandVolume(context.Context, *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
 	panic("implement me")
 }
 
+// NodeGetInfo returns the node ID
 func (n *NodeService) NodeGetInfo(context.Context, *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	// the nodeId is the VM's ID in kubevirt or VMI.spec.domain.firmware.uuid
-	return &csi.NodeGetInfoResponse{NodeId: n.nodeId}, nil
+	// the nodeID is the VM's ID in kubevirt or VMI.spec.domain.firmware.uuid
+	return &csi.NodeGetInfoResponse{NodeId: n.nodeID}, nil
 }
 
+//NodeGetCapabilities returns the supported capabilities of the node service
 func (n *NodeService) NodeGetCapabilities(context.Context, *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
-	caps := make([]*csi.NodeServiceCapability, 0, len(NodeCaps))
-	for _, c := range NodeCaps {
+	caps := make([]*csi.NodeServiceCapability, 0, len(nodeCaps))
+	for _, c := range nodeCaps {
 		caps = append(
 			caps,
 			&csi.NodeServiceCapability{
@@ -141,32 +188,31 @@ func (n *NodeService) NodeGetCapabilities(context.Context, *csi.NodeGetCapabilit
 	return &csi.NodeGetCapabilitiesResponse{Capabilities: caps}, nil
 }
 
-type Devices struct {
-	BlockDevices []Device `json:"blockdevices"`
+type devices struct {
+	BlockDevices []device `json:"blockdevices"`
 }
-type Device struct {
+
+type device struct {
 	SerialID string `json:"serial"`
 	Path     string `json:"path"`
 	Fstype   string `json:"fstype"`
 }
 
-func getDeviceBySerialID(serialID string) (Device, error) {
+func getDeviceBySerialID(serialID string, deviceLister deviceLister) (device, error) {
 	klog.Infof("Get the device details by serialID %s", serialID)
 	klog.V(5).Info("lsblk -nJo SERIAL,PATH,FSTYPE")
 
-	// must be lsblk recent enough for json format
-	cmd := exec.Command("lsblk", "-nJo", "SERIAL,PATH,FSTYPE")
-	out, err := cmd.Output()
+	out, err := deviceLister.List()
 	exitError, incompleteCmd := err.(*exec.ExitError)
 	if err != nil && incompleteCmd {
-		return Device{}, errors.New(err.Error() + "lsblk failed with " + string(exitError.Stderr))
+		return device{}, errors.New(err.Error() + "lsblk failed with " + string(exitError.Stderr))
 	}
 
-	devices := Devices{}
+	devices := devices{}
 	err = json.Unmarshal(out, &devices)
 	if err != nil {
 		klog.Errorf("Failed to parse json output from lsblk: %s", err)
-		return Device{}, err
+		return device{}, err
 	}
 
 	for _, d := range devices.BlockDevices {
@@ -174,7 +220,7 @@ func getDeviceBySerialID(serialID string) (Device, error) {
 			return d, nil
 		}
 	}
-	return Device{}, errors.New("couldn't find device by serial id")
+	return device{}, errors.New("couldn't find device by serial id")
 }
 
 func makeFS(device string, fsType string) error {

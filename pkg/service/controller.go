@@ -116,7 +116,7 @@ func (c *ControllerService) ControllerPublishVolume(
 	log.Infof("Attaching DataVolume %s to Node ID %s", dvName, req.NodeId)
 
 	// Get VM name
-	vmName, err := c.getVmNameByCSINodeID(req.NodeId)
+	vmName, err := c.getVMNameByCSINodeID(req.NodeId)
 	if err != nil {
 		log.Error("Failed getting VM Name for node ID " + req.NodeId)
 		return nil, err
@@ -169,7 +169,7 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 	log.Infof("Detaching DataVolume %s from Node ID %s", dvName, req.NodeId)
 
 	// Get VM name
-	vmName, err := c.getVmNameByCSINodeID(req.NodeId)
+	vmName, err := c.getVMNameByCSINodeID(req.NodeId)
 	if err != nil {
 		return nil, err
 	}
@@ -197,37 +197,37 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
 
-//ValidateVolumeCapabilities
+//ValidateVolumeCapabilities unimplemented
 func (c *ControllerService) ValidateVolumeCapabilities(context.Context, *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-//ListVolumes
+//ListVolumes unimplemented
 func (c *ControllerService) ListVolumes(context.Context, *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-//GetCapacity
+//GetCapacity unimplemented
 func (c *ControllerService) GetCapacity(context.Context, *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-//CreateSnapshot
+//CreateSnapshot unimplemented
 func (c *ControllerService) CreateSnapshot(context.Context, *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-//DeleteSnapshot
+//DeleteSnapshot unimplemented
 func (c *ControllerService) DeleteSnapshot(context.Context, *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-//ListSnapshots
+//ListSnapshots unimplemented
 func (c *ControllerService) ListSnapshots(context.Context, *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-//ControllerExpandVolume
+//ControllerExpandVolume unimplemented
 func (c *ControllerService) ControllerExpandVolume(context.Context, *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
@@ -250,15 +250,14 @@ func (c *ControllerService) ControllerGetCapabilities(context.Context, *csi.Cont
 	return &csi.ControllerGetCapabilitiesResponse{Capabilities: caps}, nil
 }
 
-//ControllerGetVolume
+// ControllerGetVolume unimplemented
 func (c *ControllerService) ControllerGetVolume(_ context.Context, _ *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-// getVmNameByCSINodeID
-// Find a VM in infra cluster by its firmware uuid. The uid is the ID that the CSI
+// getVMNameByCSINodeID finds a VM in infra cluster by its firmware uuid. The uid is the ID that the CSI
 // node publishes in NodeGetInfo and then used by CSINode.spec.drivers[].nodeID
-func (c *ControllerService) getVmNameByCSINodeID(nodeID string) (string, error) {
+func (c *ControllerService) getVMNameByCSINodeID(nodeID string) (string, error) {
 	list, err := c.infraClient.ListVirtualMachines(c.infraClusterNamespace)
 	if err != nil {
 		log.Error("Failed listing VMIs in infra cluster")

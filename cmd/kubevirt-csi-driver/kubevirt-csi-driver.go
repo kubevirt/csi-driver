@@ -25,7 +25,7 @@ var (
 	namespace             = flag.String("namespace", "", "Namespace to run the controllers on")
 	nodeName              = flag.String("node-name", "", "The node name - the node this pods runs on")
 	infraClusterNamespace = flag.String("infra-cluster-namespace", "", "The infra-cluster namespace")
-	infraClusterApiUrl    = flag.String("infra-cluster-api-url", "", "The infra-cluster API URL")
+	infraClusterAPIUrl    = flag.String("infra-cluster-api-url", "", "The infra-cluster API URL")
 	infraClusterToken     = flag.String("infra-cluster-token", "", "The infra-cluster token file")
 	infraClusterCA        = flag.String("infra-cluster-ca", "", "the infra-cluster ca certificate file")
 )
@@ -69,7 +69,7 @@ func handle() {
 		klog.Fatalf("Failed to build tenant client set: %v", err)
 	}
 
-	infraClusterConfig, err := buildInfraClusterConfig(*infraClusterApiUrl, *infraClusterToken, *infraClusterCA)
+	infraClusterConfig, err := buildInfraClusterConfig(*infraClusterAPIUrl, *infraClusterToken, *infraClusterCA)
 	if err != nil {
 		klog.Fatalf("Failed to build infra cluster config: %v", err)
 	}
@@ -79,26 +79,26 @@ func handle() {
 		klog.Fatal(err)
 	}
 
-	var nodeId string
+	var nodeID string
 	if *nodeName != "" {
 		node, err := tenantClientSet.CoreV1().Nodes().Get(*nodeName, v1.GetOptions{})
 		if err != nil {
 			klog.Fatal(fmt.Errorf("failed to find node by name %v: %v", nodeName, err))
 		}
 		// systemUUID is the VM ID
-		nodeId = node.Status.NodeInfo.SystemUUID
-		klog.Infof("Node name: %s, Node ID: %s", nodeName, nodeId)
+		nodeID = node.Status.NodeInfo.SystemUUID
+		klog.Infof("Node name: %s, Node ID: %s", nodeName, nodeID)
 	}
 
-	driver := service.NewkubevirtCSIDriver(virtClient, nodeId, *infraClusterNamespace)
+	driver := service.NewKubevirtCSIDriver(virtClient, *infraClusterNamespace, nodeID)
 
 	driver.Run(*endpoint)
 }
 
-func buildInfraClusterConfig(apiUrl string, tokenFile string, caFile string) (*rest.Config, error) {
-	parse, err := url.Parse(apiUrl)
+func buildInfraClusterConfig(apiURL string, tokenFile string, caFile string) (*rest.Config, error) {
+	parse, err := url.Parse(apiURL)
 	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to parse apiUrl %v", apiUrl)
+		return nil, errors.Wrapf(err, "Failed to parse apiURL %v", apiURL)
 	}
 
 	token, err := ioutil.ReadFile(tokenFile)
