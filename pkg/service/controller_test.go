@@ -252,28 +252,28 @@ func (c *ControllerClientMock) ListDataVolumes(namespace string) ([]cdiv1alpha1.
 func (c *ControllerClientMock) GetVMI(ctx context.Context, namespace string, name string) (*kubevirtapiv1.VirtualMachineInstance, error) {
 	return nil, errors.New("Not implemented")
 }
-func (c *ControllerClientMock) AddVolumeToVM(namespace string, vmName string, hotPlugRequest *kubevirtapiv1.HotplugVolumeRequest) error {
+func (c *ControllerClientMock) AddVolumeToVM(namespace string, vmName string, addVolumeOptions *kubevirtapiv1.AddVolumeOptions) error {
 	if c.FailAddVolumeToVM {
 		return errors.New("AddVolumeToVM failed")
 	}
 
 	// Test input
 	assert.Equal(c.t, testVmName, vmName)
-	assert.Equal(c.t, testVolumeName, hotPlugRequest.Volume.DataVolume.Name)
-	assert.True(c.t, hotPlugRequest.Ephemeral)
-	assert.Equal(c.t, getBusType(), hotPlugRequest.Disk.DiskDevice.Disk.Bus)
-	assert.Equal(c.t, testDataVolumeUID, hotPlugRequest.Disk.Serial)
+	assert.Equal(c.t, hotplugDiskPrefix + testVolumeName, addVolumeOptions.Name)
+	assert.Equal(c.t, testVolumeName, addVolumeOptions.VolumeSource.DataVolume.Name)
+	assert.Equal(c.t, getBusType(), addVolumeOptions.Disk.DiskDevice.Disk.Bus)
+	assert.Equal(c.t, testDataVolumeUID, addVolumeOptions.Disk.Serial)
 
 	return nil
 }
-func (c *ControllerClientMock) RemoveVolumeFromVM(namespace string, vmName string, hotPlugRequest *kubevirtapiv1.HotplugVolumeRequest) error {
+func (c *ControllerClientMock) RemoveVolumeFromVM(namespace string, vmName string, removeVolumeOptions *kubevirtapiv1.RemoveVolumeOptions) error {
 	if c.FailRemoveVolumeFromVM {
 		return errors.New("RemoveVolumeFromVM failed")
 	}
 
 	// Test input
 	assert.Equal(c.t, testVmName, vmName)
-	assert.Equal(c.t, testVolumeName, hotPlugRequest.Volume.DataVolume.Name)
+	assert.Equal(c.t, hotplugDiskPrefix + testVolumeName, removeVolumeOptions.Name)
 
 	return nil
 }

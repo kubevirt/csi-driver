@@ -22,8 +22,8 @@ type Client interface {
 	ListVirtualMachines(namespace string) ([]kubevirtapiv1.VirtualMachineInstance, error)
 	DeleteDataVolume(namespace string, name string) error
 	CreateDataVolume(namespace string, dataVolume *cdiv1alpha1.DataVolume) (*cdiv1alpha1.DataVolume, error)
-	AddVolumeToVM(namespace string, vmName string, hotPlugRequest *kubevirtapiv1.HotplugVolumeRequest) error
-	RemoveVolumeFromVM(namespace string, vmName string, hotPlugRequest *kubevirtapiv1.HotplugVolumeRequest) error
+	AddVolumeToVM(namespace string, vmName string, hotPlugRequest *kubevirtapiv1.AddVolumeOptions) error
+	RemoveVolumeFromVM(namespace string, vmName string, hotPlugRequest *kubevirtapiv1.RemoveVolumeOptions) error
 }
 
 type client struct {
@@ -50,12 +50,12 @@ func NewClient(config *rest.Config) (Client, error) {
 }
 
 //AddVolumeToVM performs a hotplug of a DataVolume to a VM
-func (c *client) AddVolumeToVM(namespace string, vmName string, hotPlugRequest *kubevirtapiv1.HotplugVolumeRequest) error {
+func (c *client) AddVolumeToVM(namespace string, vmName string, hotPlugRequest *kubevirtapiv1.AddVolumeOptions) error {
 	return c.virtClient.VirtualMachine(namespace).AddVolume(vmName, hotPlugRequest)
 }
 
 //RemoveVolumeFromVM perform hotunplug of a DataVolume from a VM
-func (c *client) RemoveVolumeFromVM(namespace string, vmName string, hotPlugRequest *kubevirtapiv1.HotplugVolumeRequest) error {
+func (c *client) RemoveVolumeFromVM(namespace string, vmName string, hotPlugRequest *kubevirtapiv1.RemoveVolumeOptions) error {
 	return c.virtClient.VirtualMachine(namespace).RemoveVolume(vmName, hotPlugRequest)
 }
 
