@@ -1,0 +1,13 @@
+apiVersion: v1
+data:
+  default-network-interface: masquerade
+  feature-gates: DataVolumes,SRIOV,LiveMigration,CPUManager,CPUNodeDiscovery,Sidecar,Snapshot,HotplugVolumes
+  selinuxLauncherType: virt_launcher.process
+  smbios: |-
+    Family: KubeVirt
+    Manufacturer: KubeVirt
+    Product: None
+kind: ConfigMap
+metadata:
+  name: kubevirt-config
+  namespace: kubevirt
