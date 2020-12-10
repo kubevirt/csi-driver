@@ -8,6 +8,6 @@ LABEL maintainers="The KubeVirt Project <kubevirt-dev@googlegroups.com>"
 LABEL description="KubeVirt CSI Driver"
 
 RUN microdnf install -y e2fsprogs xfsprogs && microdnf clean all
-COPY --from=builder /src/kubevirt-csi-driver/bin/kubevirt-csi-driver .
+COPY --from=builder /src/kubevirt-csi-driver/kubevirt-csi-driver .
 
 ENTRYPOINT ["./kubevirt-csi-driver"]
