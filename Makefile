@@ -1,5 +1,5 @@
-# Copyright 2020 The KubeVirt-csi Authors.
 #
+# Copyright 2020 The KubeVirt-csi Authors.
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -12,54 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-BINDIR=bin
-REPO?=kubevirt
-IMAGE?=csi-driver
-TAG?=latest
-REV=$(shell git describe --long --tags --match='v*' --always --dirty)
-
-all: image
-
-.PHONY: test
-test:
-	go test -v ./pkg/... ./cmd/... -coverprofile cover.out
-	hack/run-lint-checks.sh
-
-#.PHONY: build
-#build:
-#	go build -o $(BINDIR)/kubevirt-csi-driver -ldflags '-X version.Version=$(REV)' cmd/kubevirt-csi-driver/kubevirt-csi-driver.go
-
-.PHONY: verify
-verify: fmt vet
-
-.PHONY: fmt
-fmt:
-	hack/verify-gofmt.sh
-
-.PHONY: vet
-vet:
-	hack/verify-govet.sh
-
-.PHONY: image
-image:
-	podman build . -f Dockerfile -t $(REPO)/$(IMAGE):$(TAG)
-
-.PHONY: push
-push: image
-	podman push $(REPO)/$(IMAGE):$(TAG)
-
-.PHONY: vendor
-vendor:
-	go mod tidy
-	go mod vendor
-	go mod verify
-
-.PHONY: mockgen
-mockgen:
-	mockgen -source=pkg/kubevirt/client.go -destination=pkg/kubevirt/mocked_client.go -package=kubevirt
-
-test-functional:
-	ginkgo
 
 SHELL :=/bin/bash
 
@@ -67,6 +19,10 @@ TARGET_NAME=kubevirt-csi-driver
 IMAGE_REF=quay.io/kubevirt/$(TARGET_NAME):latest
 GO_TEST_PACKAGES :=./pkg/... ./cmd/...
 IMAGE_REGISTRY?=registry.svc.ci.openshift.org
+
+export KUBEVIRTCI_TAG=2103301354-4f5cc5f
+export KUBEVIRTCI_RUNTIME=podman
+export KUBEVIRT_PROVIDER=k8s-1.20
 
 # You can customize go tools depending on the directory layout.
 # example:
@@ -107,4 +63,33 @@ $(call build-image,$(TARGET_NAME),$(IMAGE_REF),./Dockerfile,.)
 # It will generate targets {update,verify}-bindata-$(1) logically grouping them in unsuffixed versions of these targets
 # and also hooked into {update,verify}-generated for broader integration.
 $(call add-bindata,generated,./deploy/...,assets,generated,pkg/generated/bindata.go)
+
+.PHONY: cluster-up
+cluster-up:
+	sh -c "./cluster-up/up.sh"
+
+.PHONY: cluster-down
+cluster-down:
+	sh -c "./cluster-up/down.sh"
+
+.PHONY: kubevirt-deploy
+kubevirt-deploy:
+	sh -c "./cluster-up/kubevirt-deploy.sh"
+
+.PHONY: mockgen
+mockgen:
+	mockgen -source=pkg/kubevirt/client.go -destination=pkg/kubevirt/mocked_client.go -package=kubevirt
+
+.PHONY: build-functional
+build-functional:
+	./hack/build-tests.sh
+
+.PHONY: test-functional
+test-functional:
+	KUBECONIG=$(shell $(MAKE) kubeconfig) ./hack/run-tests.sh
+
+.PHONY: kubeconfig
+kubeconfig:
+	@ if [ -n "${KUBECONFIG}" ]; then echo ${KUBECONFIG}; else $(MAKE) cluster-up kubevirt-deploy && ./cluster-up/kubeconfig.sh; fi
+
 
