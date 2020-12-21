@@ -10,6 +10,8 @@ This repository hosts the CSI KubeVirt driver and all of its build and dependent
 ## Deployment
 //TODO WIP
 - use `deploy/infra-cluster-service-account.yaml` to create a service account in kubevirt cluster (use '-n' flag in create command for specifying the kubevirt cluster namepsace)
+- Create namespace for the driver in tenant cluster
+    - Use `deploy/000-namespace.yaml`
 - use `deploy/secret.yaml` for creating the necessary secret in the tenant cluster
     - set apiUrl: [base64 of infra cluster API URL. E.g. base64 of https://cluster.mydomain.co:6443]
     - set service-ca.crt : copy value from token of infra service account created in previous section
@@ -17,7 +19,6 @@ This repository hosts the CSI KubeVirt driver and all of its build and dependent
     - set token : copy value from token of infra service account created in previous section
 - deploy files under `deploy` in  tenant cluster
     - 000-csi-driver.yaml
-    - 000-namespace.yaml
     - 020-authorization.yaml
     - 030-node.yaml
     - 040-controller.yaml
