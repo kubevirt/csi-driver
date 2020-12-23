@@ -1,0 +1,27 @@
+apiVersion: kubevirt.io/v1alpha3
+kind: KubeVirt
+metadata:
+  name: kubevirt
+  namespace: kubevirt
+spec:
+  certificateRotateStrategy: {}
+  configuration:
+    developerConfiguration:
+      featureGates:
+      - DataVolumes
+      - SRIOV
+      - LiveMigration
+      - CPUManager
+      - CPUNodeDiscovery
+      - Sidecar
+      - Snapshot
+      - HotplugVolumes
+    network:
+      defaultNetworkInterface: masquerade
+    smbios:
+      family: KubeVirt
+      manufacturer: KubeVirt
+      product: None
+      selinuxLauncherType: virt_launcher.process
+  customizeComponents: {}
+  uninstallStrategy: BlockUninstallIfWorkloadsExist
