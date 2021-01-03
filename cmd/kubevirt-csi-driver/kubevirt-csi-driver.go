@@ -3,17 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
-	"net/url"
 	"os"
 	"time"
 
-	"github.com/pkg/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	certutil "k8s.io/client-go/util/cert"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 
 	"github.com/kubevirt/csi-driver/pkg/kubevirt"
@@ -21,13 +18,11 @@ import (
 )
 
 var (
-	endpoint              = flag.String("endpoint", "unix:/csi/csi.sock", "CSI endpoint")
-	namespace             = flag.String("namespace", "", "Namespace to run the controllers on")
-	nodeName              = flag.String("node-name", "", "The node name - the node this pods runs on")
-	infraClusterNamespace = flag.String("infra-cluster-namespace", "", "The infra-cluster namespace")
-	infraClusterAPIUrl    = flag.String("infra-cluster-api-url", "", "The infra-cluster API URL")
-	infraClusterToken     = flag.String("infra-cluster-token", "", "The infra-cluster token file")
-	infraClusterCA        = flag.String("infra-cluster-ca", "", "the infra-cluster ca certificate file")
+	endpoint               = flag.String("endpoint", "unix:/csi/csi.sock", "CSI endpoint")
+	namespace              = flag.String("namespace", "", "Namespace to run the controllers on")
+	nodeName               = flag.String("node-name", "", "The node name - the node this pods runs on")
+	infraClusterNamespace  = flag.String("infra-cluster-namespace", "", "The infra-cluster namespace")
+	infraClusterKubeconfig = flag.String("infra-cluster-kubeconfig", "", "the infra-cluster kubeconfig file")
 )
 
 func init() {
@@ -69,7 +64,7 @@ func handle() {
 		klog.Fatalf("Failed to build tenant client set: %v", err)
 	}
 
-	infraClusterConfig, err := buildInfraClusterConfig(*infraClusterAPIUrl, *infraClusterToken, *infraClusterCA)
+	infraClusterConfig, err := clientcmd.BuildConfigFromFlags("", *infraClusterKubeconfig)
 	if err != nil {
 		klog.Fatalf("Failed to build infra cluster config: %v", err)
 	}
@@ -93,30 +88,4 @@ func handle() {
 	driver := service.NewKubevirtCSIDriver(virtClient, *infraClusterNamespace, nodeID)
 
 	driver.Run(*endpoint)
-}
-
-func buildInfraClusterConfig(apiURL string, tokenFile string, caFile string) (*rest.Config, error) {
-	parse, err := url.Parse(apiURL)
-	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to parse apiURL %v", apiURL)
-	}
-
-	token, err := ioutil.ReadFile(tokenFile)
-	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to read tokenFile %v", tokenFile)
-	}
-
-	tlsClientConfig := rest.TLSClientConfig{}
-	if _, err := certutil.NewPool(caFile); err != nil {
-		klog.Errorf("Expected to load root CA config from %s, but got err: %v", caFile, err)
-	} else {
-		tlsClientConfig.CAFile = caFile
-	}
-
-	return &rest.Config{
-		Host:            parse.Host,
-		TLSClientConfig: tlsClientConfig,
-		BearerToken:     string(token),
-		BearerTokenFile: tokenFile,
-	}, nil
 }
