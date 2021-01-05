@@ -2,6 +2,15 @@
 
 This repository hosts the CSI KubeVirt driver and all of its build and dependent configuration files to deploy the driver.
 
+This CSI driver is made for a tenant cluster deployed on top of kubevirt VMs, and enables it to get its persistent data  
+from the underlying, infrastructure cluster.
+To avoid confusion, this CSI driver is deployed on the tenant cluster, and does not require kubevirt installation at all.
+
+The term "tenant cluster" refers to the k8s cluster installed on kubevirt VMs, and "infrastructure cluster"  
+(or shorter "infra cluster") refers to a cluster with kubevirt installed and can be installaed on any infrastrucure (baremetal, public cloud, etc).
+
+![](docs/high-level-diagram.svg)
+
 ## Pre-requisite
 - Kubernetes cluster
 - Running version 1.18 or later
