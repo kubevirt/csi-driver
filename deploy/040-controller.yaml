@@ -32,9 +32,7 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--namespace=kubevirt-csi-driver"
             - "--infra-cluster-namespace=$(INFRACLUSTER_NAMESPACE)"
-            - "--infra-cluster-api-url=$(INFRACLUSTER_API_URL)"
-            - "--infra-cluster-token=/var/run/secrets/infracluster/token"
-            - "--infra-cluster-ca=/var/run/secrets/infracluster/service-ca.crt"
+            - "--infra-cluster-kubeconfig=/var/run/secrets/infracluster/kubeconfig"
             - --v=5
           ports:
             - name: healthz
@@ -50,14 +48,9 @@ spec:
                   fieldPath: spec.nodeName
             - name: INFRACLUSTER_NAMESPACE
               valueFrom:
-                secretKeyRef:
-                  name: infra-cluster-credentials
-                  key: namespace
-            - name: INFRACLUSTER_API_URL
-              valueFrom:
-                secretKeyRef:
-                  name: infra-cluster-credentials
-                  key: apiUrl
+                configMapKeyRef:
+                  name: driver-config
+                  key: infraClusterNamespace
           volumeMounts:
             - name: socket-dir
               mountPath: /var/lib/csi/sockets/pluginproxy/
