@@ -11,7 +11,7 @@ var (
 	// VendorVersion is the vendor version set by ldflags at build time
 	VendorVersion = "0.1.0"
 	// VendorName is the CSI driver unique name, must match the storage class provisioner value.
-	VendorName    = "csi.kubevirt.io"
+	VendorName = "csi.kubevirt.io"
 )
 
 // KubevirtCSIDriver implements a complete CSI service
@@ -30,7 +30,7 @@ func NewKubevirtCSIDriver(infraClusterClient kubevirt.Client, infraClusterNamesp
 		},
 		ControllerService: &ControllerService{
 			infraClusterNamespace: infraClusterNamespace,
-			infraClient:    infraClusterClient,
+			infraClient:           infraClusterClient,
 		},
 		NodeService: NewNodeService(infraClusterClient, nodeID),
 	}

@@ -9,13 +9,14 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
-	client "github.com/kubevirt/csi-driver/pkg/kubevirt"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	corev1 "k8s.io/api/core/v1"
 	log "k8s.io/klog"
 	cdiv1 "kubevirt.io/containerized-data-importer/pkg/apis/core/v1alpha1"
+
+	client "github.com/kubevirt/csi-driver/pkg/kubevirt"
 )
 
 const (
@@ -23,6 +24,7 @@ const (
 	busParameter                   = "bus"
 	busDefaultValue                = "scsi"
 	serialParameter                = "serial"
+	hotplugDiskPrefix              = "disk-"
 )
 
 //ControllerService implements the controller interface
@@ -123,7 +125,7 @@ func (c *ControllerService) ControllerPublishVolume(
 	}
 
 	// Determine disk name (disk-<DataVolume-name>)
-	diskName := "disk-" + dvName
+	diskName := hotplugDiskPrefix + dvName
 
 	// Determine serial number/string for the new disk
 	serial := req.VolumeContext[serialParameter]
@@ -134,17 +136,9 @@ func (c *ControllerService) ControllerPublishVolume(
 	// hotplug DataVolume to VM
 	log.Infof("Start attaching DataVolume %s to VM %s. Disk name: %s. Serial: %s. Bus: %s", dvName, vmName, diskName, serial, bus)
 
-	hotplugRequest := &v1.HotplugVolumeRequest{
-		Volume: &v1.Volume{
-			VolumeSource: v1.VolumeSource{
-				DataVolume: &v1.DataVolumeSource{
-					Name: dvName,
-				},
-			},
-			Name: diskName,
-		},
+	addVolumeOptions := &v1.AddVolumeOptions{
+		Name: diskName,
 		Disk: &v1.Disk{
-			Name:   diskName,
 			Serial: serial,
 			DiskDevice: v1.DiskDevice{
 				Disk: &v1.DiskTarget{
@@ -152,9 +146,14 @@ func (c *ControllerService) ControllerPublishVolume(
 				},
 			},
 		},
-		Ephemeral: true,
+		VolumeSource: &v1.HotplugVolumeSource{
+			DataVolume: &v1.DataVolumeSource{
+				Name: dvName,
+			},
+		},
 	}
-	err = c.infraClient.AddVolumeToVM(c.infraClusterNamespace, vmName, hotplugRequest)
+
+	err = c.infraClient.AddVolumeToVM(c.infraClusterNamespace, vmName, addVolumeOptions)
 	if err != nil {
 		log.Error("Failed adding volume " + dvName + " to VM " + vmName)
 		return nil, err
@@ -175,22 +174,12 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 	}
 
 	// Determine disk name (disk-<DataVolume-name>)
-	diskName := "disk-" + dvName
+	diskName := hotplugDiskPrefix + dvName
 
 	// Detach DataVolume from VM
-	hotplugRequest := &v1.HotplugVolumeRequest{
-		Volume: &v1.Volume{
-			VolumeSource: v1.VolumeSource{
-				DataVolume: &v1.DataVolumeSource{
-					Name: dvName,
-				},
-			},
-			Name: diskName,
-		},
-	}
-	err = c.infraClient.RemoveVolumeFromVM(c.infraClusterNamespace, vmName, hotplugRequest)
+	err = c.infraClient.RemoveVolumeFromVM(c.infraClusterNamespace, vmName, &v1.RemoveVolumeOptions{Name: diskName})
 	if err != nil {
-		log.Error("Failed removing volume " + dvName + " from VM " + vmName)
+		log.Error("Failed removing volume " + diskName + " from VM " + vmName)
 		return nil, err
 	}
 

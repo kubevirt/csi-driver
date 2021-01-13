@@ -94,7 +94,7 @@ func (mr *MockClientMockRecorder) CreateDataVolume(namespace, dataVolume interfa
 }
 
 // AddVolumeToVM mocks base method
-func (m *MockClient) AddVolumeToVM(namespace, vmName string, hotPlugRequest *v1.HotplugVolumeRequest) error {
+func (m *MockClient) AddVolumeToVM(namespace, vmName string, hotPlugRequest *v1.AddVolumeOptions) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AddVolumeToVM", namespace, vmName, hotPlugRequest)
 	ret0, _ := ret[0].(error)
@@ -108,7 +108,7 @@ func (mr *MockClientMockRecorder) AddVolumeToVM(namespace, vmName, hotPlugReques
 }
 
 // RemoveVolumeFromVM mocks base method
-func (m *MockClient) RemoveVolumeFromVM(namespace, vmName string, hotPlugRequest *v1.HotplugVolumeRequest) error {
+func (m *MockClient) RemoveVolumeFromVM(namespace, vmName string, hotPlugRequest *v1.RemoveVolumeOptions) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RemoveVolumeFromVM", namespace, vmName, hotPlugRequest)
 	ret0, _ := ret[0].(error)

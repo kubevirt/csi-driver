@@ -58,6 +58,9 @@ rules:
   - apiGroups: ["snapshot.storage.k8s.io"]
     resources: ["volumesnapshots/status"]
     verbs: ["update"]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: [ "volumeattachments/status" ]
+    verbs: [ "get", "list", "watch", "update", "patch" ]
   - apiGroups: ["storage.k8s.io"]
     resources: ["csinodes"]
     verbs: ["get", "list", "watch"]
@@ -166,4 +169,3 @@ roleRef:
   name: openshift:csi-driver-controller-leader-election
   apiGroup: rbac.authorization.k8s.io
 ---
-
