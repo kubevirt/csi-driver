@@ -9,10 +9,10 @@ This repository hosts the CSI KubeVirt driver and all of its build and dependent
 
 ## Deployment
 //TODO WIP
-- use `deploy/infra-cluster-service-account.yaml` to create a service account in kubevirt cluster (use '-n' flag in create command for specifying the kubevirt cluster namepsace)
+- use `deploy/infra-cluster-service-account.yaml` to create a service account in kubevirt cluster (use '-n' flag in create command for specifying the kubevirt cluster namespace)
 - create kubeconfig for service account
     - Use `deploy/example/infracluster-kubeconfig.yaml` as a reference. Inside the file there are instructions for fields that need to be edited.
-    - Test your kubeconfig. Try listing resources of type VMI in the kubevirt cluster namepsace.
+    - Test your kubeconfig. Try listing resources of type VMI in the kubevirt cluster namespace.
 - create namespace for the driver in tenant cluster
     - Use `deploy/000-namespace.yaml`
 - use `deploy/secret.yaml` for creating the necessary secret in the tenant cluster
@@ -29,7 +29,7 @@ This repository hosts the CSI KubeVirt driver and all of its build and dependent
 - Enable HotplugVolumes feature gate
     - In case your Kubevirt namespace has the ConfigMap 'kubevirt-config' then use `deploy/example/kubevirt-config.yaml` for adding the feature gate to it. Look at the path {.data.feature-gates}
     - Otherwise, add the feature gate to the resource of type Kubevirt. There should be a single resource of this type and its name is irrelevant. See `deploy/example/kubevirt.yaml`
-    - Pay attention that in some deployments there are operators that will restore previous configuration. You will have to stop these operators for editing the resources. E.g. hco-operator in HCO.
+    - Pay attention that in some deployments there are operators that will restore previous configuration. You will have to stop these operators for editing the resources.Some operators allow configuration through their own CRD. HCO is such an operator. See `deploy/example/hco-cr.yaml` to understand how HCO feature gates are configured.
 
 ## Examples
 
