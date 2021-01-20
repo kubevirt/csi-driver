@@ -23,14 +23,15 @@ type KubevirtCSIDriver struct {
 	Client             kubevirt.Client
 }
 
-func NewKubevirtCSIDriver(infraClusterClient kubevirt.Client, infraClusterNamespace string, nodeID string) *KubevirtCSIDriver {
+func NewKubevirtCSIDriver(infraClusterClient kubevirt.Client, infraClusterNamespace string, infraClusterLabels map[string]string, nodeID string) *KubevirtCSIDriver {
 	d := KubevirtCSIDriver{
 		IdentityService: &IdentityService{
 			infraClusterClient: infraClusterClient,
 		},
 		ControllerService: &ControllerService{
-			infraClusterNamespace: infraClusterNamespace,
 			infraClient:           infraClusterClient,
+			infraClusterNamespace: infraClusterNamespace,
+			infraClusterLabels:    infraClusterLabels,
 		},
 		NodeService: NewNodeService(infraClusterClient, nodeID),
 	}
