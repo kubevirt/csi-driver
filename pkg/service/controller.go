@@ -27,10 +27,11 @@ const (
 	hotplugDiskPrefix              = "disk-"
 )
 
-//ControllerService implements the controller interface
+//ControllerService implements the controller interface. See README for details.
 type ControllerService struct {
 	infraClient           client.Client
 	infraClusterNamespace string
+	infraClusterLabels    map[string]string
 }
 
 var controllerCaps = []csi.ControllerServiceCapability_RPC_Type{
@@ -60,6 +61,7 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	dv.Namespace = c.infraClusterNamespace
 	dv.Kind = "DataVolume"
 	dv.APIVersion = cdiv1.SchemeGroupVersion.String()
+	dv.ObjectMeta.Labels = c.infraClusterLabels
 	dv.Spec.PVC = &corev1.PersistentVolumeClaimSpec{
 		AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 		StorageClassName: &storageClassName,

@@ -18,7 +18,8 @@ This repository hosts the CSI KubeVirt driver and all of its build and dependent
 - use `deploy/secret.yaml` for creating the necessary secret in the tenant cluster
     - set kubeconfig: [base64 of kubeconfig from previous step]
 - use `deploy/configmap.yaml` for creating the driver's config
-    - set infraClusterNamespace to the kubevirt cluster namepsace.
+    - set infraClusterNamespace to the kubevirt cluster namespace.
+    - set infraClusterLabels. The format is 'key=value,key=value,...'. The driver creates resources in the infra cluster. These resources are labeled with the values you supply in infraClusterLabels. Provide values that make the labels unique to your cluster. One usage of such labels is for destroying the tenant cluster. The labels tells us what resources were created in the infra cluster for serving the tenant.
 - deploy files under `deploy` in  tenant cluster
     - 000-csi-driver.yaml
     - 020-authorization.yaml
