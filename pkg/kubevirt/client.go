@@ -51,12 +51,12 @@ func NewClient(config *rest.Config) (Client, error) {
 
 //AddVolumeToVM performs a hotplug of a DataVolume to a VM
 func (c *client) AddVolumeToVM(namespace string, vmName string, hotPlugRequest *kubevirtapiv1.AddVolumeOptions) error {
-	return c.virtClient.VirtualMachine(namespace).AddVolume(vmName, hotPlugRequest)
+	return c.virtClient.VirtualMachineInstance(namespace).AddVolume(vmName, hotPlugRequest)
 }
 
 //RemoveVolumeFromVM perform hotunplug of a DataVolume from a VM
 func (c *client) RemoveVolumeFromVM(namespace string, vmName string, hotPlugRequest *kubevirtapiv1.RemoveVolumeOptions) error {
-	return c.virtClient.VirtualMachine(namespace).RemoveVolume(vmName, hotPlugRequest)
+	return c.virtClient.VirtualMachineInstance(namespace).RemoveVolume(vmName, hotPlugRequest)
 }
 
 //ListVirtualMachines fetches a list of VMIs from a namespace

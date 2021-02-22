@@ -24,7 +24,6 @@ const (
 	busParameter                   = "bus"
 	busDefaultValue                = "scsi"
 	serialParameter                = "serial"
-	hotplugDiskPrefix              = "disk-"
 )
 
 //ControllerService implements the controller interface. See README for details.
@@ -126,9 +125,6 @@ func (c *ControllerService) ControllerPublishVolume(
 		return nil, err
 	}
 
-	// Determine disk name (disk-<DataVolume-name>)
-	diskName := hotplugDiskPrefix + dvName
-
 	// Determine serial number/string for the new disk
 	serial := req.VolumeContext[serialParameter]
 
@@ -136,10 +132,10 @@ func (c *ControllerService) ControllerPublishVolume(
 	bus := req.VolumeContext[busParameter]
 
 	// hotplug DataVolume to VM
-	log.Infof("Start attaching DataVolume %s to VM %s. Disk name: %s. Serial: %s. Bus: %s", dvName, vmName, diskName, serial, bus)
+	log.Infof("Start attaching DataVolume %s to VM %s. Volume name: %s. Serial: %s. Bus: %s", dvName, vmName, dvName, serial, bus)
 
 	addVolumeOptions := &v1.AddVolumeOptions{
-		Name: diskName,
+		Name: dvName,
 		Disk: &v1.Disk{
 			Serial: serial,
 			DiskDevice: v1.DiskDevice{
@@ -175,13 +171,10 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 		return nil, err
 	}
 
-	// Determine disk name (disk-<DataVolume-name>)
-	diskName := hotplugDiskPrefix + dvName
-
 	// Detach DataVolume from VM
-	err = c.infraClient.RemoveVolumeFromVM(c.infraClusterNamespace, vmName, &v1.RemoveVolumeOptions{Name: diskName})
+	err = c.infraClient.RemoveVolumeFromVM(c.infraClusterNamespace, vmName, &v1.RemoveVolumeOptions{Name: dvName})
 	if err != nil {
-		log.Error("Failed removing volume " + diskName + " from VM " + vmName)
+		log.Error("Failed removing volume " + dvName + " from VM " + vmName)
 		return nil, err
 	}
 
