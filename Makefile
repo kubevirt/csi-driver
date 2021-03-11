@@ -42,11 +42,11 @@ vet:
 
 .PHONY: image
 image:
-	docker build . -f Dockerfile -t $(REPO)/$(IMAGE):$(TAG)
+	podman build . -f Dockerfile -t $(REPO)/$(IMAGE):$(TAG)
 
 .PHONY: push
 push: image
-	docker push $(REPO)/$(IMAGE):$(TAG)
+	podman push $(REPO)/$(IMAGE):$(TAG)
 
 .PHONY: vendor
 vendor:
