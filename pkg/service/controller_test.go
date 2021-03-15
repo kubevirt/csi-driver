@@ -17,7 +17,7 @@ import (
 
 func TestCreateVolume_Success(t *testing.T) {
 	client := &ControllerClientMock{t: t}
-	controller := ControllerService{client, testInfraNamespace}
+	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
 	response, err := controller.CreateVolume(nil, getCreateVolumeRequest())
 	assert.Nil(t, err)
@@ -33,7 +33,7 @@ func TestCreateVolume_SuccessBlockDevice(t *testing.T) {
 	testVolumeMode = corev1.PersistentVolumeBlock
 
 	client := &ControllerClientMock{t: t}
-	controller := ControllerService{client, testInfraNamespace}
+	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
 	_, err := controller.CreateVolume(nil, getCreateVolumeRequest()) // The call to client.CreateDataVolume will test volume mode
 	assert.Nil(t, err)
@@ -41,7 +41,7 @@ func TestCreateVolume_SuccessBlockDevice(t *testing.T) {
 
 func TestCreateVolume_CreateDataVolumeFail(t *testing.T) {
 	client := &ControllerClientMock{t: t, FailCreateDataVolume: true}
-	controller := ControllerService{client, testInfraNamespace}
+	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
 	_, err := controller.CreateVolume(nil, getCreateVolumeRequest())
 	assert.NotNil(t, err)
@@ -49,7 +49,7 @@ func TestCreateVolume_CreateDataVolumeFail(t *testing.T) {
 
 func TestCreateVolume_CustomBus(t *testing.T) {
 	client := &ControllerClientMock{t: t}
-	controller := ControllerService{client, testInfraNamespace}
+	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
 	busTypeLocal := "virtio"
 	testBusType = &busTypeLocal
@@ -62,7 +62,7 @@ func TestCreateVolume_CustomBus(t *testing.T) {
 
 func TestDeleteVolume_Success(t *testing.T) {
 	client := &ControllerClientMock{t: t}
-	controller := ControllerService{client, testInfraNamespace}
+	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
 	_, err := controller.DeleteVolume(nil, getDeleteVolumeRequest())
 	assert.Nil(t, err)
@@ -70,7 +70,7 @@ func TestDeleteVolume_Success(t *testing.T) {
 
 func TestDeleteVolume_Fail(t *testing.T) {
 	client := &ControllerClientMock{t: t, FailDeleteDataVolume: true}
-	controller := ControllerService{client, testInfraNamespace}
+	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
 	_, err := controller.DeleteVolume(nil, getDeleteVolumeRequest())
 	assert.NotNil(t, err)
@@ -78,7 +78,7 @@ func TestDeleteVolume_Fail(t *testing.T) {
 
 func TestPublishVolume_Success(t *testing.T) {
 	client := &ControllerClientMock{t: t}
-	controller := ControllerService{client, testInfraNamespace}
+	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
 	_, err := controller.ControllerPublishVolume(nil, getPublishVolumeRequest()) // AddVolumeToVM tests the hotplug request
 	assert.Nil(t, err)
@@ -86,7 +86,7 @@ func TestPublishVolume_Success(t *testing.T) {
 
 func TestUnpublishVolume_Success(t *testing.T) {
 	client := &ControllerClientMock{t: t}
-	controller := ControllerService{client, testInfraNamespace}
+	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
 	_, err := controller.ControllerUnpublishVolume(nil, getUnpublishVolumeRequest())
 	assert.Nil(t, err)
@@ -102,11 +102,12 @@ var (
 	testVolumeStorageSize     int64   = 1024 * 1024 * 1024 * 3
 	testInfraNamespace                = "tenant-cluster-2"
 	testNodeID                        = "6FC9C805-B3A0-570B-9D1B-3B8B9CFC9FB7"
-	testVmName                        = "test-vm"
-	testVmUID                         = "6fc9c805-b3a0-570b-9d1b-3b8b9cfc9fb7"
+	testVMName                        = "test-vm"
+	testVMUID                         = "6fc9c805-b3a0-570b-9d1b-3b8b9cfc9fb7"
 	testDataVolumeUID                 = "2d0111d5-494f-4731-8f67-122b27d3c366"
 	testVolumeMode                    = corev1.PersistentVolumeFilesystem
 	testBusType               *string = nil // nil==do not pass bus type
+	testInfraLabels                   = map[string]string{"infra-label-name": "infra-label-value"}
 )
 
 func getBusType() string {
@@ -201,12 +202,12 @@ func (c *ControllerClientMock) ListVirtualMachines(namespace string) ([]kubevirt
 	return []kubevirtapiv1.VirtualMachineInstance{
 		kubevirtapiv1.VirtualMachineInstance{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: testVmName,
+				Name: testVMName,
 			},
 			Spec: kubevirtapiv1.VirtualMachineInstanceSpec{
 				Domain: kubevirtapiv1.DomainSpec{
 					Firmware: &kubevirtapiv1.Firmware{
-						UUID: types.UID(testVmUID),
+						UUID: types.UID(testVMUID),
 					},
 				},
 			},
@@ -235,6 +236,7 @@ func (c *ControllerClientMock) CreateDataVolume(namespace string, dataVolume *cd
 	assert.True(c.t, ok)
 	assert.Equal(c.t, 0, q.CmpInt64(testVolumeStorageSize))
 	assert.Equal(c.t, testVolumeMode, *dataVolume.Spec.PVC.VolumeMode)
+	assert.Equal(c.t, testInfraLabels, dataVolume.Labels)
 
 	// Input OK. Now prepare result
 	result := &cdiv1alpha1.DataVolume{}
@@ -258,8 +260,8 @@ func (c *ControllerClientMock) AddVolumeToVM(namespace string, vmName string, ad
 	}
 
 	// Test input
-	assert.Equal(c.t, testVmName, vmName)
-	assert.Equal(c.t, hotplugDiskPrefix + testVolumeName, addVolumeOptions.Name)
+	assert.Equal(c.t, testVMName, vmName)
+	assert.Equal(c.t, testVolumeName, addVolumeOptions.Name)
 	assert.Equal(c.t, testVolumeName, addVolumeOptions.VolumeSource.DataVolume.Name)
 	assert.Equal(c.t, getBusType(), addVolumeOptions.Disk.DiskDevice.Disk.Bus)
 	assert.Equal(c.t, testDataVolumeUID, addVolumeOptions.Disk.Serial)
@@ -272,8 +274,8 @@ func (c *ControllerClientMock) RemoveVolumeFromVM(namespace string, vmName strin
 	}
 
 	// Test input
-	assert.Equal(c.t, testVmName, vmName)
-	assert.Equal(c.t, hotplugDiskPrefix + testVolumeName, removeVolumeOptions.Name)
+	assert.Equal(c.t, testVMName, vmName)
+	assert.Equal(c.t, testVolumeName, removeVolumeOptions.Name)
 
 	return nil
 }
