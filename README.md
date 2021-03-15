@@ -38,7 +38,7 @@ The term "tenant cluster" refers to the k8s cluster installed on kubevirt VMs, a
 - Enable HotplugVolumes feature gate
     - In case your Kubevirt namespace has the ConfigMap 'kubevirt-config' then use `deploy/example/kubevirt-config.yaml` for adding the feature gate to it. Look at the path {.data.feature-gates}
     - Otherwise, add the feature gate to the resource of type Kubevirt. There should be a single resource of this type and its name is irrelevant. See `deploy/example/kubevirt.yaml`
-    - Pay attention that in some deployments there are operators that will restore previous configuration. You will have to stop these operators for editing the resources.Some operators allow configuration through their own CRD. HCO is such an operator. See `deploy/example/hco-cr.yaml` to understand how HCO feature gates are configured.
+    - Pay attention that in some deployments there are operators that will restore previous configuration. You will have to stop these operators for editing the resources.Some operators allow configuration through their own CRD. HCO is such an operator. See [HCO cluster configuration](https://github.com/kubevirt/hyperconverged-cluster-operator/blob/master/docs/cluster-configuration.md) to understand how HCO feature gates are configured.
 
 ## Examples
 
