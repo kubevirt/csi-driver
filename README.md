@@ -1,3 +1,4 @@
+
 # CSI KubeVirt Driver
 
 This repository hosts the CSI KubeVirt driver and all of its build and dependent configuration files to deploy the driver.
@@ -50,6 +51,19 @@ If you want to build the driver yourself, you can do so with the following comma
 make build
 ```
 
+## Run functional tests
+
+Running the functional tests will use an existing cluster (looks for `KUBECONFIG`) to deploy a tenant k8s cluster 
+and will deploy the CSI driver on it, and a test pod that consumes a dynamically provisioned volume.
+
+```shell
+make test-functional IMG=quay.io/kubevirt/csi-driver:latest
+```
+
+You can choose to run the tests on a specific namespace. That namespace will not be terminated in the end of the run.
+```shell
+KUBEVIRT_CSI_DRIVER_FUNC_TEST_NAMESPACE=my-namespace make test-functional
+```
 ## Submitting patches
 
 When sending patches to the project, the submitter is required to certify that

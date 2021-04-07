@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: deploy-k8s-machine
+spec:
+  containers:
+  - command:
+    - ssh
+    args:
+    - -o StrictHostKeyChecking=no
+    - -i
+    - /var/run/secrets/kubernetes.io/.ssh/id_rsa
+    - root@ssh
+    - cat
+    - /etc/hosts
+    image: registry.fedoraproject.org/f33/fedora-toolbox
+    imagePullPolicy: IfNotPresent
+    name: deploy-k8s-machine
+    volumeMounts:
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: default-token-58jpb
+      readOnly: true
+    - mountPath: /var/run/secrets/kubernetes.io/.ssh
+      name: ssh-keys
+      readOnly: true
+  volumes:
+  - name: ssh-keys
+    secret:
+      defaultMode: 0400
+      secretName: ssh-keys
+  - name: default-token-58jpb
+    secret:
+      defaultMode: 420
+      secretName: default-token-58jpb
