@@ -6,4 +6,5 @@ filters:
       - code-reviewers
     approvers:
       - approvers
-
+component: "Storage"
+subcomponent: "KubeVirt CSI Driver"
