@@ -4,13 +4,15 @@ go 1.15
 
 require (
 	github.com/container-storage-interface/spec v1.3.0
+	github.com/go-bindata/go-bindata v3.1.2+incompatible
 	github.com/go-kit/kit v0.10.0 // indirect
 	github.com/golang/mock v1.4.4
 	github.com/golang/protobuf v1.4.2
 	github.com/kubernetes-csi/csi-lib-utils v0.7.0
+	github.com/kubernetes-csi/csi-test v2.0.0+incompatible
 	github.com/onsi/ginkgo v1.12.1
 	github.com/onsi/gomega v1.10.1
-	github.com/pkg/errors v0.9.1
+	github.com/openshift/build-machinery-go v0.0.0-20200713135615-1f43d26dccc7
 	github.com/stretchr/testify v1.6.1
 	golang.org/x/net v0.0.0-20200602114024-627f9648deb9
 	google.golang.org/grpc v1.27.0

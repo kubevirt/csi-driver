@@ -5,3 +5,4 @@ metadata:
   namespace: kubevirt-csi-driver
 data:
   infraClusterNamespace: 
+  infraClusterLabels: key=value,key=value,...

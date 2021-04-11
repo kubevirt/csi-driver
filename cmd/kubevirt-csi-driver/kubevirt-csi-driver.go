@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strings"
 	"time"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,6 +24,7 @@ var (
 	nodeName               = flag.String("node-name", "", "The node name - the node this pods runs on")
 	infraClusterNamespace  = flag.String("infra-cluster-namespace", "", "The infra-cluster namespace")
 	infraClusterKubeconfig = flag.String("infra-cluster-kubeconfig", "", "the infra-cluster kubeconfig file")
+	infraClusterLabels     = flag.String("infra-cluster-labels", "", "The infra-cluster labels to use when creating resources in infra cluster. 'name=value' fields separated by a comma")
 )
 
 func init() {
@@ -85,7 +87,33 @@ func handle() {
 		klog.Infof("Node name: %v, Node ID: %s", nodeName, nodeID)
 	}
 
-	driver := service.NewKubevirtCSIDriver(virtClient, *infraClusterNamespace, nodeID)
+	infraClusterLabelsMap := parseLabels()
+
+	driver := service.NewKubevirtCSIDriver(virtClient, *infraClusterNamespace, infraClusterLabelsMap, nodeID)
 
 	driver.Run(*endpoint)
+}
+
+func parseLabels() map[string]string {
+
+	infraClusterLabelsMap := map[string]string{}
+
+	if *infraClusterLabels == "" {
+		return infraClusterLabelsMap
+	}
+
+	labelStrings := strings.Split(*infraClusterLabels, ",")
+
+	for _, label := range labelStrings {
+
+		labelPair := strings.SplitN(label, "=", 2)
+
+		if len(labelPair) != 2 {
+			panic("Bad labels format. Should be 'key=value,key=value,...'")
+		}
+
+		infraClusterLabelsMap[labelPair[0]] = labelPair[1]
+	}
+
+	return infraClusterLabelsMap
 }

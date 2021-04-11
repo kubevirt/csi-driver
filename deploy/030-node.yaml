@@ -43,6 +43,11 @@ spec:
                 configMapKeyRef:
                   name: driver-config
                   key: infraClusterNamespace
+            - name: INFRACLUSTER_LABELS
+              valueFrom:
+                configMapKeyRef:
+                  name: driver-config
+                  key: infraClusterLabels
           volumeMounts:
             - name: infracluster
               mountPath: "/var/run/secrets/infracluster"
