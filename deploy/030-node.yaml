@@ -78,8 +78,6 @@ spec:
               memory: 50Mi
               cpu: 10m
         - name: csi-node-driver-registrar
-          securityContext:
-            privileged: true
           image: quay.io/openshift/origin-csi-node-driver-registrar:latest
           args:
             - --csi-address=$(ADDRESS)
