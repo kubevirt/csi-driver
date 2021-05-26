@@ -28,17 +28,24 @@ var (
 )
 
 func init() {
-	flag.Set("logtostderr", "true")
+	err := flag.Set("logtostderr", "true")
+	if err != nil {
+		panic(err)
+	}
 	// make glog and klog coexist
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
 
 	// Sync the glog and klog flags.
-	flag.CommandLine.VisitAll(func(f1 *flag.Flag) {
+	flag.CommandLine.Visit(func(f1 *flag.Flag) {
 		f2 := klogFlags.Lookup(f1.Name)
 		if f2 != nil {
 			value := f1.Value.String()
-			f2.Value.Set(value)
+			err := f2.Value.Set(value)
+			if err != nil {
+				errMsg := fmt.Sprintf("Error in command line flag: %s when trying to set value: %s . %v", f1.Name, value, err)
+				panic(errMsg)
+			}
 		}
 	})
 }
