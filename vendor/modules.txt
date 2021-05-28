@@ -36,7 +36,7 @@ github.com/go-openapi/spec
 github.com/go-openapi/swag
 # github.com/go-stack/stack v1.8.0
 github.com/go-stack/stack
-# github.com/gogo/protobuf v1.3.1
+# github.com/gogo/protobuf v1.3.1 => github.com/gogo/protobuf v1.3.2
 github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/sortkeys
 # github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
@@ -68,7 +68,7 @@ github.com/google/uuid
 github.com/googleapis/gnostic/OpenAPIv2
 github.com/googleapis/gnostic/compiler
 github.com/googleapis/gnostic/extensions
-# github.com/gorilla/websocket v1.4.0
+# github.com/gorilla/websocket v1.4.0 => github.com/gorilla/websocket v1.4.1
 github.com/gorilla/websocket
 # github.com/hashicorp/golang-lru v0.5.4
 github.com/hashicorp/golang-lru
@@ -85,10 +85,6 @@ github.com/kr/logfmt
 # github.com/kubernetes-csi/csi-lib-utils v0.7.0
 ## explicit
 github.com/kubernetes-csi/csi-lib-utils/protosanitizer
-# github.com/kubernetes-csi/csi-test v2.0.0+incompatible
-## explicit
-github.com/kubernetes-csi/csi-test/pkg/sanity
-github.com/kubernetes-csi/csi-test/utils
 # github.com/kubernetes-csi/external-snapshotter/v2 v2.1.1
 github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1
 # github.com/mailru/easyjson v0.7.0
@@ -165,9 +161,9 @@ github.com/spf13/pflag
 # github.com/stretchr/testify v1.6.1
 ## explicit
 github.com/stretchr/testify/assert
-# golang.org/x/crypto v0.0.0-20200423211502-4bdfaf469ed5
+# golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
 golang.org/x/crypto/ssh/terminal
-# golang.org/x/net v0.0.0-20200602114024-627f9648deb9
+# golang.org/x/net v0.0.0-20201021035429-f5854403a974
 ## explicit
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
@@ -183,7 +179,7 @@ golang.org/x/net/trace
 # golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sys v0.0.0-20200622214017-ed371f2e16b4
+# golang.org/x/sys v0.0.0-20200930185726-fdedc70b468f
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
@@ -211,7 +207,7 @@ golang.org/x/text/unicode/norm
 golang.org/x/text/width
 # golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 golang.org/x/time/rate
-# golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543
+# golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
 # google.golang.org/appengine v1.5.0
@@ -519,8 +515,10 @@ kubevirt.io/containerized-data-importer/pkg/apis/upload/v1beta1
 kubevirt.io/controller-lifecycle-operator-sdk/pkg/sdk/api
 # sigs.k8s.io/yaml v1.2.0
 sigs.k8s.io/yaml
+# bitbucket.org/ww/goautoneg => github.com/munnerz/goautoneg v0.0.0-20120707110453-a547fc61f48d
 # github.com/go-kit/kit => github.com/go-kit/kit v0.3.0
 # github.com/go-openapi/spec => github.com/go-openapi/spec v0.19.3
+# github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
 # github.com/googleapis/gnostic => github.com/googleapis/gnostic v0.3.1
 # github.com/openshift/api => github.com/openshift/api v0.0.0-20191219222812-2987a591a72c
 # github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20191125132246-f6563a70e19a
@@ -533,3 +531,4 @@ sigs.k8s.io/yaml
 # k8s.io/klog => k8s.io/klog v0.4.0
 # k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20191107075043-30be4d16710a
 # sigs.k8s.io/structured-merge-diff => sigs.k8s.io/structured-merge-diff v0.0.0-20190302045857-e85c7b244fd2
+# github.com/gorilla/websocket => github.com/gorilla/websocket v1.4.1

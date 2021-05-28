@@ -9,12 +9,11 @@ require (
 	github.com/golang/mock v1.4.4
 	github.com/golang/protobuf v1.4.2
 	github.com/kubernetes-csi/csi-lib-utils v0.7.0
-	github.com/kubernetes-csi/csi-test v2.0.0+incompatible
 	github.com/onsi/ginkgo v1.12.1
 	github.com/onsi/gomega v1.10.1
 	github.com/openshift/build-machinery-go v0.0.0-20200713135615-1f43d26dccc7
 	github.com/stretchr/testify v1.6.1
-	golang.org/x/net v0.0.0-20200602114024-627f9648deb9
+	golang.org/x/net v0.0.0-20201021035429-f5854403a974
 	google.golang.org/grpc v1.27.0
 	k8s.io/api v0.19.0-rc.2
 	k8s.io/apimachinery v0.19.0-rc.2
@@ -26,9 +25,12 @@ require (
 )
 
 replace (
+	bitbucket.org/ww/goautoneg => github.com/munnerz/goautoneg v0.0.0-20120707110453-a547fc61f48d
 	github.com/go-kit/kit => github.com/go-kit/kit v0.3.0
 	github.com/go-openapi/spec => github.com/go-openapi/spec v0.19.3
+	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
 	github.com/googleapis/gnostic => github.com/googleapis/gnostic v0.3.1
+	github.com/gorilla/websocket => github.com/gorilla/websocket v1.4.1
 	github.com/openshift/api => github.com/openshift/api v0.0.0-20191219222812-2987a591a72c
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20191125132246-f6563a70e19a
 	gopkg.in/yaml.v2 => gopkg.in/yaml.v2 v2.2.4
@@ -41,5 +43,4 @@ replace (
 	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20191107075043-30be4d16710a
 
 	sigs.k8s.io/structured-merge-diff => sigs.k8s.io/structured-merge-diff v0.0.0-20190302045857-e85c7b244fd2
-
 )
