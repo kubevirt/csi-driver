@@ -18,7 +18,6 @@ The term "tenant cluster" refers to the k8s cluster installed on kubevirt VMs, a
 - Access to terminal with `kubectl` installed
 
 ## Deployment
-//TODO WIP
 - use `deploy/infra-cluster-service-account.yaml` to create a service account in kubevirt cluster (use '-n' flag in create command for specifying the kubevirt cluster namespace)
 - create kubeconfig for service account
     - Use `deploy/example/infracluster-kubeconfig.yaml` as a reference. Inside the file there are instructions for fields that need to be edited.
