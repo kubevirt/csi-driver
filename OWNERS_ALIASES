@@ -3,12 +3,10 @@
 aliases:
   approvers:
       - aglitke
-      - awels
       - ydayagi
       - rgolangh
   code-reviewers:
       - aglitke
-      - awels
       - ydayagi
       - rgolangh
 
