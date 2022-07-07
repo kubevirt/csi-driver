@@ -14,3 +14,9 @@
 # Dependency directories (remove the comment below to include it)
 # vendor/
 _out/*
+
+# kubevirtCI
+_ci-configs/
+
+# ide
+.idea
