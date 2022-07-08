@@ -2,9 +2,9 @@ package service
 
 import (
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/klog"
+	klog "k8s.io/klog/v2"
 
-	"github.com/kubevirt/csi-driver/pkg/kubevirt"
+	"kubevirt.io/csi-driver/pkg/kubevirt"
 )
 
 var (

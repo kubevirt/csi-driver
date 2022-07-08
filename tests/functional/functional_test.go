@@ -1,4 +1,4 @@
-package functional_test
+package functional
 
 import (
 	"bytes"
@@ -8,8 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kubevirt/csi-driver/pkg/generated"
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	routesclientset "github.com/openshift/client-go/route/clientset/versioned/typed/route/v1"
 	v1 "k8s.io/api/core/v1"
@@ -23,8 +22,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	clientwatch "k8s.io/client-go/tools/watch"
-	kubevirtapiv1 "kubevirt.io/client-go/api/v1"
-	testscore "kubevirt.io/kubevirt/tests"
+	kubevirtv1 "kubevirt.io/api/core/v1"
+	"kubevirt.io/csi-driver/pkg/generated"
 )
 
 var infraCluster InfraCluster
@@ -95,7 +94,7 @@ func getTenantCluster(c InfraCluster) TenantCluster {
 }
 
 func getTenantExternalHostname(c InfraCluster) string {
-	if testscore.IsOpenShift() {
+	if IsOpenShift() {
 		routes, err := routesclientset.NewForConfig(c.virtCli.Config())
 		Expect(err).NotTo(HaveOccurred())
 		route, err := routes.Routes(c.namespace).Get(context.Background(), routeName, metav1.GetOptions{})
@@ -313,12 +312,12 @@ func watchDVUnpluged(c *InfraCluster) (*apiwatch.Event, error) {
 		testDVUnplugTimeout,
 		cache.NewListWatchFromClient(c.virtCli.RestClient(), "virtualmachineinstances",
 			c.namespace, fields.OneTermEqualSelector("metadata.name", k8sMachineName)),
-		&kubevirtapiv1.VirtualMachineInstance{},
+		&kubevirtv1.VirtualMachineInstance{},
 		nil,
 		func(event apiwatch.Event) (bool, error) {
 			switch event.Type {
 			case apiwatch.Added, apiwatch.Modified:
-				vm, ok := event.Object.(*kubevirtapiv1.VirtualMachineInstance)
+				vm, ok := event.Object.(*kubevirtv1.VirtualMachineInstance)
 				if !ok {
 					Fail("couldn't detect a change in VMI " + k8sMachineName)
 				}

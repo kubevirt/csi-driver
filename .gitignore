@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+kubevirt-csi-driver
 
 # Test binary, built with `go test -c`
 *.test

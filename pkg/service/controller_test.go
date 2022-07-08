@@ -11,8 +11,8 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	kubevirtapiv1 "kubevirt.io/client-go/api/v1"
-	cdiv1alpha1 "kubevirt.io/containerized-data-importer/pkg/apis/core/v1alpha1"
+	kubevirtv1 "kubevirt.io/api/core/v1"
+	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 )
 
 func TestCreateVolume_Success(t *testing.T) {
@@ -194,19 +194,19 @@ func (c *ControllerClientMock) ListNamespace(ctx context.Context) (*corev1.Names
 func (c *ControllerClientMock) GetStorageClass(ctx context.Context, name string) (*storagev1.StorageClass, error) {
 	return nil, errors.New("Not implemented")
 }
-func (c *ControllerClientMock) ListVirtualMachines(namespace string) ([]kubevirtapiv1.VirtualMachineInstance, error) {
+func (c *ControllerClientMock) ListVirtualMachines(namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
 	if c.FailListVirtualMachines {
 		return nil, errors.New("ListVirtualMachines failed")
 	}
 
-	return []kubevirtapiv1.VirtualMachineInstance{
-		kubevirtapiv1.VirtualMachineInstance{
+	return []kubevirtv1.VirtualMachineInstance{
+		{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: testVMName,
 			},
-			Spec: kubevirtapiv1.VirtualMachineInstanceSpec{
-				Domain: kubevirtapiv1.DomainSpec{
-					Firmware: &kubevirtapiv1.Firmware{
+			Spec: kubevirtv1.VirtualMachineInstanceSpec{
+				Domain: kubevirtv1.DomainSpec{
+					Firmware: &kubevirtv1.Firmware{
 						UUID: types.UID(testVMUID),
 					},
 				},
@@ -224,7 +224,7 @@ func (c *ControllerClientMock) DeleteDataVolume(namespace string, name string) e
 
 	return nil
 }
-func (c *ControllerClientMock) CreateDataVolume(namespace string, dataVolume *cdiv1alpha1.DataVolume) (*cdiv1alpha1.DataVolume, error) {
+func (c *ControllerClientMock) CreateDataVolume(namespace string, dataVolume *cdiv1.DataVolume) (*cdiv1.DataVolume, error) {
 	if c.FailCreateDataVolume {
 		return nil, errors.New("CreateDataVolume failed")
 	}
@@ -239,22 +239,22 @@ func (c *ControllerClientMock) CreateDataVolume(namespace string, dataVolume *cd
 	assert.Equal(c.t, testInfraLabels, dataVolume.Labels)
 
 	// Input OK. Now prepare result
-	result := &cdiv1alpha1.DataVolume{}
+	result := &cdiv1.DataVolume{}
 
 	result.SetUID(types.UID(testDataVolumeUID))
 
 	return result, nil
 }
-func (c *ControllerClientMock) GetDataVolume(namespace string, name string) (*cdiv1alpha1.DataVolume, error) {
+func (c *ControllerClientMock) GetDataVolume(namespace string, name string) (*cdiv1.DataVolume, error) {
 	return nil, errors.New("Not implemented")
 }
-func (c *ControllerClientMock) ListDataVolumes(namespace string) ([]cdiv1alpha1.DataVolume, error) {
+func (c *ControllerClientMock) ListDataVolumes(namespace string) ([]cdiv1.DataVolume, error) {
 	return nil, errors.New("Not implemented")
 }
-func (c *ControllerClientMock) GetVMI(ctx context.Context, namespace string, name string) (*kubevirtapiv1.VirtualMachineInstance, error) {
+func (c *ControllerClientMock) GetVMI(ctx context.Context, namespace string, name string) (*kubevirtv1.VirtualMachineInstance, error) {
 	return nil, errors.New("Not implemented")
 }
-func (c *ControllerClientMock) AddVolumeToVM(namespace string, vmName string, addVolumeOptions *kubevirtapiv1.AddVolumeOptions) error {
+func (c *ControllerClientMock) AddVolumeToVM(namespace string, vmName string, addVolumeOptions *kubevirtv1.AddVolumeOptions) error {
 	if c.FailAddVolumeToVM {
 		return errors.New("AddVolumeToVM failed")
 	}
@@ -268,7 +268,7 @@ func (c *ControllerClientMock) AddVolumeToVM(namespace string, vmName string, ad
 
 	return nil
 }
-func (c *ControllerClientMock) RemoveVolumeFromVM(namespace string, vmName string, removeVolumeOptions *kubevirtapiv1.RemoveVolumeOptions) error {
+func (c *ControllerClientMock) RemoveVolumeFromVM(namespace string, vmName string, removeVolumeOptions *kubevirtv1.RemoveVolumeOptions) error {
 	if c.FailRemoveVolumeFromVM {
 		return errors.New("RemoveVolumeFromVM failed")
 	}

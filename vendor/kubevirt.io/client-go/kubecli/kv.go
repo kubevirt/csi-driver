@@ -20,12 +20,14 @@
 package kubecli
 
 import (
+	"context"
+
 	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 
-	v1 "kubevirt.io/client-go/api/v1"
+	v1 "kubevirt.io/api/core/v1"
 )
 
 func (k *kubevirt) KubeVirt(namespace string) KubeVirtInterface {
@@ -49,7 +51,7 @@ func (o *kv) Create(vm *v1.KubeVirt) (*v1.KubeVirt, error) {
 		Resource(o.resource).
 		Namespace(o.namespace).
 		Body(vm).
-		Do().
+		Do(context.Background()).
 		Into(newKv)
 
 	newKv.SetGroupVersionKind(v1.KubeVirtGroupVersionKind)
@@ -65,7 +67,7 @@ func (o *kv) Get(name string, options *k8smetav1.GetOptions) (*v1.KubeVirt, erro
 		Namespace(o.namespace).
 		Name(name).
 		VersionedParams(options, scheme.ParameterCodec).
-		Do().
+		Do(context.Background()).
 		Into(newKv)
 
 	newKv.SetGroupVersionKind(v1.KubeVirtGroupVersionKind)
@@ -81,7 +83,7 @@ func (o *kv) Update(vm *v1.KubeVirt) (*v1.KubeVirt, error) {
 		Namespace(o.namespace).
 		Name(vm.Name).
 		Body(vm).
-		Do().
+		Do(context.Background()).
 		Into(updatedVm)
 
 	updatedVm.SetGroupVersionKind(v1.KubeVirtGroupVersionKind)
@@ -96,7 +98,7 @@ func (o *kv) Delete(name string, options *k8smetav1.DeleteOptions) error {
 		Namespace(o.namespace).
 		Name(name).
 		Body(options).
-		Do().
+		Do(context.Background()).
 		Error()
 
 	return err
@@ -109,7 +111,7 @@ func (o *kv) List(options *k8smetav1.ListOptions) (*v1.KubeVirtList, error) {
 		Resource(o.resource).
 		Namespace(o.namespace).
 		VersionedParams(options, scheme.ParameterCodec).
-		Do().
+		Do(context.Background()).
 		Into(newKvList)
 
 	for _, vm := range newKvList.Items {
@@ -119,28 +121,30 @@ func (o *kv) List(options *k8smetav1.ListOptions) (*v1.KubeVirtList, error) {
 	return newKvList, err
 }
 
-func (v *kv) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1.KubeVirt, err error) {
+func (v *kv) Patch(name string, pt types.PatchType, data []byte, patchOptions *k8smetav1.PatchOptions, subresources ...string) (result *v1.KubeVirt, err error) {
 	result = &v1.KubeVirt{}
 	err = v.restClient.Patch(pt).
 		Namespace(v.namespace).
 		Resource(v.resource).
 		SubResource(subresources...).
+		VersionedParams(patchOptions, scheme.ParameterCodec).
 		Name(name).
 		Body(data).
-		Do().
+		Do(context.Background()).
 		Into(result)
 	return result, err
 }
 
-func (v *kv) PatchStatus(name string, pt types.PatchType, data []byte) (result *v1.KubeVirt, err error) {
+func (v *kv) PatchStatus(name string, pt types.PatchType, data []byte, patchOptions *k8smetav1.PatchOptions) (result *v1.KubeVirt, err error) {
 	result = &v1.KubeVirt{}
 	err = v.restClient.Patch(pt).
 		Namespace(v.namespace).
 		Resource(v.resource).
 		SubResource("status").
+		VersionedParams(patchOptions, scheme.ParameterCodec).
 		Name(name).
 		Body(data).
-		Do().
+		Do(context.Background()).
 		Into(result)
 	return
 }
@@ -153,7 +157,7 @@ func (v *kv) UpdateStatus(vmi *v1.KubeVirt) (result *v1.KubeVirt, err error) {
 		Resource(v.resource).
 		SubResource("status").
 		Body(vmi).
-		Do().
+		Do(context.Background()).
 		Into(result)
 	result.SetGroupVersionKind(v1.KubeVirtGroupVersionKind)
 	return

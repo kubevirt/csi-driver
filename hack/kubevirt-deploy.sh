@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
+source hack/common.sh
 
 export KUBECONFIG=$(cluster-up/kubeconfig.sh)
 
-KUBEVIRT_VERSION="v0.54.0"
-#$(curl -s https://github.com/kubevirt/kubevirt/releases/latest | grep -o "v[0-9]\.[0-9]*\.[0-9]*")
-CDI_VERSION="v1.51.0"
-#$(curl -s https://github.com/kubevirt/containerized-data-importer/releases/latest | grep -o "v[0-9]\.[0-9]*\.[0-9]*")
+KUBEVIRT_VERSION=$(get_latest_release "kubevirt/kubevirt")
+CDI_VERSION=$(get_latest_release "kubevirt/containerized-data-importer")
 
 echo "KUBEVIRT_VERSION = ${KUBEVIRT_VERSION}, CDI_VERSION = ${CDI_VERSION}"
 

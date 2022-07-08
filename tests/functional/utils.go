@@ -2,35 +2,27 @@ package functional
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/onsi/ginkgo"
+	ginkgo "github.com/onsi/ginkgo/v2"
 	k8sv1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"kubevirt.io/client-go/kubecli"
 	"kubevirt.io/kubevirt/pkg/util/cluster"
-	"kubevirt.io/kubevirt/tests"
+	kubevirttest "kubevirt.io/kubevirt/tests"
+	kubevirttestutils "kubevirt.io/kubevirt/tests/util"
 )
 
 var KubeVirtStorageClassLocal string
 
-func init() {
-	//flag.StringVar(&KubeVirtStorageClassLocal, "storage-class-local", "local", "Storage provider to use for tests which want local storage")
-}
-
 //GetJobTypeEnvVar returns "JOB_TYPE" enviroment varibale
 func GetJobTypeEnvVar() string {
 	return (os.Getenv("JOB_TYPE"))
-}
-
-func FlagParse() {
-	flag.Parse()
 }
 
 func ForwardPortsFromService(service *k8sv1.Service, ports []string, stop chan struct{}, readyTimeout time.Duration) error {
@@ -50,8 +42,8 @@ func ForwardPortsFromService(service *k8sv1.Service, ports []string, stop chan s
 				break
 			}
 		}
-		if found == false {
-			return fmt.Errorf("Port %s not found on service", split[1])
+		if !found {
+			return fmt.Errorf("port %s not found on service", split[1])
 		}
 	}
 	cli, err := kubecli.GetKubevirtClient()
@@ -81,15 +73,15 @@ ForLoop:
 	}
 
 	if targetPod == nil {
-		return fmt.Errorf("No ready pod listening on the service.")
+		return fmt.Errorf("no ready pod listening on the service")
 	}
 
-	return tests.ForwardPorts(targetPod, targetPorts, stop, readyTimeout)
+	return kubevirttest.ForwardPorts(targetPod, targetPorts, stop, readyTimeout)
 }
 
 func IsOpenShift() bool {
 	virtClient, err := kubecli.GetKubevirtClient()
-	tests.PanicOnError(err)
+	kubevirttestutils.PanicOnError(err)
 
 	isOpenShift, err := cluster.IsOnOpenShift(virtClient)
 	if err != nil {
@@ -105,4 +97,3 @@ func SkipIfNotOpenShift(message string) {
 		ginkgo.Skip("Not running on openshift: " + message)
 	}
 }
-
