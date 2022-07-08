@@ -3,8 +3,8 @@ module github.com/kubevirt/csi-driver/tests
 go 1.15
 
 require (
-	github.com/onsi/ginkgo v1.16.0
-	github.com/onsi/gomega v1.11.0
+	github.com/onsi/ginkgo v1.16.5
+	github.com/onsi/gomega v1.19.0
 )
 
 require (
@@ -23,9 +23,9 @@ require (
 	k8s.io/cli-runtime v0.20.2
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/kubernetes v1.14.0
-	kubevirt.io/client-go v0.38.0-rc.0
+	kubevirt.io/client-go v0.39.1
 	kubevirt.io/containerized-data-importer v1.26.1
-	kubevirt.io/kubevirt v0.38.0-rc.0.0.20210204123039-b013947aedc6
+	kubevirt.io/kubevirt v0.39.1
 )
 
 replace github.com/kubevirt/csi-driver => ../
@@ -59,7 +59,7 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.20.2
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.20.2
 	k8s.io/sample-controller => k8s.io/sample-controller v0.20.2
-	kubevirt.io/client-go => kubevirt.io/client-go v0.38.0-rc.0
+	kubevirt.io/client-go => kubevirt.io/client-go v0.39.1
 
 	kubevirt.io/containerized-data-importer => kubevirt.io/containerized-data-importer v1.26.1
 )
