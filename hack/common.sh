@@ -21,7 +21,6 @@ set -e
 
 ## source cluster/kubevirtci.sh
 
-KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-k8s-1.17}
 BASE_PATH=${KUBEVIRTCI_CONFIG_PATH:-$PWD}
 ## KUBEVIRTCI_PATH=$(kubevirtci::path)
 CMD=${CMD:-}

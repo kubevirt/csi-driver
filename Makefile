@@ -19,10 +19,8 @@ TARGET_NAME=kubevirt-csi-driver
 IMAGE_REF=quay.io/kubevirt/$(TARGET_NAME):latest
 GO_TEST_PACKAGES :=./pkg/... ./cmd/...
 IMAGE_REGISTRY?=registry.svc.ci.openshift.org
-KUBEVIRTCI_RUNTIME?=podman
-KUBEVIRT_PROVIDER?=k8s-1.21
+KUBEVIRT_PROVIDER?=k8s-1.23
 
-export KUBEVIRTCI_RUNTIME
 export KUBEVIRT_PROVIDER
 
 # You can customize go tools depending on the directory layout.
