@@ -85,10 +85,6 @@ github.com/kr/logfmt
 # github.com/kubernetes-csi/csi-lib-utils v0.7.0
 ## explicit
 github.com/kubernetes-csi/csi-lib-utils/protosanitizer
-# github.com/kubernetes-csi/csi-test v2.0.0+incompatible
-## explicit
-github.com/kubernetes-csi/csi-test/pkg/sanity
-github.com/kubernetes-csi/csi-test/utils
 # github.com/kubernetes-csi/external-snapshotter/v2 v2.1.1
 github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1
 # github.com/mailru/easyjson v0.7.0
@@ -519,6 +515,7 @@ kubevirt.io/containerized-data-importer/pkg/apis/upload/v1beta1
 kubevirt.io/controller-lifecycle-operator-sdk/pkg/sdk/api
 # sigs.k8s.io/yaml v1.2.0
 sigs.k8s.io/yaml
+# bitbucket.org/ww/goautoneg => github.com/munnerz/goautoneg v0.0.0-20120707110453-a547fc61f48d
 # github.com/go-kit/kit => github.com/go-kit/kit v0.3.0
 # github.com/go-openapi/spec => github.com/go-openapi/spec v0.19.3
 # github.com/googleapis/gnostic => github.com/googleapis/gnostic v0.3.1

@@ -9,7 +9,6 @@ require (
 	github.com/golang/mock v1.4.4
 	github.com/golang/protobuf v1.4.2
 	github.com/kubernetes-csi/csi-lib-utils v0.7.0
-	github.com/kubernetes-csi/csi-test v2.0.0+incompatible
 	github.com/onsi/ginkgo v1.12.1
 	github.com/onsi/gomega v1.10.1
 	github.com/openshift/build-machinery-go v0.0.0-20200713135615-1f43d26dccc7
@@ -26,6 +25,8 @@ require (
 )
 
 replace (
+	// temporarily replace goautoneg, until cdi is updated
+	bitbucket.org/ww/goautoneg => github.com/munnerz/goautoneg v0.0.0-20120707110453-a547fc61f48d
 	github.com/go-kit/kit => github.com/go-kit/kit v0.3.0
 	github.com/go-openapi/spec => github.com/go-openapi/spec v0.19.3
 	github.com/googleapis/gnostic => github.com/googleapis/gnostic v0.3.1
@@ -41,5 +42,4 @@ replace (
 	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20191107075043-30be4d16710a
 
 	sigs.k8s.io/structured-merge-diff => sigs.k8s.io/structured-merge-diff v0.0.0-20190302045857-e85c7b244fd2
-
 )

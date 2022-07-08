@@ -21,7 +21,6 @@ package services
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -67,6 +66,7 @@ const CAP_NET_ADMIN = "NET_ADMIN"
 const CAP_NET_RAW = "NET_RAW"
 const CAP_SYS_ADMIN = "SYS_ADMIN"
 const CAP_SYS_NICE = "SYS_NICE"
+const CAP_SYS_RESOURCE = "SYS_RESOURCE"
 
 // LibvirtStartupDelay is added to custom liveness and readiness probes initial delay value.
 // Libvirt needs roughly 10 seconds to start.
@@ -93,8 +93,9 @@ const EXT_LOG_VERBOSITY_THRESHOLD = 5
 
 type TemplateService interface {
 	RenderLaunchManifest(*v1.VirtualMachineInstance) (*k8sv1.Pod, error)
-	RenderHotplugAttachmentPodTemplate(volume *v1.Volume, ownerPod *k8sv1.Pod, vmi *v1.VirtualMachineInstance, pvcName string, isBlock bool) (*k8sv1.Pod, error)
+	RenderHotplugAttachmentPodTemplate(volume *v1.Volume, ownerPod *k8sv1.Pod, vmi *v1.VirtualMachineInstance, pvcName string, isBlock, tempPod bool) (*k8sv1.Pod, error)
 	RenderLaunchManifestNoVm(*v1.VirtualMachineInstance) (*k8sv1.Pod, error)
+	GetLauncherImage() string
 }
 
 type templateService struct {
@@ -266,6 +267,28 @@ func SetNodeAffinityForForbiddenFeaturePolicy(vmi *v1.VirtualMachineInstance, po
 	}
 }
 
+func sysprepVolumeSource(sysprepVolume v1.SysprepSource) (k8sv1.VolumeSource, error) {
+	logger := log.DefaultLogger()
+	if sysprepVolume.Secret != nil {
+		return k8sv1.VolumeSource{
+			Secret: &k8sv1.SecretVolumeSource{
+				SecretName: sysprepVolume.Secret.Name,
+			},
+		}, nil
+	} else if sysprepVolume.ConfigMap != nil {
+		return k8sv1.VolumeSource{
+			ConfigMap: &k8sv1.ConfigMapVolumeSource{
+				LocalObjectReference: k8sv1.LocalObjectReference{
+					Name: sysprepVolume.ConfigMap.Name,
+				},
+			},
+		}, nil
+	}
+	errorStr := fmt.Sprintf("Sysprep must have Secret or ConfigMap reference set %v", sysprepVolume)
+	logger.Errorf(errorStr)
+	return k8sv1.VolumeSource{}, fmt.Errorf(errorStr)
+}
+
 // Request a resource by name. This function bumps the number of resources,
 // both its limits and requests attributes.
 //
@@ -313,6 +336,11 @@ func requestResource(resources *k8sv1.ResourceRequirements, resourceName string)
 		resources.Requests[name] = unitQuantity
 	}
 }
+
+func (t *templateService) GetLauncherImage() string {
+	return t.launcherImage
+}
+
 func (t *templateService) RenderLaunchManifestNoVm(vmi *v1.VirtualMachineInstance) (*k8sv1.Pod, error) {
 	return t.renderLaunchManifest(vmi, true)
 }
@@ -587,6 +615,24 @@ func (t *templateService) renderLaunchManifest(vmi *v1.VirtualMachineInstance, t
 					ReadOnly:  true,
 				})
 			}
+		}
+
+		if volume.Sysprep != nil {
+			var volumeSource k8sv1.VolumeSource
+			// attach a Secret or ConfigMap referenced by the user
+			volumeSource, err := sysprepVolumeSource(*volume.Sysprep)
+			if err != nil {
+				return nil, err
+			}
+			volumes = append(volumes, k8sv1.Volume{
+				Name:         volume.Name,
+				VolumeSource: volumeSource,
+			})
+			volumeMounts = append(volumeMounts, k8sv1.VolumeMount{
+				Name:      volume.Name,
+				MountPath: filepath.Join(config.SysprepSourceDir, volume.Name),
+				ReadOnly:  true,
+			})
 		}
 
 		if volume.CloudInitConfigDrive != nil {
@@ -883,7 +929,7 @@ func (t *templateService) renderLaunchManifest(vmi *v1.VirtualMachineInstance, t
 	// Add ports from interfaces to the pod manifest
 	ports := getPortsFromVMI(vmi)
 
-	capabilities := getRequiredCapabilities(vmi)
+	capabilities := getRequiredCapabilities(vmi, t.clusterConfig)
 
 	networkToResourceMap, err := getNetworkToResourceMap(t.virtClient, vmi)
 	if err != nil {
@@ -956,10 +1002,10 @@ func (t *templateService) renderLaunchManifest(vmi *v1.VirtualMachineInstance, t
 		compute.Env = append(compute.Env, k8sv1.EnvVar{Name: ENV_VAR_VIRT_LAUNCHER_LOG_VERBOSITY, Value: verbosityStr})
 	}
 
-	if _, ok := vmi.Labels[debugLogs]; ok || virtLauncherLogVerbosity > EXT_LOG_VERBOSITY_THRESHOLD {
+	if labelValue, ok := vmi.Labels[debugLogs]; (ok && strings.EqualFold(labelValue, "true")) || virtLauncherLogVerbosity > EXT_LOG_VERBOSITY_THRESHOLD {
 		compute.Env = append(compute.Env, k8sv1.EnvVar{Name: ENV_VAR_LIBVIRT_DEBUG_LOGS, Value: "1"})
 	}
-	if _, ok := vmi.Labels[virtiofsDebugLogs]; ok || virtLauncherLogVerbosity > EXT_LOG_VERBOSITY_THRESHOLD {
+	if labelValue, ok := vmi.Labels[virtiofsDebugLogs]; (ok && strings.EqualFold(labelValue, "true")) || virtLauncherLogVerbosity > EXT_LOG_VERBOSITY_THRESHOLD {
 		compute.Env = append(compute.Env, k8sv1.EnvVar{Name: ENV_VAR_VIRTIOFSD_DEBUG_LOGS, Value: "1"})
 	}
 
@@ -1068,39 +1114,13 @@ func (t *templateService) renderLaunchManifest(vmi *v1.VirtualMachineInstance, t
 
 	hostName := dns.SanitizeHostname(vmi)
 
-	annotationsList := map[string]string{
-		v1.DomainAnnotation: domain,
-	}
-	if tempPod {
-		// mark pod as temp - only used for provisioning
-		annotationsList[v1.EphemeralProvisioningObject] = "true"
-	}
-	for k, v := range vmi.Annotations {
-		// filtering so users will not see this on pod and in confusion
-		if strings.HasPrefix(k, "kubectl.kubernetes.io") ||
-			strings.HasPrefix(k, "kubevirt.io/storage-observed-api-version") ||
-			strings.HasPrefix(k, "kubevirt.io/latest-observed-api-version") {
-			continue
-		}
-		annotationsList[k] = v
-	}
-
-	cniAnnotations, err := getCniAnnotations(vmi)
+	podAnnotations, err := generatePodAnnotations(vmi)
 	if err != nil {
 		return nil, err
 	}
-	for k, v := range cniAnnotations {
-		annotationsList[k] = v
-	}
-
-	for _, network := range vmi.Spec.Networks {
-		if network.Multus != nil && network.Multus.Default {
-			annotationsList[MULTUS_DEFAULT_NETWORK_CNI_ANNOTATION] = network.Multus.NetworkName
-		}
-	}
-
-	if HaveMasqueradeInterface(vmi.Spec.Domain.Devices.Interfaces) {
-		annotationsList[ISTIO_KUBEVIRT_ANNOTATION] = "k6t-eth0"
+	if tempPod {
+		// mark pod as temp - only used for provisioning
+		podAnnotations[v1.EphemeralProvisioningObject] = "true"
 	}
 
 	var initContainers []k8sv1.Container
@@ -1154,7 +1174,7 @@ func (t *templateService) renderLaunchManifest(vmi *v1.VirtualMachineInstance, t
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: "virt-launcher-" + domain + "-",
 			Labels:       podLabels,
-			Annotations:  annotationsList,
+			Annotations:  podAnnotations,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(vmi, v1.VirtualMachineInstanceGroupVersionKind),
 			},
@@ -1180,24 +1200,7 @@ func (t *templateService) renderLaunchManifest(vmi *v1.VirtualMachineInstance, t
 	// If an SELinux type was specified, use that--otherwise don't set an SELinux type
 	selinuxType := t.clusterConfig.GetSELinuxLauncherType()
 	if selinuxType != "" {
-		pod.Spec.SecurityContext.SELinuxOptions = &k8sv1.SELinuxOptions{Type: selinuxType}
-		// By setting an SELinux option on the virt-launcher pod, we trigger this:
-		// https://github.com/kubernetes/kubernetes/issues/90759
-		// Since the compute container needs to be able to communicate with the rest of the pod,
-		//   we loop over all the containers and remove their SELinux categories.
-		for i := range pod.Spec.Containers {
-			container := &pod.Spec.Containers[i]
-			if container.Name != "compute" {
-				if container.SecurityContext == nil {
-					container.SecurityContext = &k8sv1.SecurityContext{}
-				}
-				if container.SecurityContext.SELinuxOptions == nil {
-					container.SecurityContext.SELinuxOptions = &k8sv1.SELinuxOptions{}
-				}
-				container.SecurityContext.SELinuxOptions.Type = selinuxType
-				container.SecurityContext.SELinuxOptions.Level = "s0"
-			}
-		}
+		alignPodMultiCategorySecurity(&pod, selinuxType)
 	}
 
 	if vmi.Spec.PriorityClassName != "" {
@@ -1231,8 +1234,23 @@ func (t *templateService) renderLaunchManifest(vmi *v1.VirtualMachineInstance, t
 	return &pod, nil
 }
 
-func (t *templateService) RenderHotplugAttachmentPodTemplate(volume *v1.Volume, ownerPod *k8sv1.Pod, vmi *v1.VirtualMachineInstance, pvcName string, isBlock bool) (*k8sv1.Pod, error) {
+func (t *templateService) RenderHotplugAttachmentPodTemplate(volume *v1.Volume, ownerPod *k8sv1.Pod, vmi *v1.VirtualMachineInstance, pvcName string, isBlock, tempPod bool) (*k8sv1.Pod, error) {
 	zero := int64(0)
+	var command []string
+	if tempPod {
+		command = []string{"/bin/bash",
+			"-c",
+			"exit", "0"}
+	} else {
+		command = []string{"/bin/sh", "-c", "tail -f /dev/null"}
+	}
+
+	annotationsList := make(map[string]string)
+	if tempPod {
+		// mark pod as temp - only used for provisioning
+		annotationsList[v1.EphemeralProvisioningObject] = "true"
+	}
+
 	pod := &k8sv1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: "hp-volume-",
@@ -1246,21 +1264,22 @@ func (t *templateService) RenderHotplugAttachmentPodTemplate(volume *v1.Volume, 
 			Labels: map[string]string{
 				v1.AppLabel: "hotplug-disk",
 			},
+			Annotations: annotationsList,
 		},
 		Spec: k8sv1.PodSpec{
 			Containers: []k8sv1.Container{
 				{
 					Name:    "hotplug-disk",
 					Image:   t.launcherImage,
-					Command: []string{"/bin/sh", "-c", "tail -f /dev/null"},
+					Command: command,
 					Resources: k8sv1.ResourceRequirements{ //Took the request and limits from containerDisk init container.
 						Limits: map[k8sv1.ResourceName]resource.Quantity{
 							k8sv1.ResourceCPU:    resource.MustParse("100m"),
-							k8sv1.ResourceMemory: resource.MustParse("40M"),
+							k8sv1.ResourceMemory: resource.MustParse("80M"),
 						},
 						Requests: map[k8sv1.ResourceName]resource.Quantity{
 							k8sv1.ResourceCPU:    resource.MustParse("10m"),
-							k8sv1.ResourceMemory: resource.MustParse("1M"),
+							k8sv1.ResourceMemory: resource.MustParse("2M"),
 						},
 					},
 					SecurityContext: &k8sv1.SecurityContext{
@@ -1326,21 +1345,29 @@ func (t *templateService) RenderHotplugAttachmentPodTemplate(volume *v1.Volume, 
 	return pod, nil
 }
 
-func getRequiredCapabilities(vmi *v1.VirtualMachineInstance) []k8sv1.Capability {
-	res := []k8sv1.Capability{}
+func getRequiredCapabilities(vmi *v1.VirtualMachineInstance, config *virtconfig.ClusterConfig) []k8sv1.Capability {
+	capabilities := []k8sv1.Capability{}
+
 	if (len(vmi.Spec.Domain.Devices.Interfaces) > 0) ||
 		(vmi.Spec.Domain.Devices.AutoattachPodInterface == nil) ||
 		(*vmi.Spec.Domain.Devices.AutoattachPodInterface == true) {
-		res = append(res, CAP_NET_ADMIN)
+		capabilities = append(capabilities, CAP_NET_ADMIN)
 	}
 	// add a CAP_SYS_NICE capability to allow setting cpu affinity
-	res = append(res, CAP_SYS_NICE)
+	capabilities = append(capabilities, CAP_SYS_NICE)
 
 	// add CAP_SYS_ADMIN capability to allow virtiofs
 	if util.IsVMIVirtiofsEnabled(vmi) {
-		res = append(res, CAP_SYS_ADMIN)
+		capabilities = append(capabilities, CAP_SYS_ADMIN)
 	}
-	return res
+
+	// add SYS_RESOURCE capability to enable Live Migration for VM with SRIOV interfaces
+	// until https://bugzilla.redhat.com/show_bug.cgi?id=1916346 is resolved.
+	if config.SRIOVLiveMigrationEnabled() && util.IsSRIOVVmi(vmi) {
+		capabilities = append(capabilities, CAP_SYS_RESOURCE)
+	}
+
+	return capabilities
 }
 
 func getRequiredResources(vmi *v1.VirtualMachineInstance, useEmulation bool) k8sv1.ResourceList {
@@ -1514,55 +1541,6 @@ func getNetworkToResourceMap(virtClient kubecli.KubevirtClient, vmi *v1.VirtualM
 	return
 }
 
-func getIfaceByName(vmi *v1.VirtualMachineInstance, name string) *v1.Interface {
-	for _, iface := range vmi.Spec.Domain.Devices.Interfaces {
-		if iface.Name == name {
-			return &iface
-		}
-	}
-	return nil
-}
-
-func getCniAnnotations(vmi *v1.VirtualMachineInstance) (cniAnnotations map[string]string, err error) {
-	ifaceListMap := make([]map[string]string, 0)
-	cniAnnotations = make(map[string]string, 0)
-
-	next_idx := 0
-	for _, network := range vmi.Spec.Networks {
-		// Set the type for the first network. All other networks must have same type.
-		if network.Multus != nil {
-			if network.Multus.Default {
-				continue
-			}
-			namespace, networkName := getNamespaceAndNetworkName(vmi, network.Multus.NetworkName)
-			ifaceMap := map[string]string{
-				"name":      networkName,
-				"namespace": namespace,
-				"interface": fmt.Sprintf("net%d", next_idx+1),
-			}
-			iface := getIfaceByName(vmi, network.Name)
-			if iface != nil && iface.MacAddress != "" {
-				// De-facto Standard doesn't define exact string format for
-				// MAC addresses pasted down to CNI.  Here we just pass through
-				// whatever the value our API layer accepted as legit.
-				// Note: while standard allows for 20-byte InfiniBand addresses,
-				// we forbid them in API.
-				ifaceMap["mac"] = iface.MacAddress
-			}
-			next_idx = next_idx + 1
-			ifaceListMap = append(ifaceListMap, ifaceMap)
-		}
-	}
-	if len(ifaceListMap) > 0 {
-		ifaceJsonString, err := json.Marshal(ifaceListMap)
-		if err != nil {
-			return map[string]string{}, fmt.Errorf("Failed to create JSON list from CNI interface map %s", ifaceListMap)
-		}
-		cniAnnotations[MultusNetworksAnnotation] = fmt.Sprintf("%s", ifaceJsonString)
-	}
-	return
-}
-
 func NewTemplateService(launcherImage string,
 	virtShareDir string,
 	virtLibDir string,
@@ -1607,4 +1585,75 @@ func copyProbe(probe *v1.Probe) *k8sv1.Probe {
 			TCPSocket: probe.TCPSocket,
 		},
 	}
+}
+
+func alignPodMultiCategorySecurity(pod *k8sv1.Pod, selinuxType string) {
+	pod.Spec.SecurityContext.SELinuxOptions = &k8sv1.SELinuxOptions{Type: selinuxType}
+	// more info on https://github.com/kubernetes/kubernetes/issues/90759
+	// Since the compute container needs to be able to communicate with the
+	// rest of the pod, we loop over all the containers and remove their SELinux
+	// categories.
+	for i := range pod.Spec.Containers {
+		container := &pod.Spec.Containers[i]
+		if container.Name != "compute" {
+			container.SecurityContext = generateContainerSecurityContext(selinuxType)
+		}
+	}
+}
+
+func generateContainerSecurityContext(selinuxType string) *k8sv1.SecurityContext {
+	return &k8sv1.SecurityContext{
+		SELinuxOptions: &k8sv1.SELinuxOptions{
+			Type:  selinuxType,
+			Level: "s0",
+		},
+	}
+}
+
+func generatePodAnnotations(vmi *v1.VirtualMachineInstance) (map[string]string, error) {
+	annotationsSet := map[string]string{
+		v1.DomainAnnotation: vmi.GetObjectMeta().GetName(),
+	}
+	for k, v := range filterVMIAnnotationsForPod(vmi.Annotations) {
+		annotationsSet[k] = v
+	}
+
+	multusAnnotation, err := generateMultusCNIAnnotation(vmi)
+	if err != nil {
+		return nil, err
+	}
+	if multusAnnotation != "" {
+		annotationsSet[MultusNetworksAnnotation] = multusAnnotation
+	}
+
+	if multusDefaultNetwork := lookupMultusDefaultNetworkName(vmi.Spec.Networks); multusDefaultNetwork != "" {
+		annotationsSet[MULTUS_DEFAULT_NETWORK_CNI_ANNOTATION] = multusDefaultNetwork
+	}
+
+	if HaveMasqueradeInterface(vmi.Spec.Domain.Devices.Interfaces) {
+		annotationsSet[ISTIO_KUBEVIRT_ANNOTATION] = "k6t-eth0"
+	}
+	return annotationsSet, nil
+}
+
+func lookupMultusDefaultNetworkName(networks []v1.Network) string {
+	for _, network := range networks {
+		if network.Multus != nil && network.Multus.Default {
+			return network.Multus.NetworkName
+		}
+	}
+	return ""
+}
+
+func filterVMIAnnotationsForPod(vmiAnnotations map[string]string) map[string]string {
+	annotationsList := map[string]string{}
+	for k, v := range vmiAnnotations {
+		if strings.HasPrefix(k, "kubectl.kubernetes.io") ||
+			strings.HasPrefix(k, "kubevirt.io/storage-observed-api-version") ||
+			strings.HasPrefix(k, "kubevirt.io/latest-observed-api-version") {
+			continue
+		}
+		annotationsList[k] = v
+	}
+	return annotationsList
 }

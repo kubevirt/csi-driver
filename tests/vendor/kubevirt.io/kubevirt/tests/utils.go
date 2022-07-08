@@ -48,7 +48,6 @@ import (
 	"time"
 
 	expect "github.com/google/goexpect"
-	covreport "github.com/mfranczy/crd-rest-coverage/pkg/report"
 	. "github.com/onsi/ginkgo"
 	"github.com/onsi/ginkgo/config"
 	. "github.com/onsi/gomega"
@@ -83,7 +82,7 @@ import (
 	"kubevirt.io/kubevirt/tests/framework/cleanup"
 
 	"kubevirt.io/kubevirt/pkg/certificates/triple/cert"
-	"kubevirt.io/kubevirt/pkg/virt-operator/creation/components"
+	"kubevirt.io/kubevirt/pkg/virt-operator/resource/generate/components"
 
 	"kubevirt.io/kubevirt/pkg/certificates/bootstrap"
 
@@ -126,10 +125,6 @@ const (
 
 const (
 	AlpineHttpUrl = iota
-	GuestAgentHttpUrl
-	PixmanUrl
-	StressHttpUrl
-	DmidecodeHttpUrl
 	DummyFileHttpUrl
 	CirrosHttpUrl
 	VirtWhatCpuidHelperHttpUrl
@@ -486,65 +481,6 @@ func WaitForAllPodsReady(timeout time.Duration, listOptions metav1.ListOptions) 
 	Eventually(checkForPodsToBeReady, timeout, 2*time.Second).Should(BeEmpty(), "There are pods in system which are not ready.")
 }
 
-func GenerateRESTReport() error {
-	virtClient, err := kubecli.GetKubevirtClient()
-	if err != nil {
-		return err
-	}
-
-	auditLogPath := k8sAuditLogPath
-	if IsOpenShift() {
-		v := cluster.GetOpenShiftMajorVersion(virtClient)
-		if v == cluster.OpenShift4Major {
-			// audit log for OKD4 is not available yet and the path is unknown
-			log.Log.Info("Skipping the REST API report on OKD4")
-			return nil
-		}
-		auditLogPath = osAuditLogPath
-	}
-	logs, _, err := RunCommandWithNS("", "gocli", "scp", auditLogPath, "-")
-	if err != nil {
-		return err
-	}
-
-	tmpFile, err := ioutil.TempFile(os.TempDir(), "audit-")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmpFile.Name())
-
-	if _, err = tmpFile.Write([]byte(logs)); err != nil {
-		return err
-	}
-	if err = tmpFile.Close(); err != nil {
-		return err
-	}
-
-	coverage, err := covreport.Generate(tmpFile.Name(), swaggerPath, "/apis/kubevirt.io")
-	if err != nil {
-		return err
-	}
-
-	artifactsPath := os.Getenv(artifactsEnv)
-	if artifactsPath == "" {
-		return fmt.Errorf("ARTIFACTS env is empty, unable to save the coverage report")
-	}
-	if _, err := os.Stat(artifactsPath); os.IsNotExist(err) {
-		if err = os.MkdirAll(artifactsPath, 0755); err != nil {
-			return err
-		}
-	} else if err != nil {
-		return err
-	}
-
-	err = covreport.Dump(filepath.Join(artifactsPath, "rest-coverage.json"), coverage)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func SynchronizedAfterTestSuiteCleanup() {
 	RestoreKubeVirtResource()
 
@@ -553,11 +489,6 @@ func SynchronizedAfterTestSuiteCleanup() {
 		deleteStorageClass(Config.StorageClassBlockVolume)
 	}
 	CleanNodes()
-
-	// Generate REST API coverage report
-	if err := GenerateRESTReport(); err != nil {
-		log.Log.Errorf("Could not generate REST coverage report %v", err)
-	}
 }
 
 func AfterTestSuitCleanup() {
@@ -1226,6 +1157,7 @@ func deployOrWipeTestingInfrastrucure(actionOnObject func(unstructured.Unstructu
 	err, _ = DoScaleDeployment(flags.KubeVirtInstallNamespace, "virt-controller", replicasController)
 	PanicOnError(err)
 	_, _, newGeneration, err := DoScaleVirtHandler(flags.KubeVirtInstallNamespace, "virt-handler", selector)
+	PanicOnError(err)
 	virtCli, err := kubecli.GetKubevirtClient()
 	PanicOnError(err)
 
@@ -1468,6 +1400,16 @@ func DeletePV(os string) {
 	}
 }
 
+func VerifyDummyNicForBridgeNetwork(vmi *v1.VirtualMachineInstance) {
+	output := RunCommandOnVmiPod(vmi, []string{"/bin/bash", "-c", "/usr/sbin/ip link show|grep DOWN|grep -c eth0"})
+	ExpectWithOffset(1, strings.TrimSpace(output)).To(Equal("1"))
+
+	output = RunCommandOnVmiPod(vmi, []string{"/bin/bash", "-c", "/usr/sbin/ip link show|grep UP|grep -c eth0-nic"})
+	ExpectWithOffset(1, strings.TrimSpace(output)).To(Equal("1"))
+
+	return
+}
+
 func RunVMI(vmi *v1.VirtualMachineInstance, timeout int) *v1.VirtualMachineInstance {
 	By("Starting a VirtualMachineInstance")
 	virtCli, err := kubecli.GetKubevirtClient()
@@ -1648,6 +1590,7 @@ func cleanNamespaces() {
 
 		// Remove all Pods
 		podList, err := virtCli.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{})
+		PanicOnError(err)
 		var gracePeriod int64 = 0
 		for _, pod := range podList.Items {
 			err := virtCli.CoreV1().Pods(namespace).Delete(context.Background(), pod.Name, metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod})
@@ -1659,6 +1602,7 @@ func cleanNamespaces() {
 
 		// Remove all Services
 		svcList, err := virtCli.CoreV1().Services(namespace).List(context.Background(), metav1.ListOptions{})
+		PanicOnError(err)
 		for _, svc := range svcList.Items {
 			PanicOnError(virtCli.CoreV1().Services(namespace).Delete(context.Background(), svc.Name, metav1.DeleteOptions{}))
 		}
@@ -1708,6 +1652,9 @@ func cleanNamespaces() {
 		}
 		// Remove all NetworkAttachmentDefinitions
 		nets, err := virtCli.NetworkClient().K8sCniCncfIoV1().NetworkAttachmentDefinitions(namespace).List(context.Background(), metav1.ListOptions{})
+		if err != nil && !errors.IsNotFound(err) {
+			PanicOnError(err)
+		}
 		for _, netDef := range nets.Items {
 			PanicOnError(virtCli.NetworkClient().K8sCniCncfIoV1().NetworkAttachmentDefinitions(namespace).Delete(context.Background(), netDef.GetName(), metav1.DeleteOptions{}))
 		}
@@ -2223,14 +2170,25 @@ func AddEphemeralCdrom(vmi *v1.VirtualMachineInstance, name string, bus string, 
 	return vmi
 }
 
-func NewRandomFedoraVMIWitGuestAgent() *v1.VirtualMachineInstance {
+func NewRandomFedoraVMI() *v1.VirtualMachineInstance {
 	networkData, err := libnet.CreateDefaultCloudInitNetworkData()
 	Expect(err).NotTo(HaveOccurred())
 
 	return libvmi.NewFedora(
 		libvmi.WithInterface(libvmi.InterfaceDeviceWithMasqueradeBinding()),
 		libvmi.WithNetwork(v1.DefaultPodNetwork()),
-		libvmi.WithCloudInitNoCloudUserData(GetGuestAgentUserData(), false),
+		libvmi.WithCloudInitNoCloudNetworkData(networkData, false),
+	)
+}
+
+func NewRandomFedoraVMIWithGuestAgent() *v1.VirtualMachineInstance {
+	networkData, err := libnet.CreateDefaultCloudInitNetworkData()
+	Expect(err).NotTo(HaveOccurred())
+
+	return libvmi.NewTestToolingFedora(
+		libvmi.WithInterface(libvmi.InterfaceDeviceWithMasqueradeBinding()),
+		libvmi.WithNetwork(v1.DefaultPodNetwork()),
+		libvmi.WithCloudInitNoCloudUserData(GetFedoraToolsGuestAgentUserData(), false),
 		libvmi.WithCloudInitNoCloudNetworkData(networkData, false),
 	)
 }
@@ -2254,7 +2212,7 @@ func AddPVCFS(vmi *v1.VirtualMachineInstance, name string, claimName string) *v1
 
 func NewRandomVMIWithFSFromDataVolume(dataVolumeName string) *v1.VirtualMachineInstance {
 	vmi := NewRandomVMI()
-	containerImage := cd.ContainerDiskFor(cd.ContainerDiskFedora)
+	containerImage := cd.ContainerDiskFor(cd.ContainerDiskFedoraTestTooling)
 	AddEphemeralDisk(vmi, "disk0", "virtio", containerImage)
 	vmi.Spec.Domain.Devices.Filesystems = append(vmi.Spec.Domain.Devices.Filesystems, v1.Filesystem{
 		Name:     "disk1",
@@ -2274,48 +2232,37 @@ func NewRandomVMIWithFSFromDataVolume(dataVolumeName string) *v1.VirtualMachineI
 func NewRandomVMIWithPVCFS(claimName string) *v1.VirtualMachineInstance {
 	vmi := NewRandomVMI()
 	vmi.Spec.Domain.Resources.Requests[k8sv1.ResourceMemory] = resource.MustParse("64M")
-	containerImage := cd.ContainerDiskFor(cd.ContainerDiskFedora)
+	containerImage := cd.ContainerDiskFor(cd.ContainerDiskFedoraTestTooling)
 	AddEphemeralDisk(vmi, "disk0", "virtio", containerImage)
 	vmi = AddPVCFS(vmi, "disk1", claimName)
 	return vmi
 }
 
 func NewRandomFedoraVMIWithDmidecode() *v1.VirtualMachineInstance {
-	dmidecodeUserData := fmt.Sprintf(`#!/bin/bash
+	userData := `#!/bin/bash
 	    echo "fedora" |passwd fedora --stdin
-	    mkdir -p /usr/local/bin
-	    curl %s > /usr/local/bin/dmidecode
-	    chmod +x /usr/local/bin/dmidecode
-	`, GetUrl(DmidecodeHttpUrl))
-	vmi := NewRandomVMIWithEphemeralDiskAndUserdataHighMemory(cd.ContainerDiskFor(cd.ContainerDiskFedora), dmidecodeUserData)
+	`
+	vmi := NewRandomVMIWithEphemeralDiskAndUserdataHighMemory(cd.ContainerDiskFor(cd.ContainerDiskFedoraTestTooling), userData)
 	return vmi
 }
 
 func NewRandomFedoraVMIWithVirtWhatCpuidHelper() *v1.VirtualMachineInstance {
-	userData := fmt.Sprintf(`#!/bin/bash
+	userData := `#!/bin/bash
 	    echo "fedora" |passwd fedora --stdin
-	    mkdir -p /usr/local/bin
-	    curl %s > /usr/local/bin/virt-what-cpuid-helper
-	    chmod +x /usr/local/bin/virt-what-cpuid-helper
-	`, GetUrl(VirtWhatCpuidHelperHttpUrl))
-	vmi := NewRandomVMIWithEphemeralDiskAndUserdataHighMemory(cd.ContainerDiskFor(cd.ContainerDiskFedora), userData)
+	`
+	vmi := NewRandomVMIWithEphemeralDiskAndUserdataHighMemory(cd.ContainerDiskFor(cd.ContainerDiskFedoraTestTooling), userData)
 	return vmi
 }
 
-func GetGuestAgentUserData() string {
-	guestAgentUrl := GetUrl(GuestAgentHttpUrl)
-	return fmt.Sprintf(`#!/bin/bash
-                echo "fedora" |passwd fedora --stdin
-                mkdir -p /usr/local/bin
-                for i in {1..20}; do curl -I %s | grep "200 OK" && break || sleep 0.1; done
-                curl %s > /usr/local/bin/qemu-ga
-                chmod +x /usr/local/bin/qemu-ga
-                curl %s > /lib64/libpixman-1.so.0
-                curl %s > /usr/local/bin/stress
-                chmod +x /usr/local/bin/stress
-                setenforce 0
-                systemd-run --unit=guestagent /usr/local/bin/qemu-ga
-                `, guestAgentUrl, guestAgentUrl, GetUrl(PixmanUrl), GetUrl(StressHttpUrl))
+func GetFedoraToolsGuestAgentUserData() string {
+	return `#!/bin/bash
+            echo "fedora" |passwd fedora --stdin
+            sudo setenforce Permissive
+	    sudo cp /home/fedora/qemu-guest-agent.service /lib/systemd/system/
+	    sudo systemctl daemon-reload
+            sudo systemctl start qemu-guest-agent
+            sudo systemctl enable qemu-guest-agent
+`
 }
 
 func NewRandomVMIWithEphemeralDiskAndUserdata(containerImage string, userData string) *v1.VirtualMachineInstance {
@@ -2991,6 +2938,23 @@ func NewBool(x bool) *bool {
 	return &x
 }
 
+func RenderPrivilegedPod(name string, cmd []string, args []string) *k8sv1.Pod {
+	pod := RenderPod(name, cmd, args)
+	pod.Spec.HostPID = true
+	pod.Spec.SecurityContext = &k8sv1.PodSecurityContext{
+		RunAsUser: new(int64),
+	}
+	pod.Spec.Containers = []k8sv1.Container{
+		renderPrivilegedContainerSpec(
+			fmt.Sprintf("%s/vm-killer:%s", flags.KubeVirtUtilityRepoPrefix, flags.KubeVirtUtilityVersionTag),
+			name,
+			cmd,
+			args),
+	}
+
+	return pod
+}
+
 func RenderPod(name string, cmd []string, args []string) *k8sv1.Pod {
 	pod := k8sv1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -3003,25 +2967,38 @@ func RenderPod(name string, cmd []string, args []string) *k8sv1.Pod {
 		Spec: k8sv1.PodSpec{
 			RestartPolicy: k8sv1.RestartPolicyNever,
 			Containers: []k8sv1.Container{
-				{
-					Name:    name,
-					Image:   fmt.Sprintf("%s/vm-killer:%s", flags.KubeVirtUtilityRepoPrefix, flags.KubeVirtUtilityVersionTag),
-					Command: cmd,
-					Args:    args,
-					SecurityContext: &k8sv1.SecurityContext{
-						Privileged: NewBool(true),
-						RunAsUser:  new(int64),
-					},
-				},
-			},
-			HostPID: true,
-			SecurityContext: &k8sv1.PodSecurityContext{
-				RunAsUser: new(int64),
+				renderContainerSpec(
+					fmt.Sprintf("%s/vm-killer:%s", flags.KubeVirtUtilityRepoPrefix, flags.KubeVirtUtilityVersionTag),
+					name,
+					cmd,
+					args),
 			},
 		},
 	}
 
 	return &pod
+}
+
+func renderContainerSpec(imgPath string, name string, cmd []string, args []string) k8sv1.Container {
+	return k8sv1.Container{
+		Name:    name,
+		Image:   imgPath,
+		Command: cmd,
+		Args:    args,
+	}
+}
+
+func renderPrivilegedContainerSpec(imgPath string, name string, cmd []string, args []string) k8sv1.Container {
+	return k8sv1.Container{
+		Name:    name,
+		Image:   imgPath,
+		Command: cmd,
+		Args:    args,
+		SecurityContext: &k8sv1.SecurityContext{
+			Privileged: NewBool(true),
+			RunAsUser:  new(int64),
+		},
+	}
 }
 
 func NewVirtctlCommand(args ...string) *cobra.Command {
@@ -3129,6 +3106,36 @@ func GetRunningVirtualMachineInstanceDomainXML(virtClient kubecli.KubevirtClient
 		return "", fmt.Errorf("could not dump libvirt domxml (remotely on pod): %v: %s", err, stderr)
 	}
 	return stdout, err
+}
+
+func LibvirtDomainIsPersistent(virtClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInstance) (bool, error) {
+	vmiPod, err := getRunningPodByVirtualMachineInstance(vmi, NamespaceTestDefault)
+	if err != nil {
+		return false, err
+	}
+
+	found := false
+	containerIdx := 0
+	for idx, container := range vmiPod.Spec.Containers {
+		if container.Name == "compute" {
+			containerIdx = idx
+			found = true
+		}
+	}
+	if !found {
+		return false, fmt.Errorf("could not find compute container for pod")
+	}
+
+	stdout, stderr, err := ExecuteCommandOnPodV2(
+		virtClient,
+		vmiPod,
+		vmiPod.Spec.Containers[containerIdx].Name,
+		[]string{"virsh", "--quiet", "list", "--persistent", "--name"},
+	)
+	if err != nil {
+		return false, fmt.Errorf("could not dump libvirt domxml (remotely on pod): %v: %s", err, stderr)
+	}
+	return strings.Contains(stdout, vmi.Namespace+"_"+vmi.Name), nil
 }
 
 func BeforeAll(fn func()) {
@@ -3715,7 +3722,7 @@ func CreateHostDiskImage(diskPath string) *k8sv1.Pod {
 }
 
 func RenderHostPathPod(podName string, dir string, hostPathType k8sv1.HostPathType, mountPropagation k8sv1.MountPropagationMode, cmd []string, args []string) *k8sv1.Pod {
-	pod := RenderPod(podName, cmd, args)
+	pod := RenderPrivilegedPod(podName, cmd, args)
 	pod.Spec.Containers[0].VolumeMounts = append(pod.Spec.Containers[0].VolumeMounts, k8sv1.VolumeMount{
 		Name:             "hostpath-mount",
 		MountPropagation: &mountPropagation,
@@ -4059,7 +4066,7 @@ func GetCephStorageClass() (string, bool) {
 	Expect(err).ToNot(HaveOccurred())
 	for _, storageClass := range storageClassList.Items {
 		switch storageClass.Provisioner {
-		case "rook-ceph.rbd.csi.ceph.com", "csi-rbdplugin":
+		case "rook-ceph.rbd.csi.ceph.com", "csi-rbdplugin", "openshift-storage.rbd.csi.ceph.com":
 			return storageClass.Name, true
 		}
 	}
@@ -4517,14 +4524,6 @@ func GetUrl(urlIndex int) string {
 	switch urlIndex {
 	case AlpineHttpUrl:
 		str = fmt.Sprintf("http://cdi-http-import-server.%s/images/alpine.iso", flags.KubeVirtInstallNamespace)
-	case GuestAgentHttpUrl:
-		str = fmt.Sprintf("http://cdi-http-import-server.%s/qemu-ga", flags.KubeVirtInstallNamespace)
-	case PixmanUrl:
-		str = fmt.Sprintf("http://cdi-http-import-server.%s/libpixman-1.so.0", flags.KubeVirtInstallNamespace)
-	case StressHttpUrl:
-		str = fmt.Sprintf("http://cdi-http-import-server.%s/stress", flags.KubeVirtInstallNamespace)
-	case DmidecodeHttpUrl:
-		str = fmt.Sprintf("http://cdi-http-import-server.%s/dmidecode", flags.KubeVirtInstallNamespace)
 	case DummyFileHttpUrl:
 		str = fmt.Sprintf("http://cdi-http-import-server.%s/dummy.file", flags.KubeVirtInstallNamespace)
 	case CirrosHttpUrl:

@@ -19,10 +19,11 @@ TARGET_NAME=kubevirt-csi-driver
 IMAGE_REF=quay.io/kubevirt/$(TARGET_NAME):latest
 GO_TEST_PACKAGES :=./pkg/... ./cmd/...
 IMAGE_REGISTRY?=registry.svc.ci.openshift.org
+KUBEVIRTCI_RUNTIME?=podman
+KUBEVIRT_PROVIDER?=k8s-1.21
 
-export KUBEVIRTCI_TAG=2103301354-4f5cc5f
-export KUBEVIRTCI_RUNTIME=podman
-export KUBEVIRT_PROVIDER=k8s-1.20
+export KUBEVIRTCI_RUNTIME
+export KUBEVIRT_PROVIDER
 
 # You can customize go tools depending on the directory layout.
 # example:
@@ -74,7 +75,7 @@ cluster-down:
 
 .PHONY: kubevirt-deploy
 kubevirt-deploy:
-	sh -c "./cluster-up/kubevirt-deploy.sh"
+	sh -c "./hack/kubevirt-deploy.sh"
 
 .PHONY: mockgen
 mockgen:
