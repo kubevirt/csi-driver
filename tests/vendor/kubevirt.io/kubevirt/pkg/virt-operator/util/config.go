@@ -61,6 +61,9 @@ const (
 	// lookup key in AdditionalProperties
 	AdditionalPropertiesMonitorServiceAccount = "MonitorAccount"
 
+	// lookup key in AdditionalProperties
+	AdditionalPropertiesWorkloadUpdatesEnabled = "WorkloadUpdatesEnabled"
+
 	// account to use if one is not explicitly named
 	DefaultMonitorNamespace = "openshift-monitoring"
 
@@ -129,14 +132,22 @@ func GetConfigFromEnv() (*KubeVirtDeploymentConfig, error) {
 	pullPolicy := os.Getenv(TargetImagePullPolicy)
 	additionalProperties := make(map[string]string)
 	additionalProperties[AdditionalPropertiesNamePullPolicy] = pullPolicy
+
 	return getConfig("", "", ns, additionalProperties), nil
 
 }
 
 func GetTargetConfigFromKV(kv *v1.KubeVirt) *KubeVirtDeploymentConfig {
+	additionalProperties := getKVMapFromSpec(kv.Spec)
+	if len(kv.Spec.WorkloadUpdateStrategy.WorkloadUpdateMethods) > 0 {
+		additionalProperties[AdditionalPropertiesWorkloadUpdatesEnabled] = ""
+	}
 	// don't use status.target* here, as that is always set, but we need to know if it was set by the spec and with that
 	// overriding shasums from env vars
-	return getConfig(kv.Spec.ImageRegistry, kv.Spec.ImageTag, kv.Namespace, getKVMapFromSpec(kv.Spec))
+	return getConfig(kv.Spec.ImageRegistry,
+		kv.Spec.ImageTag,
+		kv.Namespace,
+		additionalProperties)
 }
 
 // retrieve imagePrefix from an existing deployment config (which is stored as JSON)
@@ -385,6 +396,11 @@ func (c *KubeVirtDeploymentConfig) GetImagePullPolicy() k8sv1.PullPolicy {
 	return k8sv1.PullIfNotPresent
 }
 
+func (c *KubeVirtDeploymentConfig) WorkloadUpdatesEnabled() bool {
+	_, enabled := c.AdditionalProperties[AdditionalPropertiesWorkloadUpdatesEnabled]
+	return enabled
+}
+
 func (c *KubeVirtDeploymentConfig) GetMonitorNamespace() string {
 	p := c.AdditionalProperties[AdditionalPropertiesMonitorNamespace]
 	if p == "" {
@@ -497,4 +513,12 @@ func NewEnvVarMap(envMap map[string]string) *[]k8sv1.EnvVar {
 	}
 
 	return &env
+}
+
+func IsValidLabel(label string) bool {
+	// First and last character must be alphanumeric
+	// middle chars can be alphanumeric, or dot hyphen or dash
+	// entire string must not exceed 63 chars
+	r := regexp.MustCompile(`^([a-z0-9A-Z]([a-z0-9A-Z\-\_\.]{0,61}[a-z0-9A-Z])?)?$`)
+	return r.Match([]byte(label))
 }
