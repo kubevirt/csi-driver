@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -12,10 +13,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/klog"
+	klog "k8s.io/klog/v2"
 
-	"github.com/kubevirt/csi-driver/pkg/kubevirt"
-	"github.com/kubevirt/csi-driver/pkg/service"
+	"kubevirt.io/csi-driver/pkg/kubevirt"
+	"kubevirt.io/csi-driver/pkg/service"
 )
 
 var (
@@ -78,7 +79,7 @@ func handle() {
 
 	var nodeID string
 	if *nodeName != "" {
-		node, err := tenantClientSet.CoreV1().Nodes().Get(*nodeName, v1.GetOptions{})
+		node, err := tenantClientSet.CoreV1().Nodes().Get(context.TODO(), *nodeName, v1.GetOptions{})
 		if err != nil {
 			klog.Fatal(fmt.Errorf("failed to find node by name %v: %v", nodeName, err))
 		}

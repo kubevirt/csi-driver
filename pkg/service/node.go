@@ -14,26 +14,31 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"golang.org/x/net/context"
-	"k8s.io/klog"
+	klog "k8s.io/klog/v2"
 
-	"github.com/kubevirt/csi-driver/pkg/kubevirt"
+	"kubevirt.io/csi-driver/pkg/kubevirt"
 )
 
 var nodeCaps = []csi.NodeServiceCapability_RPC_Type{
 	csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 }
+
 // NodeService implements the CSI Driver node service
 type NodeService struct {
-	nodeID             string
-	deviceLister       deviceLister
-	fsMaker            fsMaker
-	fsMounter          mount.Interface
-	dirMaker           dirMaker
+	nodeID       string
+	deviceLister deviceLister
+	fsMaker      fsMaker
+	fsMounter    mount.Interface
+	dirMaker     dirMaker
 }
 
 type deviceLister interface{ List() ([]byte, error) }
-type fsMaker interface { Make(device string, fsType string) error }
-type dirMaker interface { Make(path string, perm os.FileMode) error }
+type fsMaker interface {
+	Make(device string, fsType string) error
+}
+type dirMaker interface {
+	Make(path string, perm os.FileMode) error
+}
 
 func NewNodeService(infraClusterClient kubevirt.Client, nodeId string) *NodeService {
 	return &NodeService{
@@ -54,19 +59,22 @@ func NewNodeService(infraClusterClient kubevirt.Client, nodeId string) *NodeServ
 }
 
 type deviceListerFunc func() ([]byte, error)
+
 func (d deviceListerFunc) List() ([]byte, error) {
 	return d()
 }
 
 type fsMakerFunc func(device, fsType string) error
+
 func (f fsMakerFunc) Make(device, fsType string) error {
 	return f(device, fsType)
 }
 
 type dirMakerFunc func(path string, perm os.FileMode) error
- func (d dirMakerFunc) Make(path string, perm os.FileMode) error {
- 	return d(path, perm)
- }
+
+func (d dirMakerFunc) Make(path string, perm os.FileMode) error {
+	return d(path, perm)
+}
 
 // NodeStageVolume prepares the volume for usage. If it's an FS type it creates a file system on the volume.
 func (n *NodeService) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {

@@ -1,4 +1,4 @@
-package functional_test
+package functional
 
 import (
 	"bytes"
@@ -13,14 +13,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kubevirt/csi-driver/pkg/generated"
-	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/v2"
 	ocproutev1 "github.com/openshift/api/route/v1"
 	routesclientset "github.com/openshift/client-go/route/clientset/versioned/typed/route/v1"
-	v1 "k8s.io/api/core/v1"
 	v1network "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -42,11 +40,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiresource "k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/tools/clientcmd"
-	cdiv1 "kubevirt.io/containerized-data-importer/pkg/apis/core/v1alpha1"
-	testscore "kubevirt.io/kubevirt/tests"
+	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
-	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	kubevirtv1 "kubevirt.io/client-go/api/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubevirtv1 "kubevirt.io/api/core/v1"
+	testutil "kubevirt.io/kubevirt/tests/util"
 
 	. "github.com/onsi/gomega"
 )
@@ -104,17 +102,17 @@ func (c *InfraCluster) setupTenantCluster() {
 }
 
 func (c *InfraCluster) exposeTenantAPI() error {
-	if testscore.IsOpenShift() {
+	if IsOpenShift() {
 		Expect(c.createAPIRoute()).To(Succeed())
 	} else {
 		Expect(c.createAPIIngress()).To(Succeed())
 	}
-	_, err := c.virtCli.CoreV1().Services(c.namespace).Create(context.Background(), &v1.Service{
+	_, err := c.virtCli.CoreV1().Services(c.namespace).Create(context.Background(), &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "api",
 		},
-		Spec: v1.ServiceSpec{
-			Ports:           []v1.ServicePort{{Port: 6443, TargetPort: intstr.IntOrString{IntVal: 6443}, Protocol: v1.ProtocolTCP}},
+		Spec: corev1.ServiceSpec{
+			Ports:           []corev1.ServicePort{{Port: 6443, TargetPort: intstr.IntOrString{IntVal: 6443}, Protocol: corev1.ProtocolTCP}},
 			Selector:        map[string]string{"kubevirt.io/domain": k8sMachineName},
 			Type:            "NodePort",
 			SessionAffinity: "None",
@@ -126,7 +124,7 @@ func (c *InfraCluster) exposeTenantAPI() error {
 func (c *InfraCluster) createServiceAccount() error {
 	fmt.Fprint(ginkgo.GinkgoWriter, "Creating service account...\n")
 	reader := bytes.NewReader(generated.MustAsset("deploy/infra-cluster-service-account.yaml"))
-	sa := v1.ServiceAccount{}
+	sa := corev1.ServiceAccount{}
 	err := yaml.NewYAMLToJSONDecoder(reader).Decode(&sa)
 	//printErr(err)
 	if err != nil {
@@ -239,7 +237,7 @@ func (c *InfraCluster) createAPIIngress() error {
 		nil,
 		func(event apiwatch.Event) (bool, error) {
 			switch event.Type {
-			case apiwatch.Added,apiwatch.Modified:
+			case apiwatch.Added, apiwatch.Modified:
 			default:
 				return false, nil
 			}
@@ -259,8 +257,8 @@ func (c *InfraCluster) createAPIIngress() error {
 
 func (c *InfraCluster) createNamespace() {
 	fmt.Fprint(ginkgo.GinkgoWriter, "Creating the test namespace...\n")
-	_, err := c.virtCli.CoreV1().Namespaces().Create(context.Background(), &v1.Namespace{
-		ObjectMeta: k8smetav1.ObjectMeta{
+	_, err := c.virtCli.CoreV1().Namespaces().Create(context.Background(), &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: c.namespace,
 		},
 	}, metav1.CreateOptions{})
@@ -273,7 +271,7 @@ func (c *InfraCluster) createVm() {
 	routes, err := routesclientset.NewForConfig(c.virtCli.Config())
 	Expect(err).NotTo(HaveOccurred())
 	var ingressOrRouteHostname string
-	if testscore.IsOpenShift() {
+	if IsOpenShift() {
 		route, err := routes.Routes(c.namespace).Get(context.Background(), routeName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		ingressOrRouteHostname = route.Spec.Host
@@ -288,7 +286,7 @@ func (c *InfraCluster) createVm() {
 
 	k8sMachine, rootDv, secret := newK8sMachine(c.kubeconfig, ingressOrRouteHostname, c.namespace)
 
-	_, err = c.virtCli.CdiClient().CdiV1alpha1().DataVolumes(c.namespace).Create(context.Background(), rootDv, metav1.CreateOptions{})
+	_, err = c.virtCli.CdiClient().CdiV1beta1().DataVolumes(c.namespace).Create(context.Background(), rootDv, metav1.CreateOptions{})
 	if !errors.IsAlreadyExists(err) {
 		Expect(err).NotTo(HaveOccurred())
 	}
@@ -328,7 +326,7 @@ func (c *InfraCluster) createObject(restConfig rest.Config, discovery discovery.
 		}
 		restHelper := resource.NewHelper(restClient, mapping)
 
-		if ns, _ := meta.NewAccessor().Namespace(obj);  ns != "" {
+		if ns, _ := meta.NewAccessor().Namespace(obj); ns != "" {
 			namespace = ns
 		}
 		created, err := restHelper.Create(namespace, true, obj)
@@ -396,7 +394,7 @@ var running = true
 func newK8sMachine(config clientcmd.ClientConfig, ingressOrRouteHostname string, namespace string) (*kubevirtv1.VirtualMachine, *cdiv1.DataVolume, *corev1.Secret) {
 	vmiTemplateSpec := &kubevirtv1.VirtualMachineInstanceTemplateSpec{}
 	vm := kubevirtv1.VirtualMachine{
-		ObjectMeta: k8smetav1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: k8sMachineName,
 		},
 		Spec: kubevirtv1.VirtualMachineSpec{
@@ -429,12 +427,11 @@ func newK8sMachine(config clientcmd.ClientConfig, ingressOrRouteHostname string,
 
 	cloudInitDisk := "cloudinit-disk"
 	rootDisk := "root-disk"
-	bus := "virtio"
 	vmiTemplateSpec.Spec.Domain.Devices.Disks = append(vmiTemplateSpec.Spec.Domain.Devices.Disks, kubevirtv1.Disk{
 		Name: cloudInitDisk,
 		DiskDevice: kubevirtv1.DiskDevice{
 			Disk: &kubevirtv1.DiskTarget{
-				Bus: bus,
+				Bus: kubevirtv1.DiskBusVirtio,
 			},
 		},
 	})
@@ -444,7 +441,7 @@ func newK8sMachine(config clientcmd.ClientConfig, ingressOrRouteHostname string,
 		Name:      rootDisk,
 		DiskDevice: kubevirtv1.DiskDevice{
 			Disk: &kubevirtv1.DiskTarget{
-				Bus: bus,
+				Bus: kubevirtv1.DiskBusVirtio,
 			},
 		},
 	})
@@ -456,7 +453,7 @@ func newK8sMachine(config clientcmd.ClientConfig, ingressOrRouteHostname string,
 	cloudinitdata = strings.Replace(cloudinitdata, "@@tenant-cluster-name@@", ingressOrRouteHostname, 1)
 	cloudinitdata = strings.Replace(cloudinitdata, "@@test-namespace@@", namespace, 1)
 	secret := corev1.Secret{
-		ObjectMeta: k8smetav1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "userdata",
 		},
 		Data: map[string][]byte{"userdata": []byte(cloudinitdata)},
@@ -484,13 +481,13 @@ func newK8sMachine(config clientcmd.ClientConfig, ingressOrRouteHostname string,
 
 func newDataVolume(name, imageUrl, diskSize string) *cdiv1.DataVolume {
 	quantity, err := apiresource.ParseQuantity(diskSize)
-	testscore.PanicOnError(err)
+	testutil.PanicOnError(err)
 	dataVolume := &cdiv1.DataVolume{
-		ObjectMeta: k8smetav1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
 		Spec: cdiv1.DataVolumeSpec{
-			Source: cdiv1.DataVolumeSource{
+			Source: &cdiv1.DataVolumeSource{
 				HTTP: &cdiv1.DataVolumeSourceHTTP{
 					URL: imageUrl,
 				},
@@ -506,7 +503,7 @@ func newDataVolume(name, imageUrl, diskSize string) *cdiv1.DataVolume {
 		},
 	}
 
-	dataVolume.TypeMeta = k8smetav1.TypeMeta{
+	dataVolume.TypeMeta = metav1.TypeMeta{
 		APIVersion: "cdi.kubevirt.io/v1alpha1",
 		Kind:       "DataVolume",
 	}

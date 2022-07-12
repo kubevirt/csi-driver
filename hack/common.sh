@@ -26,7 +26,7 @@ BASE_PATH=${KUBEVIRTCI_CONFIG_PATH:-$PWD}
 CMD=${CMD:-}
 KUBECTL=${KUBECTL:-}
 TEST_PATH="tests/functional"
-TEST_OUT_PATH=${TEST_PATH}/_out
+TEST_OUT_PATH=_out
 JOB_TYPE=${JOB_TYPE:-}
 
 
@@ -39,3 +39,9 @@ if [ -z "${CMD}" ]; then
         CMD=kubectl
     fi
 fi
+
+get_latest_release() {
+  curl -s "https://api.github.com/repos/$1/releases/latest" |       # Get latest release from GitHub api
+    grep '"tag_name":' |                                            # Get tag line
+    sed -E 's/.*"([^"]+)".*/\1/'                                    # Pluck JSON value (avoid jq)
+}

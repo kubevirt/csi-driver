@@ -10,7 +10,7 @@ import (
 
 	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 	"google.golang.org/grpc"
-	"k8s.io/klog"
+	klog "k8s.io/klog/v2"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 )
@@ -26,7 +26,6 @@ type NonBlockingGRPCServer interface {
 	// Stops the service forcefully
 	ForceStop()
 }
-
 
 // NewNonBlockingGRPCServer creates a new non-blocking GRPC server
 func NewNonBlockingGRPCServer() NonBlockingGRPCServer {

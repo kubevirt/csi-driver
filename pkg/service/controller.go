@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/resource"
-	v1 "kubevirt.io/client-go/api/v1"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
@@ -13,10 +13,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	corev1 "k8s.io/api/core/v1"
-	log "k8s.io/klog"
-	cdiv1 "kubevirt.io/containerized-data-importer/pkg/apis/core/v1alpha1"
+	log "k8s.io/klog/v2"
+	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
-	client "github.com/kubevirt/csi-driver/pkg/kubevirt"
+	client "kubevirt.io/csi-driver/pkg/kubevirt"
 )
 
 const (
@@ -134,18 +134,18 @@ func (c *ControllerService) ControllerPublishVolume(
 	// hotplug DataVolume to VM
 	log.Infof("Start attaching DataVolume %s to VM %s. Volume name: %s. Serial: %s. Bus: %s", dvName, vmName, dvName, serial, bus)
 
-	addVolumeOptions := &v1.AddVolumeOptions{
+	addVolumeOptions := &kubevirtv1.AddVolumeOptions{
 		Name: dvName,
-		Disk: &v1.Disk{
+		Disk: &kubevirtv1.Disk{
 			Serial: serial,
-			DiskDevice: v1.DiskDevice{
-				Disk: &v1.DiskTarget{
-					Bus: bus,
+			DiskDevice: kubevirtv1.DiskDevice{
+				Disk: &kubevirtv1.DiskTarget{
+					Bus: kubevirtv1.DiskBus(bus),
 				},
 			},
 		},
-		VolumeSource: &v1.HotplugVolumeSource{
-			DataVolume: &v1.DataVolumeSource{
+		VolumeSource: &kubevirtv1.HotplugVolumeSource{
+			DataVolume: &kubevirtv1.DataVolumeSource{
 				Name: dvName,
 			},
 		},
@@ -172,7 +172,7 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 	}
 
 	// Detach DataVolume from VM
-	err = c.infraClient.RemoveVolumeFromVM(c.infraClusterNamespace, vmName, &v1.RemoveVolumeOptions{Name: dvName})
+	err = c.infraClient.RemoveVolumeFromVM(c.infraClusterNamespace, vmName, &kubevirtv1.RemoveVolumeOptions{Name: dvName})
 	if err != nil {
 		log.Error("Failed removing volume " + dvName + " from VM " + vmName)
 		return nil, err
@@ -249,12 +249,12 @@ func (c *ControllerService) getVMNameByCSINodeID(nodeID string) (string, error) 
 	}
 
 	for _, vmi := range list {
-		if strings.ToLower(string(vmi.Spec.Domain.Firmware.UUID)) == strings.ToLower(nodeID) {
+		if strings.EqualFold(string(vmi.Spec.Domain.Firmware.UUID), nodeID) {
 			return vmi.Name, nil
 		}
 	}
 
-	return "", fmt.Errorf("Failed to find VM with domain.firmware.uuid %v", nodeID)
+	return "", fmt.Errorf("failed to find VM with domain.firmware.uuid %v", nodeID)
 }
 
 func getVolumeModeFromRequest(req *csi.CreateVolumeRequest) corev1.PersistentVolumeMode {
