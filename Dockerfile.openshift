@@ -1,9 +1,9 @@
-FROM registry.svc.ci.openshift.org/ocp/builder:rhel-8-golang-1.15-openshift-4.7 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.19-openshift-4.11 AS builder
 WORKDIR /src/kubevirt-csi-driver
 COPY . .
 RUN make build
 
-FROM registry.svc.ci.openshift.org/ocp/4.7:base
+FROM registry.ci.openshift.org/ocp/4.11:base
 
 RUN yum install -y e2fsprogs xfsprogs && yum clean all
 COPY --from=builder /src/kubevirt-csi-driver/kubevirt-csi-driver .

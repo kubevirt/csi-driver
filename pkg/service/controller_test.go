@@ -19,12 +19,12 @@ func TestCreateVolume_Success(t *testing.T) {
 	client := &ControllerClientMock{t: t}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
-	response, err := controller.CreateVolume(nil, getCreateVolumeRequest())
+	response, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest())
 	assert.Nil(t, err)
 
 	assert.Equal(t, testVolumeName, response.GetVolume().GetVolumeId())
 	assert.Equal(t, testDataVolumeUID, response.GetVolume().VolumeContext[serialParameter])
-	assert.Equal(t, getBusType(), response.GetVolume().VolumeContext[busParameter])
+	assert.Equal(t, string(getBusType()), response.GetVolume().VolumeContext[busParameter])
 	assert.Equal(t, testVolumeStorageSize, response.GetVolume().GetCapacityBytes())
 }
 
@@ -35,7 +35,7 @@ func TestCreateVolume_SuccessBlockDevice(t *testing.T) {
 	client := &ControllerClientMock{t: t}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
-	_, err := controller.CreateVolume(nil, getCreateVolumeRequest()) // The call to client.CreateDataVolume will test volume mode
+	_, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest()) // The call to client.CreateDataVolume will test volume mode
 	assert.Nil(t, err)
 }
 
@@ -43,7 +43,7 @@ func TestCreateVolume_CreateDataVolumeFail(t *testing.T) {
 	client := &ControllerClientMock{t: t, FailCreateDataVolume: true}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
-	_, err := controller.CreateVolume(nil, getCreateVolumeRequest())
+	_, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest())
 	assert.NotNil(t, err)
 }
 
@@ -51,20 +51,20 @@ func TestCreateVolume_CustomBus(t *testing.T) {
 	client := &ControllerClientMock{t: t}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
-	busTypeLocal := "virtio"
+	busTypeLocal := kubevirtv1.DiskBusVirtio
 	testBusType = &busTypeLocal
 
-	response, err := controller.CreateVolume(nil, getCreateVolumeRequest())
+	response, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest())
 	assert.Nil(t, err)
 
-	assert.Equal(t, response.GetVolume().GetVolumeContext()[busParameter], *testBusType)
+	assert.Equal(t, response.GetVolume().GetVolumeContext()[busParameter], string(*testBusType))
 }
 
 func TestDeleteVolume_Success(t *testing.T) {
 	client := &ControllerClientMock{t: t}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
-	_, err := controller.DeleteVolume(nil, getDeleteVolumeRequest())
+	_, err := controller.DeleteVolume(context.TODO(), getDeleteVolumeRequest())
 	assert.Nil(t, err)
 }
 
@@ -72,7 +72,7 @@ func TestDeleteVolume_Fail(t *testing.T) {
 	client := &ControllerClientMock{t: t, FailDeleteDataVolume: true}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
-	_, err := controller.DeleteVolume(nil, getDeleteVolumeRequest())
+	_, err := controller.DeleteVolume(context.TODO(), getDeleteVolumeRequest())
 	assert.NotNil(t, err)
 }
 
@@ -80,7 +80,7 @@ func TestPublishVolume_Success(t *testing.T) {
 	client := &ControllerClientMock{t: t}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
-	_, err := controller.ControllerPublishVolume(nil, getPublishVolumeRequest()) // AddVolumeToVM tests the hotplug request
+	_, err := controller.ControllerPublishVolume(context.TODO(), getPublishVolumeRequest()) // AddVolumeToVM tests the hotplug request
 	assert.Nil(t, err)
 }
 
@@ -88,7 +88,7 @@ func TestUnpublishVolume_Success(t *testing.T) {
 	client := &ControllerClientMock{t: t}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
-	_, err := controller.ControllerUnpublishVolume(nil, getUnpublishVolumeRequest())
+	_, err := controller.ControllerUnpublishVolume(context.TODO(), getUnpublishVolumeRequest())
 	assert.Nil(t, err)
 }
 
@@ -97,20 +97,20 @@ func TestUnpublishVolume_Success(t *testing.T) {
 //
 
 var (
-	testVolumeName                    = "pvc-3d8be521-6e4b-4a87-add4-1961bf62f4ea"
-	testInfraStorageClassName         = "infra-storage"
-	testVolumeStorageSize     int64   = 1024 * 1024 * 1024 * 3
-	testInfraNamespace                = "tenant-cluster-2"
-	testNodeID                        = "6FC9C805-B3A0-570B-9D1B-3B8B9CFC9FB7"
-	testVMName                        = "test-vm"
-	testVMUID                         = "6fc9c805-b3a0-570b-9d1b-3b8b9cfc9fb7"
-	testDataVolumeUID                 = "2d0111d5-494f-4731-8f67-122b27d3c366"
-	testVolumeMode                    = corev1.PersistentVolumeFilesystem
-	testBusType               *string = nil // nil==do not pass bus type
-	testInfraLabels                   = map[string]string{"infra-label-name": "infra-label-value"}
+	testVolumeName                                = "pvc-3d8be521-6e4b-4a87-add4-1961bf62f4ea"
+	testInfraStorageClassName                     = "infra-storage"
+	testVolumeStorageSize     int64               = 1024 * 1024 * 1024 * 3
+	testInfraNamespace                            = "tenant-cluster-2"
+	testNodeID                                    = "6FC9C805-B3A0-570B-9D1B-3B8B9CFC9FB7"
+	testVMName                                    = "test-vm"
+	testVMUID                                     = "6fc9c805-b3a0-570b-9d1b-3b8b9cfc9fb7"
+	testDataVolumeUID                             = "2d0111d5-494f-4731-8f67-122b27d3c366"
+	testVolumeMode                                = corev1.PersistentVolumeFilesystem
+	testBusType               *kubevirtv1.DiskBus = nil // nil==do not pass bus type
+	testInfraLabels                               = map[string]string{"infra-label-name": "infra-label-value"}
 )
 
-func getBusType() string {
+func getBusType() kubevirtv1.DiskBus {
 	if testBusType == nil {
 		return busDefaultValue
 	} else {
@@ -135,7 +135,7 @@ func getCreateVolumeRequest() *csi.CreateVolumeRequest {
 	parameters := map[string]string{}
 	parameters[infraStorageClassNameParameter] = testInfraStorageClassName
 	if testBusType != nil {
-		parameters[busParameter] = *testBusType
+		parameters[busParameter] = string(*testBusType)
 	}
 
 	return &csi.CreateVolumeRequest{
@@ -159,7 +159,7 @@ func getPublishVolumeRequest() *csi.ControllerPublishVolumeRequest {
 		VolumeId: testVolumeName,
 		NodeId:   testNodeID,
 		VolumeContext: map[string]string{
-			busParameter:    getBusType(),
+			busParameter:    string(getBusType()),
 			serialParameter: testDataVolumeUID,
 		},
 	}
