@@ -1,4 +1,4 @@
-FROM registry.svc.ci.openshift.org/openshift/release:golang-1.15 AS builder
+FROM registry.ci.openshift.org/openshift/release:golang-1.15 AS builder
 WORKDIR /src/kubevirt-csi-driver
 COPY . .
 RUN make build
