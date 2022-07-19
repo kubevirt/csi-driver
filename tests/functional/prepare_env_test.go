@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/kubevirt/csi-driver/pkg/generated"
 	"github.com/onsi/ginkgo/v2"
 	ocproutev1 "github.com/openshift/api/route/v1"
 	routesclientset "github.com/openshift/client-go/route/clientset/versioned/typed/route/v1"
@@ -36,6 +35,7 @@ import (
 	clientwatch "k8s.io/client-go/tools/watch"
 	"k8s.io/kubernetes/pkg/apis/storage"
 	"kubevirt.io/client-go/kubecli"
+	"kubevirt.io/csi-driver/pkg/generated"
 
 	corev1 "k8s.io/api/core/v1"
 	apiresource "k8s.io/apimachinery/pkg/api/resource"

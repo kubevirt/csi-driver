@@ -22,7 +22,7 @@ import (
 const (
 	infraStorageClassNameParameter = "infraStorageClassName"
 	busParameter                   = "bus"
-	busDefaultValue                = "scsi"
+	busDefaultValue                = kubevirtv1.DiskBus("scsi")
 	serialParameter                = "serial"
 )
 
@@ -49,8 +49,11 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	volumeMode := getVolumeModeFromRequest(req)
 	storageSize := req.GetCapacityRange().GetRequiredBytes()
 	dvName := req.Name
-	bus, ok := req.Parameters[busParameter]
-	if !ok {
+	value, ok := req.Parameters[busParameter]
+	var bus kubevirtv1.DiskBus
+	if ok {
+		bus = kubevirtv1.DiskBus(value)
+	} else {
 		bus = busDefaultValue
 	}
 
@@ -70,6 +73,7 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 				corev1.ResourceStorage: *resource.NewScaledQuantity(storageSize, 0)},
 		},
 	}
+	dv.Spec.Source = &cdiv1.DataVolumeSource{}
 	dv.Spec.Source.Blank = &cdiv1.DataVolumeBlankImage{}
 
 	// Create DataVolume
@@ -89,7 +93,7 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 			CapacityBytes: storageSize,
 			VolumeId:      dvName,
 			VolumeContext: map[string]string{
-				busParameter:    bus,
+				busParameter:    string(bus),
 				serialParameter: serial,
 			},
 		},

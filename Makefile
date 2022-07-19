@@ -90,5 +90,3 @@ test-functional:
 .PHONY: kubeconfig
 kubeconfig:
 	@ if [ -n "${KUBECONFIG}" ]; then echo ${KUBECONFIG}; else $(MAKE) cluster-up kubevirt-deploy && ./cluster-up/kubeconfig.sh; fi
-
-
