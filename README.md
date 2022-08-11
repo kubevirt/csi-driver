@@ -21,8 +21,11 @@ The term "tenant cluster" refers to the k8s cluster installed on kubevirt VMs, a
 //TODO WIP
 - use `deploy/infra-cluster-service-account.yaml` to create a service account in kubevirt cluster (use '-n' flag in create command for specifying the kubevirt cluster namespace)
 - create kubeconfig for service account
-    - Use `deploy/example/infracluster-kubeconfig.yaml` as a reference. Inside the file there are instructions for fields that need to be edited.
+    - Run `./hack/create-infra-kubeconfig.sh > temp_kubeconfig.yaml`  
     - Test your kubeconfig. Try listing resources of type VMI in the kubevirt cluster namespace.
+    - This kubeconfig is configured with server url accessible from local machine `127.0.0.1:[0-9]+`, to use it in tenant 
+  cluster the url has to changed to that of a VM: `sed -i -r 's/127.0.0.1:[0-9]+/192.168.66.101:6443/g' temp_kubeconfig.yaml`
+
 - create namespace for the driver in tenant cluster
     - Use `deploy/000-namespace.yaml`
 - use `deploy/secret.yaml` for creating the necessary secret in the tenant cluster
