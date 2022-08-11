@@ -4,7 +4,7 @@ COPY . .
 RUN make build
 
 FROM quay.io/centos/centos:stream9
-ARG git_url=https://github.com/kubevirt/cdi-driver.git
+ARG git_url=https://github.com/kubevirt/csi-driver.git
 
 LABEL maintainers="The KubeVirt Project <kubevirt-dev@googlegroups.com>" \
       description="KubeVirt CSI Driver" \
