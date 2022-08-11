@@ -81,8 +81,8 @@ type TenantCluster struct {
 	restConfig *rest.Config
 }
 
-func PrepareEnv(clusterSetup InfraCluster) {
-	clusterSetup.setupTenantCluster()
+func PrepareEnv(clusterSetup InfraCluster) error {
+	return clusterSetup.setupTenantCluster()
 }
 
 func TearDownEnv(infraCluster InfraCluster) {
@@ -93,12 +93,22 @@ func TearDownEnv(infraCluster InfraCluster) {
 	}
 }
 
-func (c *InfraCluster) setupTenantCluster() {
+func (c *InfraCluster) setupTenantCluster() error {
 	fmt.Fprint(ginkgo.GinkgoWriter, "Preparing infrastructure for the tenant cluster\n")
 	c.createNamespace()
-	c.exposeTenantAPI()
-	c.createServiceAccount()
+	err := c.exposeTenantAPI()
+	if err != nil {
+		return err
+	}
+
+	err = c.createServiceAccount()
+	if err != nil {
+		return err
+	}
+
 	c.createVm()
+
+	return nil
 }
 
 func (c *InfraCluster) exposeTenantAPI() error {
@@ -388,7 +398,6 @@ func newRestClient(restConfig rest.Config, gv schema.GroupVersion) (rest.Interfa
 	return rest.RESTClientFor(&restConfig)
 }
 
-var readOnlyMode int32 = 0600
 var running = true
 
 func newK8sMachine(config clientcmd.ClientConfig, ingressOrRouteHostname string, namespace string) (*kubevirtv1.VirtualMachine, *cdiv1.DataVolume, *corev1.Secret) {

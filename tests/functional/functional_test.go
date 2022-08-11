@@ -31,7 +31,7 @@ var tenantCluster TenantCluster
 
 var _ = BeforeSuite(func() {
 	infraCluster = getInfraCluster()
-	PrepareEnv(infraCluster)
+	Expect(PrepareEnv(infraCluster)).To(Succeed())
 })
 
 var _ = AfterSuite(func() {
@@ -238,6 +238,7 @@ func deployTestPod(tenantSetup TenantCluster) error {
 
 	testPodUpTimeout, cancelFunc := context.WithTimeout(context.Background(), time.Minute*20)
 	defer cancelFunc()
+
 	_, err = clientwatch.UntilWithSync(
 		testPodUpTimeout,
 		cache.NewListWatchFromClient(tenantSetup.client.CoreV1().RESTClient(), "pods",
@@ -261,6 +262,9 @@ func deployTestPod(tenantSetup TenantCluster) error {
 			return false, nil
 		},
 	)
+
+	Expect(err).ToNot(HaveOccurred())
+
 	return nil
 }
 

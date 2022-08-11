@@ -71,6 +71,19 @@ type VirtualMachineClusterFlavorList struct {
 	Items           []VirtualMachineClusterFlavor `json:"items"`
 }
 
+// VirtualMachineFlavorSpecRevision is used to capture a versioned copy of VirtualMachineFlavorSpec within a ControllerRevision
+//
+// **WARNING** This struct should never change ensuring it can always be unmarshaled from a ControllerRevision
+type VirtualMachineFlavorSpecRevision struct {
+
+	// The specific version of VirtualMachineFlavorSpec that is contained below
+	APIVersion string `json:"apiVersion" protobuf:"bytes,2,opt,name=apiVersion"`
+
+	// This is a marshaled version of the VirtualMachineFlavorSpec
+	// +listType=atomic
+	Spec []byte `json:"spec"`
+}
+
 // VirtualMachineFlavorSpec is a description of the VirtualMachineFlavor or VirtualMachineClusterFlavor.
 //
 // CPU and Memory are required attributes with both requiring that their Guest attribute is defined, ensuring a number of vCPUs and amount of RAM is always provided by each flavor.
@@ -200,6 +213,18 @@ type VirtualMachineClusterPreferenceList struct {
 	Items []VirtualMachineClusterPreference `json:"items"`
 }
 
+// VirtualMachinePreferenceSpecRevision is used to capture a versioned copy of VirtualMachinePreferenceSpec within a ControllerRevision
+//
+// **WARNING** This struct should never change ensuring it can always be unmarshaled from a ControllerRevision
+type VirtualMachinePreferenceSpecRevision struct {
+	// The specific version of VirtualMachinePreferenceSpec that is contained below
+	APIVersion string `json:"apiVersion" protobuf:"bytes,2,opt,name=apiVersion"`
+
+	// This is a marshaled version of the VirtualMachinePreferenceSpec
+	// +listType=atomic
+	Spec []byte `json:"spec"`
+}
+
 // VirtualMachinePreferenceSpec is a description of the VirtualMachinePreference or VirtualMachineClusterPreference.
 type VirtualMachinePreferenceSpec struct {
 
@@ -239,10 +264,10 @@ type PreferredCPUTopology string
 
 const (
 
-	// Prefer vCPUs to be exposed as cores to the guest, this is the default for the PreferredCPUTopology attribute of CPUPreferences.
+	// Prefer vCPUs to be exposed as cores to the guest
 	PreferCores PreferredCPUTopology = "preferCores"
 
-	// Prefer vCPUs to be exposed as sockets to the guest
+	// Prefer vCPUs to be exposed as sockets to the guest, this is the default for the PreferredCPUTopology attribute of CPUPreferences.
 	PreferSockets PreferredCPUTopology = "preferSockets"
 
 	// Prefer vCPUs to be exposed as threads to the guest
@@ -252,7 +277,7 @@ const (
 // CPUPreferences contains various optional CPU preferences.
 type CPUPreferences struct {
 
-	// PreferredCPUTopology optionally defines the preferred guest visible CPU topology, defaults to PreferCores.
+	// PreferredCPUTopology optionally defines the preferred guest visible CPU topology, defaults to PreferSockets.
 	//
 	//+optional
 	PreferredCPUTopology PreferredCPUTopology `json:"preferredCPUTopology,omitempty"`

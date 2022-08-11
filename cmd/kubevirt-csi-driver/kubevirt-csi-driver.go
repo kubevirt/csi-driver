@@ -21,7 +21,6 @@ import (
 
 var (
 	endpoint               = flag.String("endpoint", "unix:/csi/csi.sock", "CSI endpoint")
-	namespace              = flag.String("namespace", "", "Namespace to run the controllers on")
 	nodeName               = flag.String("node-name", "", "The node name - the node this pods runs on")
 	infraClusterNamespace  = flag.String("infra-cluster-namespace", "", "The infra-cluster namespace")
 	infraClusterKubeconfig = flag.String("infra-cluster-kubeconfig", "", "the infra-cluster kubeconfig file")
@@ -29,7 +28,10 @@ var (
 )
 
 func init() {
-	flag.Set("logtostderr", "true")
+	err := flag.Set("logtostderr", "true")
+	if err != nil {
+		panic(fmt.Sprintf("can't set the logtostderr flags; %s", err.Error()))
+	}
 	// make glog and klog coexist
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -39,7 +41,10 @@ func init() {
 		f2 := klogFlags.Lookup(f1.Name)
 		if f2 != nil {
 			value := f1.Value.String()
-			f2.Value.Set(value)
+			err = f2.Value.Set(value)
+			if err != nil {
+				panic(fmt.Sprintf("can't set the %s flags; %s", f1.Name, err.Error()))
+			}
 		}
 	})
 }

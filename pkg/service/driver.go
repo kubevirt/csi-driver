@@ -1,7 +1,6 @@
 package service
 
 import (
-	"k8s.io/client-go/kubernetes"
 	klog "k8s.io/klog/v2"
 
 	"kubevirt.io/csi-driver/pkg/kubevirt"
@@ -19,8 +18,7 @@ type KubevirtCSIDriver struct {
 	*IdentityService
 	*ControllerService
 	*NodeService
-	infraClusterClient kubernetes.Clientset
-	Client             kubevirt.Client
+	Client kubevirt.Client
 }
 
 func NewKubevirtCSIDriver(infraClusterClient kubevirt.Client, infraClusterNamespace string, infraClusterLabels map[string]string, nodeID string) *KubevirtCSIDriver {

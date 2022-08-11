@@ -250,8 +250,8 @@ func makeFS(device string, fsType string) error {
 	err := cmd.Run()
 	exitError, incompleteCmd := err.(*exec.ExitError)
 	if err != nil && incompleteCmd {
-		klog.Errorf("stdout: %s", string(stdout.Bytes()))
-		klog.Errorf("stderr: %s", string(stderr.Bytes()))
+		klog.Errorf("stdout: %s", stdout.String())
+		klog.Errorf("stderr: %s", stdout.String())
 		return errors.New(err.Error() + " mkfs failed with " + exitError.Error())
 	}
 
