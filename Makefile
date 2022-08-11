@@ -15,11 +15,14 @@
 
 SHELL :=/bin/bash
 
-TARGET_NAME=kubevirt-csi-driver
-IMAGE_REF=quay.io/kubevirt/$(TARGET_NAME):latest
+TARGET_NAME = kubevirt-csi-driver
+REGISTRY ?= quay.io/kubevirt
+TAG ?= latest
+IMAGE_REF=$(REGISTRY)/$(TARGET_NAME):$(TAG)
 GO_TEST_PACKAGES :=./pkg/... ./cmd/...
 IMAGE_REGISTRY?=registry.svc.ci.openshift.org
 KUBEVIRT_PROVIDER?=k8s-1.23
+SHA := $(shell git describe --no-match  --always --abbrev=40 --dirty)
 
 export KUBEVIRT_PROVIDER
 
@@ -33,7 +36,6 @@ export KUBEVIRT_PROVIDER
 include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
 	golang.mk \
 	targets/openshift/deps-gomod.mk \
-	targets/openshift/images.mk \
 	targets/openshift/bindata.mk \
 )
 
@@ -43,14 +45,15 @@ include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
 
 # You can list all codegen related variables by:
 #   $ make -n --print-data-base | grep ^CODEGEN
+.PHONY: build-image
+build-image:
+	source ./hack/cri-bin.sh && \
+	$$CRI_BIN build -t $(IMAGE_REF) --build-arg git_sha=$(SHA) .
 
-# This will call a macro called "build-image" which will generate image specific targets based on the parameters:
-# $1 - target name
-# $2 - image ref
-# $3 - Dockerfile path
-# $4 - context
-# It will generate target "image-$(1)" for builing the image an binding it as a prerequisite to target "images".
-$(call build-image,$(TARGET_NAME),$(IMAGE_REF),./Dockerfile,.)
+.PHONY: push-image
+push-image:
+	source ./hack/cri-bin.sh && \
+	$$CRI_BIN push $(IMAGE_REF)
 
 # This will call a macro called "add-bindata" which will generate bindata specific targets based on the parameters:
 # $0 - macro name
