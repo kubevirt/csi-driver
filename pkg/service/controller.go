@@ -28,7 +28,7 @@ const (
 
 //ControllerService implements the controller interface. See README for details.
 type ControllerService struct {
-	infraClient           client.Client
+	virtClient            client.Client
 	infraClusterNamespace string
 	infraClusterLabels    map[string]string
 }
@@ -77,7 +77,7 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	dv.Spec.Source.Blank = &cdiv1.DataVolumeBlankImage{}
 
 	// Create DataVolume
-	dv, err := c.infraClient.CreateDataVolume(c.infraClusterNamespace, dv)
+	dv, err := c.virtClient.CreateDataVolume(c.infraClusterNamespace, dv)
 
 	if err != nil {
 		log.Error("Failed creating DataVolume " + dvName)
@@ -105,7 +105,7 @@ func (c *ControllerService) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	dvName := req.VolumeId
 	log.Infof("Removing data volume with %s", dvName)
 
-	err := c.infraClient.DeleteDataVolume(c.infraClusterNamespace, dvName)
+	err := c.virtClient.DeleteDataVolume(c.infraClusterNamespace, dvName)
 	if err != nil {
 		log.Error("Failed deleting DataVolume " + dvName)
 		return nil, err
@@ -155,7 +155,7 @@ func (c *ControllerService) ControllerPublishVolume(
 		},
 	}
 
-	err = c.infraClient.AddVolumeToVM(c.infraClusterNamespace, vmName, addVolumeOptions)
+	err = c.virtClient.AddVolumeToVM(c.infraClusterNamespace, vmName, addVolumeOptions)
 	if err != nil {
 		log.Error("Failed adding volume " + dvName + " to VM " + vmName)
 		return nil, err
@@ -176,7 +176,7 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 	}
 
 	// Detach DataVolume from VM
-	err = c.infraClient.RemoveVolumeFromVM(c.infraClusterNamespace, vmName, &kubevirtv1.RemoveVolumeOptions{Name: dvName})
+	err = c.virtClient.RemoveVolumeFromVM(c.infraClusterNamespace, vmName, &kubevirtv1.RemoveVolumeOptions{Name: dvName})
 	if err != nil {
 		log.Error("Failed removing volume " + dvName + " from VM " + vmName)
 		return nil, err
@@ -246,7 +246,7 @@ func (c *ControllerService) ControllerGetVolume(_ context.Context, _ *csi.Contro
 // getVMNameByCSINodeID finds a VM in infra cluster by its firmware uuid. The uid is the ID that the CSI
 // node publishes in NodeGetInfo and then used by CSINode.spec.drivers[].nodeID
 func (c *ControllerService) getVMNameByCSINodeID(nodeID string) (string, error) {
-	list, err := c.infraClient.ListVirtualMachines(c.infraClusterNamespace)
+	list, err := c.virtClient.ListVirtualMachines(c.infraClusterNamespace)
 	if err != nil {
 		log.Error("Failed listing VMIs in infra cluster")
 		return "", err

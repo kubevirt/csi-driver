@@ -11,8 +11,6 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"k8s.io/utils/mount"
-
-	"kubevirt.io/csi-driver/pkg/kubevirt"
 )
 
 const serialID = "4b13cebc-7406-4c19-8832-7fcb1d4ac8c5"
@@ -20,6 +18,14 @@ const serialID = "4b13cebc-7406-4c19-8832-7fcb1d4ac8c5"
 func TestService(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Service Suite")
+}
+
+type fakeProber struct {
+	err error
+}
+
+func (m *fakeProber) Probe() error {
+	return m.err
 }
 
 var _ = Describe("NodeService", func() {
@@ -167,15 +173,15 @@ var _ = Describe("NodeService", func() {
 
 var _ = Describe("IdentityService", func() {
 	var (
-		mockCtrl           *gomock.Controller
-		mockKubevirtClient *kubevirt.MockClient
-		underTest          IdentityService
+		mockCtrl  *gomock.Controller
+		underTest IdentityService
+		mockProbe *fakeProber
 	)
 
 	BeforeEach(func() {
+		mockProbe = &fakeProber{}
 		mockCtrl = gomock.NewController(GinkgoT())
-		mockKubevirtClient = kubevirt.NewMockClient(mockCtrl)
-		underTest = IdentityService{infraClusterClient: mockKubevirtClient}
+		underTest = IdentityService{connectivityProbe: mockProbe}
 	})
 
 	Describe("Get Plugin Info", func() {
@@ -208,7 +214,7 @@ var _ = Describe("IdentityService", func() {
 		)
 		Context("When the probe fails", func() {
 			BeforeEach(func() {
-				mockKubevirtClient.EXPECT().Ping(gomock.Any()).Return(fmt.Errorf("failed to contact infra cluster"))
+				mockProbe.err = fmt.Errorf("error")
 				res, err = underTest.Probe(context.Background(), &csi.ProbeRequest{})
 			})
 			It("should fail with error", func() {
@@ -222,7 +228,7 @@ var _ = Describe("IdentityService", func() {
 		})
 		Context("When the probe succeeds", func() {
 			BeforeEach(func() {
-				mockKubevirtClient.EXPECT().Ping(gomock.Any()).Return(nil)
+				mockProbe.err = nil
 				res, err = underTest.Probe(context.Background(), &csi.ProbeRequest{})
 			})
 			It("should not return error", func() {
