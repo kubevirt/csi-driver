@@ -31,7 +31,7 @@ func NewKubevirtCSIDriver(infraClusterClient kubevirt.Client, infraClusterNamesp
 			infraClusterNamespace: infraClusterNamespace,
 			infraClusterLabels:    infraClusterLabels,
 		},
-		NodeService: NewNodeService(infraClusterClient, nodeID),
+		NodeService: NewNodeService(nodeID),
 	}
 	return &d
 }

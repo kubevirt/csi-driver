@@ -15,8 +15,6 @@ import (
 
 	"golang.org/x/net/context"
 	klog "k8s.io/klog/v2"
-
-	"kubevirt.io/csi-driver/pkg/kubevirt"
 )
 
 var nodeCaps = []csi.NodeServiceCapability_RPC_Type{
@@ -40,7 +38,7 @@ type dirMaker interface {
 	Make(path string, perm os.FileMode) error
 }
 
-func NewNodeService(infraClusterClient kubevirt.Client, nodeId string) *NodeService {
+func NewNodeService(nodeId string) *NodeService {
 	return &NodeService{
 		nodeID: nodeId,
 		deviceLister: deviceListerFunc(func() ([]byte, error) {
