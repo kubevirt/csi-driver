@@ -29,7 +29,6 @@ spec:
           image: quay.io/kubevirt/csi-driver:latest
           args:
             - "--endpoint=unix:/csi/csi.sock"
-            - "--namespace=kubevirt-csi-driver"
             - "--node-name=$(KUBE_NODE_NAME)"
             - "--infra-cluster-namespace=$(INFRACLUSTER_NAMESPACE)"
             - "--infra-cluster-kubeconfig=/var/run/secrets/infracluster/kubeconfig"
