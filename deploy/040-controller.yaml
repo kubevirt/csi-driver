@@ -30,7 +30,6 @@ spec:
           image: quay.io/kubevirt/csi-driver:latest
           args:
             - "--endpoint=$(CSI_ENDPOINT)"
-            - "--namespace=kubevirt-csi-driver"
             - "--infra-cluster-namespace=$(INFRACLUSTER_NAMESPACE)"
             - "--infra-cluster-kubeconfig=/var/run/secrets/infracluster/kubeconfig"
             - "--infra-cluster-labels=$(INFRACLUSTER_LABELS)"

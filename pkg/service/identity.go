@@ -4,13 +4,33 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"golang.org/x/net/context"
-
-	"kubevirt.io/csi-driver/pkg/kubevirt"
+	"k8s.io/client-go/kubernetes"
 )
+
+type connectivityProbeInterface interface {
+	Probe() error
+}
+
+type connectivityProbe struct {
+	clientset kubernetes.Interface
+}
+
+func (p *connectivityProbe) Probe() error {
+	_, err := p.clientset.Discovery().ServerVersion()
+	return err
+}
+
+func NewIdentityService(clientset kubernetes.Interface) *IdentityService {
+	return &IdentityService{
+		connectivityProbe: &connectivityProbe{
+			clientset: clientset,
+		},
+	}
+}
 
 //IdentityService of kubevirt-csi-driver
 type IdentityService struct {
-	infraClusterClient kubevirt.Client
+	connectivityProbe connectivityProbeInterface
 }
 
 //GetPluginInfo returns the vendor name and version - set in build time
@@ -36,9 +56,10 @@ func (i *IdentityService) GetPluginCapabilities(context.Context, *csi.GetPluginC
 	}, nil
 }
 
-// Probe checks the state of the connection to kubevirt API
+// Probe checks the state of the connection to kubernetes API
 func (i *IdentityService) Probe(ctx context.Context, _ *csi.ProbeRequest) (*csi.ProbeResponse, error) {
-	if err := i.infraClusterClient.Ping(ctx); err != nil {
+	err := i.connectivityProbe.Probe()
+	if err != nil {
 		return nil, err
 	}
 	return &csi.ProbeResponse{Ready: &wrappers.BoolValue{Value: true}}, nil

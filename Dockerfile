@@ -1,4 +1,5 @@
-FROM registry.ci.openshift.org/openshift/release:golang-1.18 AS builder
+ARG builder_image=docker.io/library/golang:1.18.2
+FROM ${builder_image} AS builder
 WORKDIR /src/kubevirt-csi-driver
 COPY . .
 RUN make build
