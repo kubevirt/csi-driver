@@ -55,7 +55,7 @@ docker-build:
 .PHONY: docker-push
 docker-push:
 	source ./hack/cri-bin.sh && \
-	$$CRI_BIN push $(IMAGE_REF)
+	$$CRI_BIN push --tls-verify=false $(IMAGE_REF)
 
 # This will call a macro called "add-bindata" which will generate bindata specific targets based on the parameters:
 # $0 - macro name
