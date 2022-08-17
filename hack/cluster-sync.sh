@@ -2,12 +2,14 @@
 
 set -euo pipefail
 
+RESOURCES_DIR=_ci-configs
+mkdir -p ${RESOURCES_DIR}
 # ******************************************************
 # Create service account and kubeconfig to access tenant cluster
 # ******************************************************
-./kubevirtci kubectl -n kvcluster create -f ./deploy/infra-cluster-service-account.yaml
+./kubevirtci kubectl -n kvcluster apply -f ./deploy/infra-cluster-service-account.yaml
 
-export INFRA_KUBECONFIG_IN_TENANT_FILE=_ci-configs/infra_kubeconfig.yaml
+export INFRA_KUBECONFIG_IN_TENANT_FILE=${RESOURCES_DIR}/infra_kubeconfig.yaml
 ./hack/create-infra-kubeconfig.sh  > $INFRA_KUBECONFIG_IN_TENANT_FILE
 #  Try to find the url in universal way: maybe it is node ip and service port??
 #         sed -i -r 's/127.0.0.1:[0-9]+/192.168.66.101:6443/g' kubeconfig-e2e
@@ -25,32 +27,35 @@ sed -i -r 's/127.0.0.1:[0-9]+/192.168.66.101:6443/g' $INFRA_KUBECONFIG_IN_TENANT
 # ******************************************************
 # Add kubeconfig to secret and create it in tenant
 export INFRA_KUBECONFIG_IN_TENANT_CONTENT=$(cat $INFRA_KUBECONFIG_IN_TENANT_FILE | base64 -w 0)
-envsubst < ./deploy/secret-template.yaml > _ci-configs/tenant_secret.yaml
+envsubst < ./deploy/secret-template.yaml > ${RESOURCES_DIR}/tenant_secret.yaml
 
-./kubevirtci kubectl-tenant create -f ./deploy/000-namespace.yaml
-./kubevirtci kubectl-tenant create -f _ci-configs/tenant_secret.yaml
+./kubevirtci kubectl-tenant apply -f ./deploy/000-namespace.yaml
+./kubevirtci kubectl-tenant apply -f ${RESOURCES_DIR}/tenant_secret.yaml
 
 # ******************************************************
 # Apply config
-./kubevirtci kubectl-tenant create -f ./deploy/configmap-template.yaml
+./kubevirtci kubectl-tenant apply  -f ./deploy/configmap-template.yaml
 
 # ******************************************************
 # Finally deploy the driver
 # ******************************************************
-# TODO:  The yaml should reference the container image in the local kubevirtci repo (from the image push step)
+#TODO: ugly, needs to be changed
+sed -r 's#quay.io/kubevirt/csi-driver:latest#registry:5000/kubevirt-csi-driver:latest#g' ./deploy/030-node.yaml > ${RESOURCES_DIR}/030-node.yaml
+sed -r 's#quay.io/kubevirt/csi-driver:latest#registry:5000/kubevirt-csi-driver:latest#g' ./deploy/040-controller.yaml > ${RESOURCES_DIR}/040-controller.yaml
 
-./kubevirtci kubectl-tenant create -f ./deploy/000-csi-driver.yaml
-./kubevirtci kubectl-tenant create -f ./deploy/020-autorization.yaml
-./kubevirtci kubectl-tenant create -f ./deploy/030-node.yaml
-./kubevirtci kubectl-tenant create -f ./deploy/040-controller.yaml
-
+./kubevirtci kubectl-tenant apply -f ./deploy/000-csi-driver.yaml
+./kubevirtci kubectl-tenant apply -f ./deploy/020-autorization.yaml
+./kubevirtci kubectl-tenant apply -f ${RESOURCES_DIR}/030-node.yaml
+./kubevirtci kubectl-tenant apply -f ${RESOURCES_DIR}/040-controller.yaml
 # ******************************************************
 # Edit storage class
 #- infraStorageClassName: standard
 #+ infraStorageClassName: rook-ceph-block
 
-export INFRA_KUBECONFIG_STORAGECLASS_FILE=_ci-configs/storageclass.yaml
+export INFRA_KUBECONFIG_STORAGECLASS_FILE=${RESOURCES_DIR}/storageclass.yaml
 cp ./deploy/example/storageclass.yaml $INFRA_KUBECONFIG_STORAGECLASS_FILE
 sed -i -r 's/standard/local/g' $INFRA_KUBECONFIG_STORAGECLASS_FILE
-./kubevirtci kubectl-tenant create -f $INFRA_KUBECONFIG_STORAGECLASS_FILE
+./kubevirtci kubectl-tenant apply -f $INFRA_KUBECONFIG_STORAGECLASS_FILE
 
+## SMOKE TEST
+##
