@@ -51,6 +51,6 @@ envsubst < ./deploy/secret-template.yaml > _ci-configs/tenant_secret.yaml
 
 export INFRA_KUBECONFIG_STORAGECLASS_FILE=_ci-configs/storageclass.yaml
 cp ./deploy/example/storageclass.yaml $INFRA_KUBECONFIG_STORAGECLASS_FILE
-sed -i -r 's/standard/rook-ceph-block/g' $INFRA_KUBECONFIG_STORAGECLASS_FILE
+sed -i -r 's/standard/local/g' $INFRA_KUBECONFIG_STORAGECLASS_FILE
 ./kubevirtci kubectl-tenant create -f $INFRA_KUBECONFIG_STORAGECLASS_FILE
 
