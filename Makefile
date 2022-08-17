@@ -45,13 +45,15 @@ include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
 
 # You can list all codegen related variables by:
 #   $ make -n --print-data-base | grep ^CODEGEN
-.PHONY: build-image
-build-image:
+.PHONY: docker-build
+docker-build:
 	source ./hack/cri-bin.sh && \
 	$$CRI_BIN build -t $(IMAGE_REF) --build-arg git_sha=$(SHA) .
 
-.PHONY: push-image
-push-image:
+
+
+.PHONY: docker-push
+docker-push:
 	source ./hack/cri-bin.sh && \
 	$$CRI_BIN push $(IMAGE_REF)
 
