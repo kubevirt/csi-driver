@@ -172,7 +172,7 @@ function kubevirtci::create_cluster() {
 	$CLUSTERCTL_PATH generate cluster ${TENANT_CLUSTER_NAME} --target-namespace ${TENANT_CLUSTER_NAMESPACE} --kubernetes-version ${CAPK_GUEST_K8S_VERSION} --control-plane-machine-count=1 --worker-machine-count=1 --from $template | ${_kubectl} apply -f -
 
 	echo "Wait for tenant cluster to be ready"
-	${_kubectl} wait cluster -n kvcluster kvcluster --for=condition=Ready --timeout=5m
+	${_kubectl} wait cluster -n kvcluster kvcluster --for=condition=Ready --timeout=10m
 
 	echo "Wait for tenant cluster kubernetes apiserver up"
 	kubevirtci::retry_until_success kubevirtci::kubectl_tenant get pods -n kube-system
@@ -346,7 +346,7 @@ case ${_action} in
 	;;
 "refresh")
 	kubevirtci::build
-	kubevirtci::refresh
+#	kubevirtci::refresh
 	;;
 "sync")
 	kubevirtci::build
