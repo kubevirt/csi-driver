@@ -44,6 +44,7 @@ function kubevirtci::usage() {
 	  up                                Start a cluster with kubevirt, cert-manager and capi
 	  sync                              Build and deploy current capk from source (must be executed from within capk source tree)
 	  down                              Destroy the cluster
+    build                             Build
 	  refresh                           Build current capk and trigger creating new capk pods
 	  clean-cache                       Removes all files cached by kubevirtci
 
@@ -344,9 +345,12 @@ case ${_action} in
 "down")
 	kubevirtci::down
 	;;
+"build")
+	kubevirtci::build
+	;;
 "refresh")
 	kubevirtci::build
-#	kubevirtci::refresh
+	kubevirtci::refresh
 	;;
 "sync")
 	kubevirtci::build
