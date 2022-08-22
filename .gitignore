@@ -18,6 +18,11 @@ _out/*
 
 # kubevirtCI
 _ci-configs/
+/cluster-up/
 
 # ide
 .idea
+/hack/tools/
+/.kvcluster-kubeconfig
+hack/tools/bin/
+

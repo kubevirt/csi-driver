@@ -23,6 +23,7 @@ GO_TEST_PACKAGES :=./pkg/... ./cmd/...
 IMAGE_REGISTRY?=registry.svc.ci.openshift.org
 KUBEVIRT_PROVIDER?=k8s-1.23
 SHA := $(shell git describe --no-match  --always --abbrev=40 --dirty)
+BIN_DIR := bin
 
 export KUBEVIRT_PROVIDER
 
@@ -45,15 +46,17 @@ include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
 
 # You can list all codegen related variables by:
 #   $ make -n --print-data-base | grep ^CODEGEN
-.PHONY: build-image
-build-image:
+.PHONY: image-build
+image-build:
 	source ./hack/cri-bin.sh && \
 	$$CRI_BIN build -t $(IMAGE_REF) --build-arg git_sha=$(SHA) .
 
-.PHONY: push-image
-push-image:
+
+
+.PHONY: image-push
+image-push:
 	source ./hack/cri-bin.sh && \
-	$$CRI_BIN push $(IMAGE_REF)
+	$$CRI_BIN push --tls-verify=false $(IMAGE_REF)
 
 # This will call a macro called "add-bindata" which will generate bindata specific targets based on the parameters:
 # $0 - macro name
@@ -68,11 +71,15 @@ $(call add-bindata,generated,./deploy/...,assets,generated,pkg/generated/bindata
 
 .PHONY: cluster-up
 cluster-up:
-	sh -c "./cluster-up/up.sh"
+	./hack/cluster-up.sh
 
 .PHONY: cluster-down
 cluster-down:
-	sh -c "./cluster-up/down.sh"
+	./kubevirtci down
+
+.PHONY: cluster-sync
+cluster-sync:
+	./hack/cluster-sync.sh
 
 .PHONY: kubevirt-deploy
 kubevirt-deploy:
@@ -82,14 +89,6 @@ kubevirt-deploy:
 mockgen:
 	mockgen -source=pkg/kubevirt/client.go -destination=pkg/kubevirt/mocked_client.go -package=kubevirt
 
-.PHONY: build-functional
-build-functional:
-	./hack/build-tests.sh
-
-.PHONY: test-functional
-test-functional:
-	KUBECONIG=$(shell $(MAKE) kubeconfig) ./hack/run-tests.sh
-
 .PHONY: kubeconfig
 kubeconfig:
 	@ if [ -n "${KUBECONFIG}" ]; then echo ${KUBECONFIG}; else $(MAKE) cluster-up kubevirt-deploy && ./cluster-up/kubeconfig.sh; fi
@@ -97,3 +96,12 @@ kubeconfig:
 .PHONY: linter
 linter:
 	./hack/run-linter.sh
+
+.PHONY: build-e2e-test
+build-e2e-test: ## Builds the test binary
+	BIN_DIR=$(BIN_DIR) ./hack/build-e2e.sh
+
+.PHONY: e2e-test
+e2e-test: build-e2e-test ## run e2e tests
+	BIN_DIR=$(BIN_DIR) ./hack/run-e2e.sh
+
