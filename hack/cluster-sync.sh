@@ -78,4 +78,8 @@ cluster::add_kubeconfig_to_secret
 cluster::install_csi_driver
 cluster::create_storageclass
 
-
+# ******************************************************
+# Wait for driver to rollout
+# ******************************************************
+./kubevirtci kubectl-tenant rollout status ds/kubevirt-csi-node -n kubevirt-csi-driver --timeout=5m
+./kubevirtci kubectl-tenant rollout status deployment/kubevirt-csi-controller -n kubevirt-csi-driver --timeout=5m
