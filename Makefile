@@ -45,15 +45,15 @@ include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
 
 # You can list all codegen related variables by:
 #   $ make -n --print-data-base | grep ^CODEGEN
-.PHONY: docker-build
-docker-build:
+.PHONY: image-build
+image-build:
 	source ./hack/cri-bin.sh && \
 	$$CRI_BIN build -t $(IMAGE_REF) --build-arg git_sha=$(SHA) .
 
 
 
-.PHONY: docker-push
-docker-push:
+.PHONY: image-push
+image-push:
 	source ./hack/cri-bin.sh && \
 	$$CRI_BIN push --tls-verify=false $(IMAGE_REF)
 
@@ -70,11 +70,15 @@ $(call add-bindata,generated,./deploy/...,assets,generated,pkg/generated/bindata
 
 .PHONY: cluster-up
 cluster-up:
-	sh -c "./cluster-up/up.sh"
+	./hack/cluster-up.sh
 
 .PHONY: cluster-down
 cluster-down:
-	sh -c "./cluster-up/down.sh"
+	./kubevirtci down
+
+.PHONY: cluster-sync
+cluster-sync:
+	./hack/cluster-sync.sh
 
 .PHONY: kubevirt-deploy
 kubevirt-deploy:

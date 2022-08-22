@@ -113,8 +113,8 @@ function kubevirtci::down() {
 
 function kubevirtci::build() {
 	export REGISTRY="127.0.0.1:$(cluster-up/cluster-up/cli.sh ports registry)"
-	make docker-build
-	make docker-push
+	make image-build
+	make image-push
 }
 
 function kubevirtci::ssh_tenant() {
@@ -129,7 +129,7 @@ function kubevirtci::ssh_tenant() {
 
 	chmod 600 ${_default_tmp_path}/key.pem
 
-	ssh -o IdentitiesOnly=yes -o "ProxyCommand=$_default_virtctl_path port-forward --stdio=true $vmi_name.$vmi_namespace 22" capk@$vmi_name.$vmi_namespace -i ${_default_tmp_path}/key.pem
+	ssh -o IdentitiesOnly=yes -o "StrictHostKeyChecking=no" -o "ProxyCommand=$_default_virtctl_path port-forward --stdio=true $vmi_name.$vmi_namespace 22" capk@$vmi_name.$vmi_namespace -i ${_default_tmp_path}/key.pem
 
 	rm ${_default_tmp_path}/key.pem
 }
