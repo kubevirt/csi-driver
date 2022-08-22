@@ -3,10 +3,15 @@ package kubecli
 import (
 	"errors"
 
+	clonev1alpha1 "kubevirt.io/api/clone/v1alpha1"
+	v1alpha12 "kubevirt.io/api/clone/v1alpha1"
+
+	"kubevirt.io/api/migrations/v1alpha1"
+
 	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 
-	v1 "kubevirt.io/client-go/api/v1"
+	v1 "kubevirt.io/api/core/v1"
 )
 
 // GetMockKubevirtClientFromClientConfig, MockKubevirtClientInstance are used to create a mechanism
@@ -70,4 +75,37 @@ func NewVirtualMachineInstancePresetList(rss ...v1.VirtualMachineInstancePreset)
 
 func NewMinimalVirtualMachineInstancePreset(name string) *v1.VirtualMachineInstancePreset {
 	return &v1.VirtualMachineInstancePreset{TypeMeta: k8smetav1.TypeMeta{APIVersion: v1.GroupVersion.String(), Kind: "VirtualMachineInstancePreset"}, ObjectMeta: k8smetav1.ObjectMeta{Name: name}}
+}
+
+func NewMinimalMigrationPolicy(name string) *v1alpha1.MigrationPolicy {
+	return &v1alpha1.MigrationPolicy{TypeMeta: k8smetav1.TypeMeta{APIVersion: v1alpha1.GroupVersion.String(), Kind: v1alpha1.MigrationPolicyKind.Kind},
+		ObjectMeta: k8smetav1.ObjectMeta{
+			Name: name,
+		},
+	}
+}
+
+func NewMinimalMigrationPolicyList(policies ...v1alpha1.MigrationPolicy) *v1alpha1.MigrationPolicyList {
+	return &v1alpha1.MigrationPolicyList{TypeMeta: k8smetav1.TypeMeta{APIVersion: v1alpha1.GroupVersion.String(), Kind: v1alpha1.MigrationPolicyListKind.Kind}, Items: policies}
+}
+
+func NewMinimalClone(name string) *v1alpha12.VirtualMachineClone {
+	return NewMinimalCloneWithNS(name, "")
+}
+
+func NewMinimalCloneWithNS(name, namespace string) *v1alpha12.VirtualMachineClone {
+	return &v1alpha12.VirtualMachineClone{
+		TypeMeta: k8smetav1.TypeMeta{APIVersion: clonev1alpha1.SchemeGroupVersion.String(), Kind: clonev1alpha1.VirtualMachineCloneKind.Kind},
+		ObjectMeta: k8smetav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+	}
+}
+
+func NewMinimalCloneList(clones ...v1alpha12.VirtualMachineClone) *v1alpha12.VirtualMachineCloneList {
+	return &v1alpha12.VirtualMachineCloneList{
+		TypeMeta: k8smetav1.TypeMeta{APIVersion: clonev1alpha1.SchemeGroupVersion.String(), Kind: clonev1alpha1.VirtualMachineCloneListKind.Kind},
+		Items:    clones,
+	}
 }

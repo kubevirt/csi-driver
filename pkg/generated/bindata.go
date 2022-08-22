@@ -6,7 +6,6 @@
 // deploy/030-node.yaml
 // deploy/040-controller.yaml
 // deploy/configmap.yaml
-// deploy/example/hco-cr.yaml
 // deploy/example/infracluster-kubeconfig.yaml
 // deploy/example/kubevirt-config.yaml
 // deploy/example/kubevirt.yaml
@@ -584,41 +583,6 @@ func deployConfigmapYaml() (*asset, error) {
 	return a, nil
 }
 
-var _deployExampleHcoCrYaml = []byte(`apiVersion: hco.kubevirt.io/v1beta1
-kind: HyperConverged
-metadata:
-  name: kubevirt-hyperconverged
-  namespace: openshift-cnv
-spec:
-  featureGates:
-    CPUManager: true
-    CPUNodeDiscovery: true
-    DataVolumes: true
-    HotplugVolumes: true
-    LiveMigration: true
-    SRIOV: true
-    Sidecar: true
-    Snapshot: true
-  infra: {}
-  version: v2.6.0
-  workloads: {}
-`)
-
-func deployExampleHcoCrYamlBytes() ([]byte, error) {
-	return _deployExampleHcoCrYaml, nil
-}
-
-func deployExampleHcoCrYaml() (*asset, error) {
-	bytes, err := deployExampleHcoCrYamlBytes()
-	if err != nil {
-		return nil, err
-	}
-
-	info := bindataFileInfo{name: "deploy/example/hco-cr.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
-	a := &asset{bytes: bytes, info: info}
-	return a, nil
-}
-
 var _deployExampleInfraclusterKubeconfigYaml = []byte(`apiVersion: v1
 clusters:
 - cluster:
@@ -947,7 +911,6 @@ var _bindata = map[string]func() (*asset, error){
 	"deploy/030-node.yaml":                        deploy030NodeYaml,
 	"deploy/040-controller.yaml":                  deploy040ControllerYaml,
 	"deploy/configmap.yaml":                       deployConfigmapYaml,
-	"deploy/example/hco-cr.yaml":                  deployExampleHcoCrYaml,
 	"deploy/example/infracluster-kubeconfig.yaml": deployExampleInfraclusterKubeconfigYaml,
 	"deploy/example/kubevirt-config.yaml":         deployExampleKubevirtConfigYaml,
 	"deploy/example/kubevirt.yaml":                deployExampleKubevirtYaml,
@@ -1007,7 +970,6 @@ var _bintree = &bintree{nil, map[string]*bintree{
 		"040-controller.yaml":   {deploy040ControllerYaml, map[string]*bintree{}},
 		"configmap.yaml":        {deployConfigmapYaml, map[string]*bintree{}},
 		"example": {nil, map[string]*bintree{
-			"hco-cr.yaml":                  {deployExampleHcoCrYaml, map[string]*bintree{}},
 			"infracluster-kubeconfig.yaml": {deployExampleInfraclusterKubeconfigYaml, map[string]*bintree{}},
 			"kubevirt-config.yaml":         {deployExampleKubevirtConfigYaml, map[string]*bintree{}},
 			"kubevirt.yaml":                {deployExampleKubevirtYaml, map[string]*bintree{}},

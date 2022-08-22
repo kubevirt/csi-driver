@@ -11,8 +11,6 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"k8s.io/utils/mount"
-
-	"github.com/kubevirt/csi-driver/pkg/kubevirt"
 )
 
 const serialID = "4b13cebc-7406-4c19-8832-7fcb1d4ac8c5"
@@ -20,6 +18,14 @@ const serialID = "4b13cebc-7406-4c19-8832-7fcb1d4ac8c5"
 func TestService(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Service Suite")
+}
+
+type fakeProber struct {
+	err error
+}
+
+func (m *fakeProber) Probe() error {
+	return m.err
 }
 
 var _ = Describe("NodeService", func() {
@@ -43,7 +49,7 @@ var _ = Describe("NodeService", func() {
 	Describe("Staging a volume", func() {
 		Context("With non-matching serial ID", func() {
 			It("should fail", func() {
-				_, err := underTest.NodeStageVolume(nil, &csi.NodeStageVolumeRequest{
+				_, err := underTest.NodeStageVolume(context.TODO(), &csi.NodeStageVolumeRequest{
 					VolumeId:      "pvc-123",
 					VolumeContext: map[string]string{serialParameter: "serial000"},
 				})
@@ -53,7 +59,7 @@ var _ = Describe("NodeService", func() {
 
 		Context("With Block mode", func() {
 			It("should fail", func() {
-				_, err := underTest.NodeStageVolume(nil, &csi.NodeStageVolumeRequest{
+				_, err := underTest.NodeStageVolume(context.TODO(), &csi.NodeStageVolumeRequest{
 					VolumeId: "pvc-123",
 					VolumeCapability: &csi.VolumeCapability{
 						AccessType: &csi.VolumeCapability_Block{
@@ -71,7 +77,7 @@ var _ = Describe("NodeService", func() {
 				underTest.fsMaker = fsMakerFunc(func(device, path string) error {
 					return fmt.Errorf("unknown fs")
 				})
-				_, err := underTest.NodeStageVolume(nil, &csi.NodeStageVolumeRequest{
+				_, err := underTest.NodeStageVolume(context.TODO(), &csi.NodeStageVolumeRequest{
 					VolumeId: "pvc-123",
 					VolumeCapability: &csi.VolumeCapability{
 						AccessType: &csi.VolumeCapability_Mount{
@@ -91,7 +97,7 @@ var _ = Describe("NodeService", func() {
 				underTest.fsMaker = fsMakerFunc(func(device, path string) error {
 					return nil
 				})
-				res, err := underTest.NodeStageVolume(nil, &csi.NodeStageVolumeRequest{
+				res, err := underTest.NodeStageVolume(context.TODO(), &csi.NodeStageVolumeRequest{
 					VolumeId: "pvc-123",
 					VolumeCapability: &csi.VolumeCapability{
 						AccessType: &csi.VolumeCapability_Mount{
@@ -111,7 +117,7 @@ var _ = Describe("NodeService", func() {
 	Describe("Publishing a volume", func() {
 		Context("With non-matching serial ID", func() {
 			It("should fail", func() {
-				res, err := underTest.NodePublishVolume(nil, &csi.NodePublishVolumeRequest{
+				res, err := underTest.NodePublishVolume(context.TODO(), &csi.NodePublishVolumeRequest{
 					VolumeId:      "pvc-123",
 					VolumeContext: map[string]string{serialParameter: "serial000"},
 				})
@@ -126,7 +132,7 @@ var _ = Describe("NodeService", func() {
 					return fmt.Errorf("fail to create path s")
 				})
 
-				res, err := underTest.NodePublishVolume(nil, newPublishRequest())
+				res, err := underTest.NodePublishVolume(context.TODO(), newPublishRequest())
 				Expect(err).To(HaveOccurred())
 				Expect(res).To(BeNil())
 			})
@@ -135,7 +141,7 @@ var _ = Describe("NodeService", func() {
 		Context("With matching serial ID and failing mount", func() {
 			It("should fail", func() {
 				underTest.fsMounter = failingMounter{}
-				res, err := underTest.NodePublishVolume(nil, newPublishRequest())
+				res, err := underTest.NodePublishVolume(context.TODO(), newPublishRequest())
 				Expect(err).To(HaveOccurred())
 				Expect(res).To(BeNil())
 			})
@@ -143,7 +149,7 @@ var _ = Describe("NodeService", func() {
 
 		Context("With matching serial ID and successful mount", func() {
 			It("should succeed", func() {
-				res, err := underTest.NodePublishVolume(nil, newPublishRequest())
+				res, err := underTest.NodePublishVolume(context.TODO(), newPublishRequest())
 				Expect(err).ToNot(HaveOccurred())
 				Expect(res).ToNot(BeNil())
 			})
@@ -154,7 +160,7 @@ var _ = Describe("NodeService", func() {
 		Context("With failing umount", func() {
 			It("should fail", func() {
 				underTest.fsMounter = failingMounter{}
-				res, err := underTest.NodeUnpublishVolume(nil, &csi.NodeUnpublishVolumeRequest{
+				res, err := underTest.NodeUnpublishVolume(context.TODO(), &csi.NodeUnpublishVolumeRequest{
 					VolumeId: "pvc-123",
 				})
 				Expect(err).To(HaveOccurred())
@@ -167,15 +173,15 @@ var _ = Describe("NodeService", func() {
 
 var _ = Describe("IdentityService", func() {
 	var (
-		mockCtrl           *gomock.Controller
-		mockKubevirtClient *kubevirt.MockClient
-		underTest          IdentityService
+		mockCtrl  *gomock.Controller
+		underTest IdentityService
+		mockProbe *fakeProber
 	)
 
 	BeforeEach(func() {
+		mockProbe = &fakeProber{}
 		mockCtrl = gomock.NewController(GinkgoT())
-		mockKubevirtClient = kubevirt.NewMockClient(mockCtrl)
-		underTest = IdentityService{infraClusterClient: mockKubevirtClient}
+		underTest = IdentityService{connectivityProbe: mockProbe}
 	})
 
 	Describe("Get Plugin Info", func() {
@@ -208,7 +214,7 @@ var _ = Describe("IdentityService", func() {
 		)
 		Context("When the probe fails", func() {
 			BeforeEach(func() {
-				mockKubevirtClient.EXPECT().Ping(gomock.Any()).Return(fmt.Errorf("failed to contact infra cluster"))
+				mockProbe.err = fmt.Errorf("error")
 				res, err = underTest.Probe(context.Background(), &csi.ProbeRequest{})
 			})
 			It("should fail with error", func() {
@@ -222,7 +228,7 @@ var _ = Describe("IdentityService", func() {
 		})
 		Context("When the probe succeeds", func() {
 			BeforeEach(func() {
-				mockKubevirtClient.EXPECT().Ping(gomock.Any()).Return(nil)
+				mockProbe.err = nil
 				res, err = underTest.Probe(context.Background(), &csi.ProbeRequest{})
 			})
 			It("should not return error", func() {

@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/resource"
-	v1 "kubevirt.io/client-go/api/v1"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
@@ -13,22 +13,22 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	corev1 "k8s.io/api/core/v1"
-	log "k8s.io/klog"
-	cdiv1 "kubevirt.io/containerized-data-importer/pkg/apis/core/v1alpha1"
+	log "k8s.io/klog/v2"
+	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
-	client "github.com/kubevirt/csi-driver/pkg/kubevirt"
+	client "kubevirt.io/csi-driver/pkg/kubevirt"
 )
 
 const (
 	infraStorageClassNameParameter = "infraStorageClassName"
 	busParameter                   = "bus"
-	busDefaultValue                = "scsi"
+	busDefaultValue                = kubevirtv1.DiskBus("scsi")
 	serialParameter                = "serial"
 )
 
 //ControllerService implements the controller interface. See README for details.
 type ControllerService struct {
-	infraClient           client.Client
+	virtClient            client.Client
 	infraClusterNamespace string
 	infraClusterLabels    map[string]string
 }
@@ -49,8 +49,11 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	volumeMode := getVolumeModeFromRequest(req)
 	storageSize := req.GetCapacityRange().GetRequiredBytes()
 	dvName := req.Name
-	bus, ok := req.Parameters[busParameter]
-	if !ok {
+	value, ok := req.Parameters[busParameter]
+	var bus kubevirtv1.DiskBus
+	if ok {
+		bus = kubevirtv1.DiskBus(value)
+	} else {
 		bus = busDefaultValue
 	}
 
@@ -70,10 +73,11 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 				corev1.ResourceStorage: *resource.NewScaledQuantity(storageSize, 0)},
 		},
 	}
+	dv.Spec.Source = &cdiv1.DataVolumeSource{}
 	dv.Spec.Source.Blank = &cdiv1.DataVolumeBlankImage{}
 
 	// Create DataVolume
-	dv, err := c.infraClient.CreateDataVolume(c.infraClusterNamespace, dv)
+	dv, err := c.virtClient.CreateDataVolume(c.infraClusterNamespace, dv)
 
 	if err != nil {
 		log.Error("Failed creating DataVolume " + dvName)
@@ -89,7 +93,7 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 			CapacityBytes: storageSize,
 			VolumeId:      dvName,
 			VolumeContext: map[string]string{
-				busParameter:    bus,
+				busParameter:    string(bus),
 				serialParameter: serial,
 			},
 		},
@@ -101,7 +105,7 @@ func (c *ControllerService) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	dvName := req.VolumeId
 	log.Infof("Removing data volume with %s", dvName)
 
-	err := c.infraClient.DeleteDataVolume(c.infraClusterNamespace, dvName)
+	err := c.virtClient.DeleteDataVolume(c.infraClusterNamespace, dvName)
 	if err != nil {
 		log.Error("Failed deleting DataVolume " + dvName)
 		return nil, err
@@ -134,24 +138,24 @@ func (c *ControllerService) ControllerPublishVolume(
 	// hotplug DataVolume to VM
 	log.Infof("Start attaching DataVolume %s to VM %s. Volume name: %s. Serial: %s. Bus: %s", dvName, vmName, dvName, serial, bus)
 
-	addVolumeOptions := &v1.AddVolumeOptions{
+	addVolumeOptions := &kubevirtv1.AddVolumeOptions{
 		Name: dvName,
-		Disk: &v1.Disk{
+		Disk: &kubevirtv1.Disk{
 			Serial: serial,
-			DiskDevice: v1.DiskDevice{
-				Disk: &v1.DiskTarget{
-					Bus: bus,
+			DiskDevice: kubevirtv1.DiskDevice{
+				Disk: &kubevirtv1.DiskTarget{
+					Bus: kubevirtv1.DiskBus(bus),
 				},
 			},
 		},
-		VolumeSource: &v1.HotplugVolumeSource{
-			DataVolume: &v1.DataVolumeSource{
+		VolumeSource: &kubevirtv1.HotplugVolumeSource{
+			DataVolume: &kubevirtv1.DataVolumeSource{
 				Name: dvName,
 			},
 		},
 	}
 
-	err = c.infraClient.AddVolumeToVM(c.infraClusterNamespace, vmName, addVolumeOptions)
+	err = c.virtClient.AddVolumeToVM(c.infraClusterNamespace, vmName, addVolumeOptions)
 	if err != nil {
 		log.Error("Failed adding volume " + dvName + " to VM " + vmName)
 		return nil, err
@@ -172,7 +176,7 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 	}
 
 	// Detach DataVolume from VM
-	err = c.infraClient.RemoveVolumeFromVM(c.infraClusterNamespace, vmName, &v1.RemoveVolumeOptions{Name: dvName})
+	err = c.virtClient.RemoveVolumeFromVM(c.infraClusterNamespace, vmName, &kubevirtv1.RemoveVolumeOptions{Name: dvName})
 	if err != nil {
 		log.Error("Failed removing volume " + dvName + " from VM " + vmName)
 		return nil, err
@@ -242,19 +246,19 @@ func (c *ControllerService) ControllerGetVolume(_ context.Context, _ *csi.Contro
 // getVMNameByCSINodeID finds a VM in infra cluster by its firmware uuid. The uid is the ID that the CSI
 // node publishes in NodeGetInfo and then used by CSINode.spec.drivers[].nodeID
 func (c *ControllerService) getVMNameByCSINodeID(nodeID string) (string, error) {
-	list, err := c.infraClient.ListVirtualMachines(c.infraClusterNamespace)
+	list, err := c.virtClient.ListVirtualMachines(c.infraClusterNamespace)
 	if err != nil {
 		log.Error("Failed listing VMIs in infra cluster")
 		return "", err
 	}
 
 	for _, vmi := range list {
-		if strings.ToLower(string(vmi.Spec.Domain.Firmware.UUID)) == strings.ToLower(nodeID) {
+		if strings.EqualFold(string(vmi.Spec.Domain.Firmware.UUID), nodeID) {
 			return vmi.Name, nil
 		}
 	}
 
-	return "", fmt.Errorf("Failed to find VM with domain.firmware.uuid %v", nodeID)
+	return "", fmt.Errorf("failed to find VM with domain.firmware.uuid %v", nodeID)
 }
 
 func getVolumeModeFromRequest(req *csi.CreateVolumeRequest) corev1.PersistentVolumeMode {
