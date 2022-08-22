@@ -23,6 +23,7 @@ GO_TEST_PACKAGES :=./pkg/... ./cmd/...
 IMAGE_REGISTRY?=registry.svc.ci.openshift.org
 KUBEVIRT_PROVIDER?=k8s-1.23
 SHA := $(shell git describe --no-match  --always --abbrev=40 --dirty)
+BIN_DIR := bin
 
 export KUBEVIRT_PROVIDER
 
@@ -88,14 +89,6 @@ kubevirt-deploy:
 mockgen:
 	mockgen -source=pkg/kubevirt/client.go -destination=pkg/kubevirt/mocked_client.go -package=kubevirt
 
-.PHONY: build-functional
-build-functional:
-	./hack/build-tests.sh
-
-.PHONY: test-functional
-test-functional:
-	KUBECONIG=$(shell $(MAKE) kubeconfig) ./hack/run-tests.sh
-
 .PHONY: kubeconfig
 kubeconfig:
 	@ if [ -n "${KUBECONFIG}" ]; then echo ${KUBECONFIG}; else $(MAKE) cluster-up kubevirt-deploy && ./cluster-up/kubeconfig.sh; fi
@@ -103,3 +96,12 @@ kubeconfig:
 .PHONY: linter
 linter:
 	./hack/run-linter.sh
+
+.PHONY: build-e2e-test
+build-e2e-test: ## Builds the test binary
+	BIN_DIR=$(BIN_DIR) ./hack/build-e2e.sh
+
+.PHONY: e2e-test
+e2e-test: build-e2e-test ## run e2e tests
+	BIN_DIR=$(BIN_DIR) ./hack/run-e2e.sh
+

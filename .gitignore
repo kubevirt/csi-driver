@@ -24,3 +24,5 @@ _ci-configs/
 .idea
 /hack/tools/
 /.kvcluster-kubeconfig
+hack/tools/bin/
+
