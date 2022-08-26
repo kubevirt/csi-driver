@@ -29,26 +29,14 @@ spec:
           args:
             - "--endpoint=unix:/csi/csi.sock"
             - "--node-name=$(KUBE_NODE_NAME)"
-            - "--infra-cluster-namespace=$(INFRACLUSTER_NAMESPACE)"
-            - "--infra-cluster-kubeconfig=/var/run/secrets/infracluster/kubeconfig"
+            - "--run-node-service=true"
+            - "--run-controller-service=false"
           env:
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            - name: INFRACLUSTER_NAMESPACE
-              valueFrom:
-                configMapKeyRef:
-                  name: driver-config
-                  key: infraClusterNamespace
-            - name: INFRACLUSTER_LABELS
-              valueFrom:
-                configMapKeyRef:
-                  name: driver-config
-                  key: infraClusterLabels
           volumeMounts:
-            - name: infracluster
-              mountPath: "/var/run/secrets/infracluster"
             - name: kubelet-dir
               mountPath: /var/lib/kubelet
               mountPropagation: "Bidirectional"
@@ -112,9 +100,6 @@ spec:
               memory: 20Mi
               cpu: 5m
       volumes:
-        - name: infracluster
-          secret:
-            secretName: infra-cluster-credentials
         - name: kubelet-dir
           hostPath:
             path: /var/lib/kubelet

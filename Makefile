@@ -77,9 +77,15 @@ cluster-up:
 cluster-down:
 	./kubevirtci down
 
+# This deploys both controller and ds in tenant
 .PHONY: cluster-sync
 cluster-sync:
 	./hack/cluster-sync.sh
+
+# This deploys the controller in the infra cluster and ds in tenant
+.PHONY: cluster-sync-split
+cluster-sync-split:
+	./hack/cluster-sync-split.sh
 
 .PHONY: kubevirt-deploy
 kubevirt-deploy:
