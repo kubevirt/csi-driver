@@ -17,7 +17,7 @@ function cluster::install_csi_driver_ds() {
 
 	./kubevirtci kubectl-tenant apply -f ${RESOURCES_DIR}/000-namespace.yaml
 	./kubevirtci kubectl-tenant apply -f ${RESOURCES_DIR}/000-csi-driver.yaml
-	./kubevirtci kubectl-tenant apply -f ${RESOURCES_DIR}/020-autorization.yaml
+	./kubevirtci kubectl-tenant apply -f ${RESOURCES_DIR}/020-node-authorization.yaml
 	./kubevirtci kubectl-tenant apply -f ${TMP_RESOURCES_DIR}/030-node.yaml
 }
 
@@ -31,6 +31,8 @@ function cluster::install_csi_driver_controller() {
 	./kubevirtci kubectl -n kvcluster apply -f ${RESOURCES_DIR}/configmap-template.yaml
 
 	# TODO Eventually find way to use a non-admin tenant node kubeconfig
+	# using the SA+RBAC in the 020-controller-authorization.yaml file
+	#./kubevirtci kubectl-tenant apply -f ${RESOURCES_DIR}/020-controller-authorization.yaml
 	./kubevirtci kubectl -n kvcluster apply -f ${TMP_RESOURCES_DIR}/040-controller.yaml
 }
 
