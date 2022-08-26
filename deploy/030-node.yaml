@@ -15,7 +15,6 @@ spec:
       labels:
         app: kubevirt-csi-driver
     spec:
-      hostNetwork: true
       serviceAccount: kubevirt-csi-node-sa
       priorityClassName: system-node-critical
       tolerations:
@@ -61,7 +60,6 @@ spec:
               mountPath: /run/udev
           ports:
             - name: healthz
-              # due to hostNetwork, this port is open on a node!
               containerPort: 10300
               protocol: TCP
           livenessProbe:
