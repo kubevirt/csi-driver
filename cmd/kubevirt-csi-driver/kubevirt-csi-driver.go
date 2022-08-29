@@ -76,10 +76,6 @@ func handle() {
 		klog.Fatalf("Failed to build in cluster config: %v", err)
 	}
 
-	if *tenantClusterKubeconfig == "" && *infraClusterKubeconfig == "" {
-		klog.Fatalf("either infra-cluster-kubeconfig or tenant-cluster-kubeconfig must be defined")
-	}
-
 	if *tenantClusterKubeconfig != "" {
 		tenantRestConfig, err = clientcmd.BuildConfigFromFlags("", *tenantClusterKubeconfig)
 		if err != nil {
