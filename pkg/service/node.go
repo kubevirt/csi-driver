@@ -42,8 +42,9 @@ func NewNodeService(nodeId string) *NodeService {
 	return &NodeService{
 		nodeID: nodeId,
 		deviceLister: deviceListerFunc(func() ([]byte, error) {
+			klog.V(5).Info("lsblk -nJo SERIAL,FSTYPE,NAME")
 			// must be lsblk recent enough for json format
-			return exec.Command("lsblk", "-nJo", "SERIAL,PATH,FSTYPE").Output()
+			return exec.Command("lsblk", "-nJo", "SERIAL,FSTYPE,NAME").Output()
 		}),
 		fsMaker: fsMakerFunc(func(device, fsType string) error {
 			return makeFS(device, fsType)
@@ -200,13 +201,13 @@ type devices struct {
 
 type device struct {
 	SerialID string `json:"serial"`
-	Path     string `json:"path"`
+	Path     string `json:"path,omitempty"`
+	Name     string `json:"name"`
 	Fstype   string `json:"fstype"`
 }
 
 func getDeviceBySerialID(serialID string, deviceLister deviceLister) (device, error) {
 	klog.Infof("Get the device details by serialID %s", serialID)
-	klog.V(5).Info("lsblk -nJo SERIAL,PATH,FSTYPE")
 
 	out, err := deviceLister.List()
 	exitError, incompleteCmd := err.(*exec.ExitError)
@@ -223,6 +224,7 @@ func getDeviceBySerialID(serialID string, deviceLister deviceLister) (device, er
 
 	for _, d := range devices.BlockDevices {
 		if d.SerialID == serialID {
+			d.Path = "/dev/" + d.Name
 			return d, nil
 		}
 	}
