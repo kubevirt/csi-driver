@@ -20,12 +20,14 @@
 package kubecli
 
 import (
+	"context"
+
 	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 
-	v1 "kubevirt.io/client-go/api/v1"
+	v1 "kubevirt.io/api/core/v1"
 )
 
 func (k *kubevirt) VirtualMachineInstanceMigration(namespace string) VirtualMachineInstanceMigrationInterface {
@@ -43,13 +45,14 @@ type migration struct {
 }
 
 // Create new VirtualMachineInstanceMigration in the cluster to specified namespace
-func (o *migration) Create(newMigration *v1.VirtualMachineInstanceMigration) (*v1.VirtualMachineInstanceMigration, error) {
+func (o *migration) Create(newMigration *v1.VirtualMachineInstanceMigration, options *k8smetav1.CreateOptions) (*v1.VirtualMachineInstanceMigration, error) {
 	newMigrationResult := &v1.VirtualMachineInstanceMigration{}
 	err := o.restClient.Post().
 		Resource(o.resource).
 		Namespace(o.namespace).
 		Body(newMigration).
-		Do().
+		VersionedParams(options, scheme.ParameterCodec).
+		Do(context.Background()).
 		Into(newMigrationResult)
 
 	newMigrationResult.SetGroupVersionKind(v1.VirtualMachineInstanceMigrationGroupVersionKind)
@@ -65,7 +68,7 @@ func (o *migration) Get(name string, options *k8smetav1.GetOptions) (*v1.Virtual
 		Namespace(o.namespace).
 		Name(name).
 		VersionedParams(options, scheme.ParameterCodec).
-		Do().
+		Do(context.Background()).
 		Into(newVm)
 
 	newVm.SetGroupVersionKind(v1.VirtualMachineInstanceMigrationGroupVersionKind)
@@ -81,7 +84,7 @@ func (o *migration) Update(migration *v1.VirtualMachineInstanceMigration) (*v1.V
 		Namespace(o.namespace).
 		Name(migration.Name).
 		Body(migration).
-		Do().
+		Do(context.Background()).
 		Into(updatedVm)
 
 	updatedVm.SetGroupVersionKind(v1.VirtualMachineInstanceMigrationGroupVersionKind)
@@ -96,7 +99,7 @@ func (o *migration) Delete(name string, options *k8smetav1.DeleteOptions) error 
 		Namespace(o.namespace).
 		Name(name).
 		Body(options).
-		Do().
+		Do(context.Background()).
 		Error()
 
 	return err
@@ -109,7 +112,7 @@ func (o *migration) List(options *k8smetav1.ListOptions) (*v1.VirtualMachineInst
 		Resource(o.resource).
 		Namespace(o.namespace).
 		VersionedParams(options, scheme.ParameterCodec).
-		Do().
+		Do(context.Background()).
 		Into(newVmList)
 
 	for _, migration := range newVmList.Items {
@@ -127,7 +130,7 @@ func (v *migration) Patch(name string, pt types.PatchType, data []byte, subresou
 		SubResource(subresources...).
 		Name(name).
 		Body(data).
-		Do().
+		Do(context.Background()).
 		Into(result)
 	return result, err
 }
@@ -140,7 +143,7 @@ func (v *migration) PatchStatus(name string, pt types.PatchType, data []byte) (r
 		SubResource("status").
 		Name(name).
 		Body(data).
-		Do().
+		Do(context.Background()).
 		Into(result)
 	return
 }
@@ -153,7 +156,7 @@ func (v *migration) UpdateStatus(vmi *v1.VirtualMachineInstanceMigration) (resul
 		Resource(v.resource).
 		SubResource("status").
 		Body(vmi).
-		Do().
+		Do(context.Background()).
 		Into(result)
 	result.SetGroupVersionKind(v1.VirtualMachineInstanceMigrationGroupVersionKind)
 	return

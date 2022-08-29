@@ -15,14 +15,17 @@
 
 SHELL :=/bin/bash
 
-TARGET_NAME=kubevirt-csi-driver
-IMAGE_REF=quay.io/kubevirt/$(TARGET_NAME):latest
+TARGET_NAME = kubevirt-csi-driver
+REGISTRY ?= quay.io/kubevirt
+TAG ?= latest
+IMAGE_REF=$(REGISTRY)/$(TARGET_NAME):$(TAG)
 GO_TEST_PACKAGES :=./pkg/... ./cmd/...
 IMAGE_REGISTRY?=registry.svc.ci.openshift.org
+KUBEVIRT_PROVIDER?=k8s-1.23
+SHA := $(shell git describe --no-match  --always --abbrev=40 --dirty)
+BIN_DIR := bin
 
-export KUBEVIRTCI_TAG=2103301354-4f5cc5f
-export KUBEVIRTCI_RUNTIME=podman
-export KUBEVIRT_PROVIDER=k8s-1.20
+export KUBEVIRT_PROVIDER
 
 # You can customize go tools depending on the directory layout.
 # example:
@@ -34,7 +37,6 @@ export KUBEVIRT_PROVIDER=k8s-1.20
 include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
 	golang.mk \
 	targets/openshift/deps-gomod.mk \
-	targets/openshift/images.mk \
 	targets/openshift/bindata.mk \
 )
 
@@ -44,14 +46,17 @@ include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
 
 # You can list all codegen related variables by:
 #   $ make -n --print-data-base | grep ^CODEGEN
+.PHONY: image-build
+image-build:
+	source ./hack/cri-bin.sh && \
+	$$CRI_BIN build -t $(IMAGE_REF) --build-arg git_sha=$(SHA) .
 
-# This will call a macro called "build-image" which will generate image specific targets based on the parameters:
-# $1 - target name
-# $2 - image ref
-# $3 - Dockerfile path
-# $4 - context
-# It will generate target "image-$(1)" for builing the image an binding it as a prerequisite to target "images".
-$(call build-image,$(TARGET_NAME),$(IMAGE_REF),./Dockerfile,.)
+
+
+.PHONY: image-push
+image-push:
+	source ./hack/cri-bin.sh && \
+	$$CRI_BIN push $$PUSH_FLAGS $(IMAGE_REF)
 
 # This will call a macro called "add-bindata" which will generate bindata specific targets based on the parameters:
 # $0 - macro name
@@ -66,30 +71,43 @@ $(call add-bindata,generated,./deploy/...,assets,generated,pkg/generated/bindata
 
 .PHONY: cluster-up
 cluster-up:
-	sh -c "./cluster-up/up.sh"
+	./hack/cluster-up.sh
 
 .PHONY: cluster-down
 cluster-down:
-	sh -c "./cluster-up/down.sh"
+	./kubevirtci down
+
+# This deploys both controller and ds in tenant
+.PHONY: cluster-sync
+cluster-sync:
+	./hack/cluster-sync.sh
+
+# This deploys the controller in the infra cluster and ds in tenant
+.PHONY: cluster-sync-split
+cluster-sync-split:
+	./hack/cluster-sync-split.sh
 
 .PHONY: kubevirt-deploy
 kubevirt-deploy:
-	sh -c "./cluster-up/kubevirt-deploy.sh"
+	sh -c "./hack/kubevirt-deploy.sh"
 
 .PHONY: mockgen
 mockgen:
 	mockgen -source=pkg/kubevirt/client.go -destination=pkg/kubevirt/mocked_client.go -package=kubevirt
 
-.PHONY: build-functional
-build-functional:
-	./hack/build-tests.sh
-
-.PHONY: test-functional
-test-functional:
-	KUBECONIG=$(shell $(MAKE) kubeconfig) ./hack/run-tests.sh
-
 .PHONY: kubeconfig
 kubeconfig:
 	@ if [ -n "${KUBECONFIG}" ]; then echo ${KUBECONFIG}; else $(MAKE) cluster-up kubevirt-deploy && ./cluster-up/kubeconfig.sh; fi
 
+.PHONY: linter
+linter:
+	./hack/run-linter.sh
+
+.PHONY: build-e2e-test
+build-e2e-test: ## Builds the test binary
+	BIN_DIR=$(BIN_DIR) ./hack/build-e2e.sh
+
+.PHONY: e2e-test
+e2e-test: build-e2e-test ## run e2e tests
+	BIN_DIR=$(BIN_DIR) ./hack/run-e2e.sh
 

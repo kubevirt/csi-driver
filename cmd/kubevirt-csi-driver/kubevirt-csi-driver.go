@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -12,25 +13,29 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/klog"
+	klog "k8s.io/klog/v2"
 
-	"github.com/kubevirt/csi-driver/pkg/kubevirt"
-	"github.com/kubevirt/csi-driver/pkg/service"
+	"kubevirt.io/csi-driver/pkg/kubevirt"
+	"kubevirt.io/csi-driver/pkg/service"
 )
 
 var (
 	endpoint               = flag.String("endpoint", "unix:/csi/csi.sock", "CSI endpoint")
-	namespace              = flag.String("namespace", "", "Namespace to run the controllers on")
 	nodeName               = flag.String("node-name", "", "The node name - the node this pods runs on")
 	infraClusterNamespace  = flag.String("infra-cluster-namespace", "", "The infra-cluster namespace")
-	infraClusterKubeconfig = flag.String("infra-cluster-kubeconfig", "", "the infra-cluster kubeconfig file")
+	infraClusterKubeconfig = flag.String("infra-cluster-kubeconfig", "", "the infra-cluster kubeconfig file. If not set, defaults to in cluster config.")
 	infraClusterLabels     = flag.String("infra-cluster-labels", "", "The infra-cluster labels to use when creating resources in infra cluster. 'name=value' fields separated by a comma")
+
+	tenantClusterKubeconfig = flag.String("tenant-cluster-kubeconfig", "", "the tenant cluster kubeconfig file. If not set, defaults to in cluster config.")
+
+	runNodeService       = flag.Bool("run-node-service", true, "Specifies rather or not to run the node service, the default is true")
+	runControllerService = flag.Bool("run-controller-service", true, "Specifies rather or not to run the controller service, the default is true")
 )
 
 func init() {
 	err := flag.Set("logtostderr", "true")
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("can't set the logtostderr flags; %s", err.Error()))
 	}
 	// make glog and klog coexist
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -41,10 +46,9 @@ func init() {
 		f2 := klogFlags.Lookup(f1.Name)
 		if f2 != nil {
 			value := f1.Value.String()
-			err := f2.Value.Set(value)
+			err = f2.Value.Set(value)
 			if err != nil {
-				errMsg := fmt.Sprintf("Error in command line flag: %s when trying to set value: %s . %v", f1.Name, value, err)
-				panic(errMsg)
+				panic(fmt.Sprintf("can't set the %s flags; %s", f1.Name, err.Error()))
 			}
 		}
 	})
@@ -58,34 +62,53 @@ func main() {
 }
 
 func handle() {
+	var tenantRestConfig *rest.Config
+	var infraRestConfig *rest.Config
+	var identityClientset *kubernetes.Clientset
+
 	if service.VendorVersion == "" {
 		klog.Fatalf("VendorVersion must be set at compile time")
 	}
 	klog.V(2).Infof("Driver vendor %v %v", service.VendorName, service.VendorVersion)
 
-	tenantConfig, err := rest.InClusterConfig()
+	inClusterConfig, err := rest.InClusterConfig()
 	if err != nil {
-		klog.Fatalf("Failed to build tenant cluster config: %v", err)
+		klog.Fatalf("Failed to build in cluster config: %v", err)
 	}
 
-	tenantClientSet, err := kubernetes.NewForConfig(tenantConfig)
+	if *tenantClusterKubeconfig != "" {
+		tenantRestConfig, err = clientcmd.BuildConfigFromFlags("", *tenantClusterKubeconfig)
+		if err != nil {
+			klog.Fatalf("failed to build tenant cluster config: %v", err)
+		}
+
+	} else {
+		tenantRestConfig = inClusterConfig
+	}
+
+	if *infraClusterKubeconfig != "" {
+		infraRestConfig, err = clientcmd.BuildConfigFromFlags("", *infraClusterKubeconfig)
+		if err != nil {
+			klog.Fatalf("failed to build infra cluster config: %v", err)
+		}
+
+	} else {
+		infraRestConfig = inClusterConfig
+	}
+
+	tenantClientSet, err := kubernetes.NewForConfig(tenantRestConfig)
 	if err != nil {
 		klog.Fatalf("Failed to build tenant client set: %v", err)
 	}
 
-	infraClusterConfig, err := clientcmd.BuildConfigFromFlags("", *infraClusterKubeconfig)
-	if err != nil {
-		klog.Fatalf("Failed to build infra cluster config: %v", err)
-	}
-
-	virtClient, err := kubevirt.NewClient(infraClusterConfig)
+	virtClient, err := kubevirt.NewClient(infraRestConfig)
 	if err != nil {
 		klog.Fatal(err)
 	}
 
 	var nodeID string
 	if *nodeName != "" {
-		node, err := tenantClientSet.CoreV1().Nodes().Get(*nodeName, v1.GetOptions{})
+		node, err := tenantClientSet.CoreV1().Nodes().Get(context.TODO(), *nodeName, v1.GetOptions{})
 		if err != nil {
 			klog.Fatal(fmt.Errorf("failed to find node by name %v: %v", nodeName, err))
 		}
@@ -94,9 +117,23 @@ func handle() {
 		klog.Infof("Node name: %v, Node ID: %s", nodeName, nodeID)
 	}
 
+	identityClientset = tenantClientSet
+	if *runControllerService {
+		identityClientset, err = kubernetes.NewForConfig(infraRestConfig)
+		if err != nil {
+			klog.Fatalf("Failed to build infra client set: %v", err)
+		}
+	}
+
 	infraClusterLabelsMap := parseLabels()
 
-	driver := service.NewKubevirtCSIDriver(virtClient, *infraClusterNamespace, infraClusterLabelsMap, nodeID)
+	driver := service.NewKubevirtCSIDriver(virtClient,
+		identityClientset,
+		*infraClusterNamespace,
+		infraClusterLabelsMap,
+		nodeID,
+		*runNodeService,
+		*runControllerService)
 
 	driver.Run(*endpoint)
 }

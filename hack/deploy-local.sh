@@ -5,7 +5,7 @@
 PROJECT_ROOT=$(dirname "${BASH_SOURCE}")/..
 
 if which kubectl &>/dev/null; then
-    CLI=kubectl
+    CLI=./cluster-up/kubectl.sh
 elif which oc &>/dev/null; then
     CLI=oc
 else

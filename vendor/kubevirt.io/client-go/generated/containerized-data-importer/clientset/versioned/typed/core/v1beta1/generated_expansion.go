@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The KubeVirt Authors.
+Copyright 2022 The KubeVirt Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,4 +22,12 @@ type CDIExpansion interface{}
 
 type CDIConfigExpansion interface{}
 
+type DataImportCronExpansion interface{}
+
+type DataSourceExpansion interface{}
+
 type DataVolumeExpansion interface{}
+
+type ObjectTransferExpansion interface{}
+
+type StorageProfileExpansion interface{}

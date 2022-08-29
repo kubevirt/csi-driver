@@ -2,9 +2,9 @@ package service
 
 import (
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/klog"
+	klog "k8s.io/klog/v2"
 
-	"github.com/kubevirt/csi-driver/pkg/kubevirt"
+	"kubevirt.io/csi-driver/pkg/kubevirt"
 )
 
 var (
@@ -19,22 +19,32 @@ type KubevirtCSIDriver struct {
 	*IdentityService
 	*ControllerService
 	*NodeService
-	infraClusterClient kubernetes.Clientset
-	Client             kubevirt.Client
+	Client kubevirt.Client
 }
 
-func NewKubevirtCSIDriver(infraClusterClient kubevirt.Client, infraClusterNamespace string, infraClusterLabels map[string]string, nodeID string) *KubevirtCSIDriver {
+func NewKubevirtCSIDriver(virtClient kubevirt.Client,
+	identityClientset *kubernetes.Clientset,
+	infraClusterNamespace string,
+	infraClusterLabels map[string]string,
+	nodeID string,
+	runNodeService bool,
+	runControllerService bool) *KubevirtCSIDriver {
 	d := KubevirtCSIDriver{
-		IdentityService: &IdentityService{
-			infraClusterClient: infraClusterClient,
-		},
-		ControllerService: &ControllerService{
-			infraClient:           infraClusterClient,
+		IdentityService: NewIdentityService(identityClientset),
+	}
+
+	if runControllerService {
+		d.ControllerService = &ControllerService{
+			virtClient:            virtClient,
 			infraClusterNamespace: infraClusterNamespace,
 			infraClusterLabels:    infraClusterLabels,
-		},
-		NodeService: NewNodeService(infraClusterClient, nodeID),
+		}
 	}
+
+	if runNodeService {
+		d.NodeService = NewNodeService(nodeID)
+	}
+
 	return &d
 }
 

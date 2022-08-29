@@ -11,20 +11,20 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	kubevirtapiv1 "kubevirt.io/client-go/api/v1"
-	cdiv1alpha1 "kubevirt.io/containerized-data-importer/pkg/apis/core/v1alpha1"
+	kubevirtv1 "kubevirt.io/api/core/v1"
+	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 )
 
 func TestCreateVolume_Success(t *testing.T) {
 	client := &ControllerClientMock{t: t}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
-	response, err := controller.CreateVolume(nil, getCreateVolumeRequest())
+	response, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest())
 	assert.Nil(t, err)
 
 	assert.Equal(t, testVolumeName, response.GetVolume().GetVolumeId())
 	assert.Equal(t, testDataVolumeUID, response.GetVolume().VolumeContext[serialParameter])
-	assert.Equal(t, getBusType(), response.GetVolume().VolumeContext[busParameter])
+	assert.Equal(t, string(getBusType()), response.GetVolume().VolumeContext[busParameter])
 	assert.Equal(t, testVolumeStorageSize, response.GetVolume().GetCapacityBytes())
 }
 
@@ -35,7 +35,7 @@ func TestCreateVolume_SuccessBlockDevice(t *testing.T) {
 	client := &ControllerClientMock{t: t}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
-	_, err := controller.CreateVolume(nil, getCreateVolumeRequest()) // The call to client.CreateDataVolume will test volume mode
+	_, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest()) // The call to client.CreateDataVolume will test volume mode
 	assert.Nil(t, err)
 }
 
@@ -43,7 +43,7 @@ func TestCreateVolume_CreateDataVolumeFail(t *testing.T) {
 	client := &ControllerClientMock{t: t, FailCreateDataVolume: true}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
-	_, err := controller.CreateVolume(nil, getCreateVolumeRequest())
+	_, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest())
 	assert.NotNil(t, err)
 }
 
@@ -51,20 +51,20 @@ func TestCreateVolume_CustomBus(t *testing.T) {
 	client := &ControllerClientMock{t: t}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
-	busTypeLocal := "virtio"
+	busTypeLocal := kubevirtv1.DiskBusVirtio
 	testBusType = &busTypeLocal
 
-	response, err := controller.CreateVolume(nil, getCreateVolumeRequest())
+	response, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest())
 	assert.Nil(t, err)
 
-	assert.Equal(t, response.GetVolume().GetVolumeContext()[busParameter], *testBusType)
+	assert.Equal(t, response.GetVolume().GetVolumeContext()[busParameter], string(*testBusType))
 }
 
 func TestDeleteVolume_Success(t *testing.T) {
 	client := &ControllerClientMock{t: t}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
-	_, err := controller.DeleteVolume(nil, getDeleteVolumeRequest())
+	_, err := controller.DeleteVolume(context.TODO(), getDeleteVolumeRequest())
 	assert.Nil(t, err)
 }
 
@@ -72,7 +72,7 @@ func TestDeleteVolume_Fail(t *testing.T) {
 	client := &ControllerClientMock{t: t, FailDeleteDataVolume: true}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
-	_, err := controller.DeleteVolume(nil, getDeleteVolumeRequest())
+	_, err := controller.DeleteVolume(context.TODO(), getDeleteVolumeRequest())
 	assert.NotNil(t, err)
 }
 
@@ -80,7 +80,7 @@ func TestPublishVolume_Success(t *testing.T) {
 	client := &ControllerClientMock{t: t}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
-	_, err := controller.ControllerPublishVolume(nil, getPublishVolumeRequest()) // AddVolumeToVM tests the hotplug request
+	_, err := controller.ControllerPublishVolume(context.TODO(), getPublishVolumeRequest()) // AddVolumeToVM tests the hotplug request
 	assert.Nil(t, err)
 }
 
@@ -88,7 +88,7 @@ func TestUnpublishVolume_Success(t *testing.T) {
 	client := &ControllerClientMock{t: t}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
 
-	_, err := controller.ControllerUnpublishVolume(nil, getUnpublishVolumeRequest())
+	_, err := controller.ControllerUnpublishVolume(context.TODO(), getUnpublishVolumeRequest())
 	assert.Nil(t, err)
 }
 
@@ -97,20 +97,20 @@ func TestUnpublishVolume_Success(t *testing.T) {
 //
 
 var (
-	testVolumeName                    = "pvc-3d8be521-6e4b-4a87-add4-1961bf62f4ea"
-	testInfraStorageClassName         = "infra-storage"
-	testVolumeStorageSize     int64   = 1024 * 1024 * 1024 * 3
-	testInfraNamespace                = "tenant-cluster-2"
-	testNodeID                        = "6FC9C805-B3A0-570B-9D1B-3B8B9CFC9FB7"
-	testVMName                        = "test-vm"
-	testVMUID                         = "6fc9c805-b3a0-570b-9d1b-3b8b9cfc9fb7"
-	testDataVolumeUID                 = "2d0111d5-494f-4731-8f67-122b27d3c366"
-	testVolumeMode                    = corev1.PersistentVolumeFilesystem
-	testBusType               *string = nil // nil==do not pass bus type
-	testInfraLabels                   = map[string]string{"infra-label-name": "infra-label-value"}
+	testVolumeName                                = "pvc-3d8be521-6e4b-4a87-add4-1961bf62f4ea"
+	testInfraStorageClassName                     = "infra-storage"
+	testVolumeStorageSize     int64               = 1024 * 1024 * 1024 * 3
+	testInfraNamespace                            = "tenant-cluster-2"
+	testNodeID                                    = "6FC9C805-B3A0-570B-9D1B-3B8B9CFC9FB7"
+	testVMName                                    = "test-vm"
+	testVMUID                                     = "6fc9c805-b3a0-570b-9d1b-3b8b9cfc9fb7"
+	testDataVolumeUID                             = "2d0111d5-494f-4731-8f67-122b27d3c366"
+	testVolumeMode                                = corev1.PersistentVolumeFilesystem
+	testBusType               *kubevirtv1.DiskBus = nil // nil==do not pass bus type
+	testInfraLabels                               = map[string]string{"infra-label-name": "infra-label-value"}
 )
 
-func getBusType() string {
+func getBusType() kubevirtv1.DiskBus {
 	if testBusType == nil {
 		return busDefaultValue
 	} else {
@@ -135,7 +135,7 @@ func getCreateVolumeRequest() *csi.CreateVolumeRequest {
 	parameters := map[string]string{}
 	parameters[infraStorageClassNameParameter] = testInfraStorageClassName
 	if testBusType != nil {
-		parameters[busParameter] = *testBusType
+		parameters[busParameter] = string(*testBusType)
 	}
 
 	return &csi.CreateVolumeRequest{
@@ -159,7 +159,7 @@ func getPublishVolumeRequest() *csi.ControllerPublishVolumeRequest {
 		VolumeId: testVolumeName,
 		NodeId:   testNodeID,
 		VolumeContext: map[string]string{
-			busParameter:    getBusType(),
+			busParameter:    string(getBusType()),
 			serialParameter: testDataVolumeUID,
 		},
 	}
@@ -194,19 +194,19 @@ func (c *ControllerClientMock) ListNamespace(ctx context.Context) (*corev1.Names
 func (c *ControllerClientMock) GetStorageClass(ctx context.Context, name string) (*storagev1.StorageClass, error) {
 	return nil, errors.New("Not implemented")
 }
-func (c *ControllerClientMock) ListVirtualMachines(namespace string) ([]kubevirtapiv1.VirtualMachineInstance, error) {
+func (c *ControllerClientMock) ListVirtualMachines(namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
 	if c.FailListVirtualMachines {
 		return nil, errors.New("ListVirtualMachines failed")
 	}
 
-	return []kubevirtapiv1.VirtualMachineInstance{
-		kubevirtapiv1.VirtualMachineInstance{
+	return []kubevirtv1.VirtualMachineInstance{
+		{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: testVMName,
 			},
-			Spec: kubevirtapiv1.VirtualMachineInstanceSpec{
-				Domain: kubevirtapiv1.DomainSpec{
-					Firmware: &kubevirtapiv1.Firmware{
+			Spec: kubevirtv1.VirtualMachineInstanceSpec{
+				Domain: kubevirtv1.DomainSpec{
+					Firmware: &kubevirtv1.Firmware{
 						UUID: types.UID(testVMUID),
 					},
 				},
@@ -224,7 +224,7 @@ func (c *ControllerClientMock) DeleteDataVolume(namespace string, name string) e
 
 	return nil
 }
-func (c *ControllerClientMock) CreateDataVolume(namespace string, dataVolume *cdiv1alpha1.DataVolume) (*cdiv1alpha1.DataVolume, error) {
+func (c *ControllerClientMock) CreateDataVolume(namespace string, dataVolume *cdiv1.DataVolume) (*cdiv1.DataVolume, error) {
 	if c.FailCreateDataVolume {
 		return nil, errors.New("CreateDataVolume failed")
 	}
@@ -239,22 +239,22 @@ func (c *ControllerClientMock) CreateDataVolume(namespace string, dataVolume *cd
 	assert.Equal(c.t, testInfraLabels, dataVolume.Labels)
 
 	// Input OK. Now prepare result
-	result := &cdiv1alpha1.DataVolume{}
+	result := &cdiv1.DataVolume{}
 
 	result.SetUID(types.UID(testDataVolumeUID))
 
 	return result, nil
 }
-func (c *ControllerClientMock) GetDataVolume(namespace string, name string) (*cdiv1alpha1.DataVolume, error) {
+func (c *ControllerClientMock) GetDataVolume(namespace string, name string) (*cdiv1.DataVolume, error) {
 	return nil, errors.New("Not implemented")
 }
-func (c *ControllerClientMock) ListDataVolumes(namespace string) ([]cdiv1alpha1.DataVolume, error) {
+func (c *ControllerClientMock) ListDataVolumes(namespace string) ([]cdiv1.DataVolume, error) {
 	return nil, errors.New("Not implemented")
 }
-func (c *ControllerClientMock) GetVMI(ctx context.Context, namespace string, name string) (*kubevirtapiv1.VirtualMachineInstance, error) {
+func (c *ControllerClientMock) GetVMI(ctx context.Context, namespace string, name string) (*kubevirtv1.VirtualMachineInstance, error) {
 	return nil, errors.New("Not implemented")
 }
-func (c *ControllerClientMock) AddVolumeToVM(namespace string, vmName string, addVolumeOptions *kubevirtapiv1.AddVolumeOptions) error {
+func (c *ControllerClientMock) AddVolumeToVM(namespace string, vmName string, addVolumeOptions *kubevirtv1.AddVolumeOptions) error {
 	if c.FailAddVolumeToVM {
 		return errors.New("AddVolumeToVM failed")
 	}
@@ -268,7 +268,7 @@ func (c *ControllerClientMock) AddVolumeToVM(namespace string, vmName string, ad
 
 	return nil
 }
-func (c *ControllerClientMock) RemoveVolumeFromVM(namespace string, vmName string, removeVolumeOptions *kubevirtapiv1.RemoveVolumeOptions) error {
+func (c *ControllerClientMock) RemoveVolumeFromVM(namespace string, vmName string, removeVolumeOptions *kubevirtv1.RemoveVolumeOptions) error {
 	if c.FailRemoveVolumeFromVM {
 		return errors.New("RemoveVolumeFromVM failed")
 	}
