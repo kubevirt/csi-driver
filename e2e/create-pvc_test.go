@@ -68,65 +68,17 @@ var _ = Describe("CreatePVC", func() {
 
 	It("creates a pvc and attaches to pod", Label("pvcCreation"), func() {
 
-		volumeName := "pv1"
-		image := "busybox"
 		podName := "test-pod"
 		pvcName := "test-pvc"
 		cmd := []string{"sh"}
 		args := []string{"-c", "while true; do ls -la /opt; echo this file system was made availble using kubevirt-csi-driver; mktmp /opt/test-XXXXXX; sleep 1m; done"}
 		storageClassName := "kubevirt"
 
-		quantity, err := resource.ParseQuantity("1Gi")
-		Expect(err).ToNot(HaveOccurred())
-
-		pvc := &k8sv1.PersistentVolumeClaim{
-			ObjectMeta: metav1.ObjectMeta{Name: pvcName},
-			Spec: k8sv1.PersistentVolumeClaimSpec{
-				AccessModes: []k8sv1.PersistentVolumeAccessMode{k8sv1.ReadWriteOnce},
-				Resources: k8sv1.ResourceRequirements{
-					Requests: k8sv1.ResourceList{
-						"storage": quantity,
-					},
-				},
-				StorageClassName: &storageClassName,
-			},
-		}
-
-		pod := &k8sv1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: podName,
-			},
-			Spec: k8sv1.PodSpec{
-				RestartPolicy: k8sv1.RestartPolicyNever,
-				Containers: []k8sv1.Container{
-					{
-						Name:    podName,
-						Image:   image,
-						Command: cmd,
-						Args:    args,
-						VolumeMounts: []k8sv1.VolumeMount{
-							{
-								Name:      volumeName,
-								MountPath: "/opt",
-							},
-						},
-					},
-				},
-				Volumes: []k8sv1.Volume{
-					{
-						Name: volumeName,
-						VolumeSource: k8sv1.VolumeSource{
-							PersistentVolumeClaim: &k8sv1.PersistentVolumeClaimVolumeSource{
-								ClaimName: pvc.GetName(),
-							},
-						},
-					},
-				},
-			},
-		}
+		pvc := pvcSpec(pvcName, storageClassName, "1Gi")
+		pod := podWithPvcSpec(podName, pvcName, cmd, args)
 
 		By("creating a pvc")
-		_, err = tenantClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
+		_, err := tenantClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
 
 		By("creating a pod that attaches pvc")
@@ -146,4 +98,63 @@ var _ = Describe("CreatePVC", func() {
 		}, 3*time.Minute, 5*time.Second).Should(Succeed(), "pod should reach running state")
 
 	})
+
 })
+
+func podWithPvcSpec(podName, pvcName string, cmd, args []string) *k8sv1.Pod {
+	image := "busybox"
+	volumeName := "pv1"
+
+	return &k8sv1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: podName,
+		},
+		Spec: k8sv1.PodSpec{
+			RestartPolicy: k8sv1.RestartPolicyNever,
+			Containers: []k8sv1.Container{
+				{
+					Name:    podName,
+					Image:   image,
+					Command: cmd,
+					Args:    args,
+					VolumeMounts: []k8sv1.VolumeMount{
+						{
+							Name:      volumeName,
+							MountPath: "/opt",
+						},
+					},
+				},
+			},
+			Volumes: []k8sv1.Volume{
+				{
+					Name: volumeName,
+					VolumeSource: k8sv1.VolumeSource{
+						PersistentVolumeClaim: &k8sv1.PersistentVolumeClaimVolumeSource{
+							ClaimName: pvcName,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func pvcSpec(pvcName, storageClassName, size string) *k8sv1.PersistentVolumeClaim {
+	quantity, err := resource.ParseQuantity(size)
+	Expect(err).ToNot(HaveOccurred())
+
+	pvc := &k8sv1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: pvcName},
+		Spec: k8sv1.PersistentVolumeClaimSpec{
+			AccessModes: []k8sv1.PersistentVolumeAccessMode{k8sv1.ReadWriteOnce},
+			Resources: k8sv1.ResourceRequirements{
+				Requests: k8sv1.ResourceList{
+					"storage": quantity,
+				},
+			},
+			StorageClassName: &storageClassName,
+		},
+	}
+
+	return pvc
+}
