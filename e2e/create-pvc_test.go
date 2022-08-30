@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"os"
 	"path/filepath"
 	"time"
@@ -22,6 +23,8 @@ import (
 var virtClient kubecli.KubevirtClient
 
 var _ = Describe("CreatePVC", func() {
+
+	const hostNameLabelKey = "kubernetes.io/hostname"
 
 	var tmpDir string
 	var tenantClient *kubernetes.Clientset
@@ -67,20 +70,20 @@ var _ = Describe("CreatePVC", func() {
 	})
 
 	It("creates a pvc and attaches to pod", Label("pvcCreation"), func() {
-
-		podName := "test-pod"
 		pvcName := "test-pvc"
-		cmd := []string{"sh"}
-		args := []string{"-c", "while true; do ls -la /opt; echo this file system was made availble using kubevirt-csi-driver; mktmp /opt/test-XXXXXX; sleep 1m; done"}
 		storageClassName := "kubevirt"
 
+		podName := "test-pod"
+		cmd := []string{"sh"}
+		args := []string{"-c", "while true; do ls -la /opt; echo this file system was made availble using kubevirt-csi-driver; mktmp /opt/test-XXXXXX; sleep 1m; done"}
+
 		pvc := pvcSpec(pvcName, storageClassName, "1Gi")
-		pod := podWithPvcSpec(podName, pvcName, cmd, args)
 
 		By("creating a pvc")
 		_, err := tenantClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
 
+		pod := podWithPvcSpec(podName, pvcName, cmd, args)
 		By("creating a pod that attaches pvc")
 		newPod, err := tenantClient.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
@@ -98,7 +101,83 @@ var _ = Describe("CreatePVC", func() {
 		}, 3*time.Minute, 5*time.Second).Should(Succeed(), "pod should reach running state")
 
 	})
+	//       kubernetes.io/hostname: kvcluster-control-plane-z6jcv
 
+	It("creates a pvc and attaches to pod", Label("pvcCreation"), func() {
+		pvcName := "test-pvc"
+		storageClassName := "kubevirt"
+
+		podName := "test-pod"
+		cmd := []string{"sh"}
+		args := []string{"-c", "while true; do ls -la /opt; echo this file system was made availble using kubevirt-csi-driver; mktmp /opt/test-XXXXXX; sleep 1m; done"}
+
+		nodes, err := tenantClient.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		// select at least two node names
+		if len(nodes.Items) < 2 {
+			Skip("Can only run with 2 or more tenant nodes")
+		}
+		host1 := nodes.Items[0].Labels[hostNameLabelKey]
+		host2 := nodes.Items[1].Labels[hostNameLabelKey]
+
+		pvc := pvcSpec(pvcName, storageClassName, "1Gi")
+		By("creating a pvc")
+		_, err = tenantClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
+		Expect(err).ToNot(HaveOccurred())
+
+		pod := podWithPvcSpec(podName, pvcName, cmd, args)
+		// add toleration so we can use control node for tests
+		pod.Spec.Tolerations = []k8sv1.Toleration{{
+			Key:      "node-role.kubernetes.io/master",
+			Operator: k8sv1.TolerationOpExists,
+			Effect:   k8sv1.TaintEffectNoSchedule,
+		}}
+		pod.Spec.NodeSelector = map[string]string{hostNameLabelKey: host1}
+
+		By(fmt.Sprintf("creating a pod that attaches pvc on node %s", host1))
+		newPod, err := tenantClient.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+		Expect(err).ToNot(HaveOccurred())
+
+		By("Wait for pod to reach a running phase")
+		Eventually(func() error {
+			updatedPod, err := tenantClient.CoreV1().Pods(namespace).Get(context.Background(), newPod.Name, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			if updatedPod.Status.Phase != k8sv1.PodRunning {
+				return fmt.Errorf("Pod in phase %s, expected Running", updatedPod.Status.Phase)
+			}
+			return nil
+		}, 3*time.Minute, 5*time.Second).Should(Succeed(), "pod should reach running state")
+
+		err = tenantClient.CoreV1().Pods(namespace).Delete(context.Background(), newPod.Name, metav1.DeleteOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		Eventually(func() bool {
+			_, err := tenantClient.CoreV1().Pods(namespace).Get(context.Background(), newPod.Name, metav1.GetOptions{})
+			if errors.IsNotFound(err) {
+				return true
+			}
+			return false
+		}, 3*time.Minute, 5*time.Second).Should(BeTrue(), "pod should disappear")
+
+		pod.Spec.NodeSelector = map[string]string{hostNameLabelKey: host2}
+		By(fmt.Sprintf("creating a pod that attaches pvc on node %s", host2))
+		newPod, err = tenantClient.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+		Expect(err).ToNot(HaveOccurred())
+
+		By("Wait for pod to reach a running phase")
+		Eventually(func() error {
+			updatedPod, err := tenantClient.CoreV1().Pods(namespace).Get(context.Background(), newPod.Name, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			if updatedPod.Status.Phase != k8sv1.PodRunning {
+				return fmt.Errorf("Pod in phase %s, expected Running", updatedPod.Status.Phase)
+			}
+			return nil
+		}, 3*time.Minute, 5*time.Second).Should(Succeed(), "pod should reach running state")
+
+	})
 })
 
 func podWithPvcSpec(podName, pvcName string, cmd, args []string) *k8sv1.Pod {
