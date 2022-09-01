@@ -5,6 +5,9 @@ RUN make build
 
 FROM registry.ci.openshift.org/ocp/4.11:base
 
+LABEL io.openshift.release.operator=true
+LABEL description="KubeVirt CSI Driver"
+
 RUN yum install -y e2fsprogs xfsprogs && yum clean all
 COPY --from=builder /src/kubevirt-csi-driver/kubevirt-csi-driver .
 
