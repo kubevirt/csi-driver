@@ -51,18 +51,7 @@ func (c *ControllerService) validateCreateVolumeRequest(req *csi.CreateVolumeReq
 	if caps == nil {
 		return status.Error(codes.InvalidArgument, "volume capabilities missing in request")
 	}
-	// Keep a record of the requested access types.
-	var accessTypeMount bool
 
-	for _, cap := range caps {
-		if cap.GetMount() != nil {
-			accessTypeMount = true
-		}
-	}
-
-	if !accessTypeMount {
-		return status.Error(codes.InvalidArgument, "must have mount access type")
-	}
 	return nil
 }
 
@@ -120,7 +109,6 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, err
 	} else {
 		// Verify capacity of original matches requested size.
-		klog.Infof("%v", existingDv)
 		existingRequest := existingDv.Spec.PVC.Resources.Requests[corev1.ResourceStorage]
 		newRequest := dv.Spec.PVC.Resources.Requests[corev1.ResourceStorage]
 		if newRequest.Cmp(existingRequest) != 0 {

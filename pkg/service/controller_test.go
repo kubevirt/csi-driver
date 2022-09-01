@@ -9,6 +9,7 @@ import (
 	"golang.org/x/net/context"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubevirtv1 "kubevirt.io/api/core/v1"
@@ -162,6 +163,7 @@ func getPublishVolumeRequest() *csi.ControllerPublishVolumeRequest {
 			busParameter:    string(getBusType()),
 			serialParameter: testDataVolumeUID,
 		},
+		VolumeCapability: &csi.VolumeCapability{},
 	}
 }
 
@@ -246,7 +248,7 @@ func (c *ControllerClientMock) CreateDataVolume(namespace string, dataVolume *cd
 	return result, nil
 }
 func (c *ControllerClientMock) GetDataVolume(namespace string, name string) (*cdiv1.DataVolume, error) {
-	return nil, errors.New("Not implemented")
+	return nil, k8serrors.NewNotFound(cdiv1.Resource("DataVolume"), name)
 }
 func (c *ControllerClientMock) ListDataVolumes(namespace string) ([]cdiv1.DataVolume, error) {
 	return nil, errors.New("Not implemented")
