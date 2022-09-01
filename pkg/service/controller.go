@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
@@ -13,7 +14,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	corev1 "k8s.io/api/core/v1"
-	log "k8s.io/klog/v2"
+	klog "k8s.io/klog/v2"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
 	client "kubevirt.io/csi-driver/pkg/kubevirt"
@@ -38,11 +39,43 @@ var controllerCaps = []csi.ControllerServiceCapability_RPC_Type{
 	csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME, // attach/detach
 }
 
+func (c *ControllerService) validateCreateVolumeRequest(req *csi.CreateVolumeRequest) error {
+	if req == nil {
+		return status.Error(codes.InvalidArgument, "missing request")
+	}
+	// Check arguments
+	if len(req.GetName()) == 0 {
+		return status.Error(codes.InvalidArgument, "name missing in request")
+	}
+	caps := req.GetVolumeCapabilities()
+	if caps == nil {
+		return status.Error(codes.InvalidArgument, "volume capabilities missing in request")
+	}
+	// Keep a record of the requested access types.
+	var accessTypeMount bool
+
+	for _, cap := range caps {
+		if cap.GetMount() != nil {
+			accessTypeMount = true
+		}
+	}
+
+	if !accessTypeMount {
+		return status.Error(codes.InvalidArgument, "must have mount access type")
+	}
+	return nil
+}
+
 // CreateVolume Create a new DataVolume.
 // The new DataVolume.Name is csi.Volume.VolumeID.
 // The new DataVolume.ID is used as the disk serial.
 func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
-	log.Infof("Creating volume %s", req.Name)
+	if req != nil {
+		klog.V(3).Infof("Create Volume Request: %+v", *req)
+	}
+	if err := c.validateCreateVolumeRequest(req); err != nil {
+		return nil, err
+	}
 
 	// Prepare parameters for the DataVolume
 	storageClassName := req.Parameters[infraStorageClassNameParameter]
@@ -76,12 +109,24 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	dv.Spec.Source = &cdiv1.DataVolumeSource{}
 	dv.Spec.Source.Blank = &cdiv1.DataVolumeBlankImage{}
 
-	// Create DataVolume
-	dv, err := c.virtClient.CreateDataVolume(c.infraClusterNamespace, dv)
-
-	if err != nil {
-		log.Error("Failed creating DataVolume " + dvName)
+	if existingDv, err := c.virtClient.GetDataVolume(c.infraClusterNamespace, dvName); errors.IsNotFound(err) {
+		// Create DataVolume
+		dv, err = c.virtClient.CreateDataVolume(c.infraClusterNamespace, dv)
+		if err != nil {
+			klog.Error("Failed creating DataVolume " + dvName)
+			return nil, err
+		}
+	} else if err != nil {
 		return nil, err
+	} else {
+		// Verify capacity of original matches requested size.
+		klog.Infof("%v", existingDv)
+		existingRequest := existingDv.Spec.PVC.Resources.Requests[corev1.ResourceStorage]
+		newRequest := dv.Spec.PVC.Resources.Requests[corev1.ResourceStorage]
+		if newRequest.Cmp(existingRequest) != 0 {
+			return nil, status.Error(codes.AlreadyExists, "Requested storage size does not match existing size")
+		}
+		dv = existingDv
 	}
 
 	// Prepare serial for disk
@@ -100,32 +145,68 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}, nil
 }
 
+func (c *ControllerService) validateDeleteVolumeRequest(req *csi.DeleteVolumeRequest) error {
+	if req == nil {
+		return status.Error(codes.InvalidArgument, "missing request")
+	}
+	// Check arguments
+	if len(req.GetVolumeId()) == 0 {
+		return status.Error(codes.InvalidArgument, "Volume ID missing in request")
+	}
+	return nil
+}
+
 // DeleteVolume removes the data volume from kubevirt
 func (c *ControllerService) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
+	if req != nil {
+		klog.V(3).Infof("Delete Volume Request: %+v", *req)
+	}
+	if err := c.validateDeleteVolumeRequest(req); err != nil {
+		return nil, err
+	}
 	dvName := req.VolumeId
-	log.Infof("Removing data volume with %s", dvName)
+	klog.Infof("Removing data volume with %s", dvName)
 
 	err := c.virtClient.DeleteDataVolume(c.infraClusterNamespace, dvName)
 	if err != nil {
-		log.Error("Failed deleting DataVolume " + dvName)
+		klog.Error("Failed deleting DataVolume " + dvName)
 		return nil, err
 	}
 
 	return &csi.DeleteVolumeResponse{}, nil
 }
 
+func (c *ControllerService) validateControllerPublishVolumeRequest(req *csi.ControllerPublishVolumeRequest) error {
+	if req == nil {
+		return status.Error(codes.InvalidArgument, "missing request")
+	}
+	// Check arguments
+	if len(req.GetVolumeId()) == 0 {
+		return status.Error(codes.InvalidArgument, "volume id missing in request")
+	}
+	if len(req.GetNodeId()) == 0 {
+		return status.Error(codes.InvalidArgument, "node id missing in request")
+	}
+	if req.GetVolumeCapability() == nil {
+		return status.Error(codes.InvalidArgument, "volume capability missing in request")
+	}
+	return nil
+}
+
 // ControllerPublishVolume takes a volume, which is an kubevirt disk, and attaches it to a node, which is an kubevirt VM.
 func (c *ControllerService) ControllerPublishVolume(
 	ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
+	if err := c.validateControllerPublishVolumeRequest(req); err != nil {
+		return nil, err
+	}
+	dvName := req.GetVolumeId()
 
-	dvName := req.VolumeId
-
-	log.Infof("Attaching DataVolume %s to Node ID %s", dvName, req.NodeId)
+	klog.Infof("Attaching DataVolume %s to Node ID %s", dvName, req.NodeId)
 
 	// Get VM name
 	vmName, err := c.getVMNameByCSINodeID(req.NodeId)
 	if err != nil {
-		log.Error("Failed getting VM Name for node ID " + req.NodeId)
+		klog.Error("Failed getting VM Name for node ID " + req.NodeId)
 		return nil, err
 	}
 
@@ -136,7 +217,7 @@ func (c *ControllerService) ControllerPublishVolume(
 	bus := req.VolumeContext[busParameter]
 
 	// hotplug DataVolume to VM
-	log.Infof("Start attaching DataVolume %s to VM %s. Volume name: %s. Serial: %s. Bus: %s", dvName, vmName, dvName, serial, bus)
+	klog.Infof("Start attaching DataVolume %s to VM %s. Volume name: %s. Serial: %s. Bus: %s", dvName, vmName, dvName, serial, bus)
 
 	addVolumeOptions := &kubevirtv1.AddVolumeOptions{
 		Name: dvName,
@@ -157,17 +238,34 @@ func (c *ControllerService) ControllerPublishVolume(
 
 	err = c.virtClient.AddVolumeToVM(c.infraClusterNamespace, vmName, addVolumeOptions)
 	if err != nil {
-		log.Error("Failed adding volume " + dvName + " to VM " + vmName)
+		klog.Errorf("Failed adding volume %s to VM %s, %v", dvName, vmName, err)
 		return nil, err
 	}
 
 	return &csi.ControllerPublishVolumeResponse{}, nil
 }
 
+func (c *ControllerService) validateControllerUnpublishVolumeRequest(req *csi.ControllerUnpublishVolumeRequest) error {
+	if req == nil {
+		return status.Error(codes.InvalidArgument, "missing request")
+	}
+	// Check arguments
+	if len(req.GetVolumeId()) == 0 {
+		return status.Error(codes.InvalidArgument, "volume id missing in request")
+	}
+	if len(req.GetNodeId()) == 0 {
+		return status.Error(codes.InvalidArgument, "node id missing in request")
+	}
+	return nil
+}
+
 // ControllerUnpublishVolume detaches the disk from the VM.
 func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
+	if err := c.validateControllerUnpublishVolumeRequest(req); err != nil {
+		return nil, err
+	}
 	dvName := req.VolumeId
-	log.Infof("Detaching DataVolume %s from Node ID %s", dvName, req.NodeId)
+	klog.Infof("Detaching DataVolume %s from Node ID %s", dvName, req.NodeId)
 
 	// Get VM name
 	vmName, err := c.getVMNameByCSINodeID(req.NodeId)
@@ -178,7 +276,7 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 	// Detach DataVolume from VM
 	err = c.virtClient.RemoveVolumeFromVM(c.infraClusterNamespace, vmName, &kubevirtv1.RemoveVolumeOptions{Name: dvName})
 	if err != nil {
-		log.Error("Failed removing volume " + dvName + " from VM " + vmName)
+		klog.Error("Failed removing volume " + dvName + " from VM " + vmName)
 		return nil, err
 	}
 
@@ -186,8 +284,35 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 }
 
 //ValidateVolumeCapabilities unimplemented
-func (c *ControllerService) ValidateVolumeCapabilities(context.Context, *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+func (c *ControllerService) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
+	// Check arguments
+	if len(req.GetVolumeId()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "volume ID not provided")
+	}
+	if len(req.VolumeCapabilities) == 0 {
+		return nil, status.Errorf(codes.InvalidArgument, "volumeCapabilities not provided for %s", req.VolumeId)
+	}
+
+	for _, cap := range req.GetVolumeCapabilities() {
+		if cap.GetMount() == nil {
+			return nil, status.Error(codes.InvalidArgument, "mount type is undefined")
+		}
+	}
+	dvName := req.GetVolumeId()
+	if _, err := c.virtClient.GetDataVolume(c.infraClusterNamespace, dvName); errors.IsNotFound(err) {
+		return nil, status.Errorf(codes.NotFound, "volume %s not found", req.GetVolumeId())
+	} else if err != nil {
+		return nil, err
+	}
+
+	return &csi.ValidateVolumeCapabilitiesResponse{
+		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
+			VolumeContext:      req.GetVolumeContext(),
+			VolumeCapabilities: req.GetVolumeCapabilities(),
+			Parameters:         req.GetParameters(),
+		},
+	}, nil
+
 }
 
 //ListVolumes unimplemented
@@ -248,8 +373,8 @@ func (c *ControllerService) ControllerGetVolume(_ context.Context, _ *csi.Contro
 func (c *ControllerService) getVMNameByCSINodeID(nodeID string) (string, error) {
 	list, err := c.virtClient.ListVirtualMachines(c.infraClusterNamespace)
 	if err != nil {
-		log.Error("Failed listing VMIs in infra cluster")
-		return "", err
+		klog.Error("Failed listing VMIs in infra cluster")
+		return "", status.Error(codes.NotFound, fmt.Sprintf("failed listing VMIs in infra cluster %v", err))
 	}
 
 	for _, vmi := range list {
@@ -258,7 +383,7 @@ func (c *ControllerService) getVMNameByCSINodeID(nodeID string) (string, error) 
 		}
 	}
 
-	return "", fmt.Errorf("failed to find VM with domain.firmware.uuid %v", nodeID)
+	return "", status.Error(codes.NotFound, fmt.Sprintf("failed to find VM with domain.firmware.uuid %v", nodeID))
 }
 
 func getVolumeModeFromRequest(req *csi.CreateVolumeRequest) corev1.PersistentVolumeMode {

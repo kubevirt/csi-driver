@@ -23,7 +23,7 @@ type KubevirtCSIDriver struct {
 }
 
 func NewKubevirtCSIDriver(virtClient kubevirt.Client,
-	identityClientset *kubernetes.Clientset,
+	identityClientset kubernetes.Interface,
 	infraClusterNamespace string,
 	infraClusterLabels map[string]string,
 	nodeID string,
