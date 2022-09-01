@@ -108,13 +108,15 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	} else if err != nil {
 		return nil, err
 	} else {
-		// Verify capacity of original matches requested size.
-		existingRequest := existingDv.Spec.PVC.Resources.Requests[corev1.ResourceStorage]
-		newRequest := dv.Spec.PVC.Resources.Requests[corev1.ResourceStorage]
-		if newRequest.Cmp(existingRequest) != 0 {
-			return nil, status.Error(codes.AlreadyExists, "Requested storage size does not match existing size")
+		if existingDv != nil && existingDv.Spec.PVC != nil {
+			// Verify capacity of original matches requested size.
+			existingRequest := existingDv.Spec.PVC.Resources.Requests[corev1.ResourceStorage]
+			newRequest := dv.Spec.PVC.Resources.Requests[corev1.ResourceStorage]
+			if newRequest.Cmp(existingRequest) != 0 {
+				return nil, status.Error(codes.AlreadyExists, "Requested storage size does not match existing size")
+			}
+			dv = existingDv
 		}
-		dv = existingDv
 	}
 
 	// Prepare serial for disk

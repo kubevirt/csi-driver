@@ -3,7 +3,6 @@ package kubevirt
 import (
 	"context"
 
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -87,9 +86,5 @@ func (c *client) DeleteDataVolume(namespace string, name string) error {
 }
 
 func (c *client) GetDataVolume(namespace string, name string) (*cdiv1.DataVolume, error) {
-	dv, err := c.virtClient.CdiClient().CdiV1beta1().DataVolumes(namespace).Get(context.TODO(), name, metav1.GetOptions{})
-	if errors.IsNotFound(err) {
-		return nil, nil
-	}
-	return dv, err
+	return c.virtClient.CdiClient().CdiV1beta1().DataVolumes(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 }

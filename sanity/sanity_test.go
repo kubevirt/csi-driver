@@ -200,9 +200,9 @@ func (k *fakeKubeVirtClient) RemoveVolumeFromVM(namespace string, vmName string,
 	return nil
 }
 
-func (m *fakeKubeVirtClient) List() ([]byte, error) {
+func (k *fakeKubeVirtClient) List() ([]byte, error) {
 	ds := make([]device, 0)
-	for _, value := range m.hotpluggedMap {
+	for _, value := range k.hotpluggedMap {
 		ds = append(ds, value)
 	}
 	d := devices{
