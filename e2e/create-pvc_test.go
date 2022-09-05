@@ -85,7 +85,6 @@ var _ = Describe("CreatePVC", func() {
 			namespace,
 			attacherPod(pvc.Name))
 	})
-	//       kubernetes.io/hostname: kvcluster-control-plane-z6jcv
 
 	It("creates a pvc, attaches to pod, re-attach to another pod", Label("pvcCreation"), func() {
 		nodes, err := tenantClient.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
@@ -131,18 +130,39 @@ var _ = Describe("CreatePVC", func() {
 		readerPod := runPod(tenantClient.CoreV1(), namespace, readerPod(pvc.Name))
 		deletePod(tenantClient.CoreV1(), namespace, readerPod.Name)
 	})
+
+	It("multi attach - creates 3 pvcs, attach all 3 to pod, detach all 3 from the pod", Label("pvcCreation"), func() {
+		By("creating a pvc")
+		pvc1 := pvcSpec("test-pvc1", "kubevirt", "1Gi")
+		_, err := tenantClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc1, metav1.CreateOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		pvc2 := pvcSpec("test-pvc2", "kubevirt", "1Gi")
+		_, err = tenantClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc2, metav1.CreateOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		pvc3 := pvcSpec("test-pvc3", "kubevirt", "1Gi")
+		_, err = tenantClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc3, metav1.CreateOptions{})
+		Expect(err).ToNot(HaveOccurred())
+
+		By("creating a pod that uses 3 PVCs")
+		podSpec := attacherPod(pvc1.Name)
+		addPvc(podSpec, pvc2.Name, "/pv2")
+		addPvc(podSpec, pvc3.Name, "/pv3")
+
+		pod := runPod(tenantClient.CoreV1(), namespace, podSpec)
+		deletePod(tenantClient.CoreV1(), namespace, pod.Name)
+	})
 })
 
 func writerPod(volumeName string) *k8sv1.Pod {
 	return podWithPvcSpec("writer-pod",
 		volumeName,
 		[]string{"sh"},
-		[]string{"-c", "echo testing > /opt/test.txt && sleep 1s"})
+		[]string{"-c", "echo testing > /opt/test.txt"})
 }
 
-func readerPod(volumeName string) *k8sv1.Pod {
+func readerPod(pvcName string) *k8sv1.Pod {
 	return podWithPvcSpec("reader-pod",
-		volumeName,
+		pvcName,
 		[]string{"sh"},
 		[]string{"-c", "cat /opt/test.txt"})
 }
@@ -151,7 +171,7 @@ func attacherPod(pvcName string) *k8sv1.Pod {
 	return podWithPvcSpec("test-pod",
 		pvcName,
 		[]string{"sh"},
-		[]string{"-c", "while true; do ls -la /opt; echo this file system was made availble using kubevirt-csi-driver; mktmp /opt/test-XXXXXX; sleep 1m; done"})
+		[]string{"-c", "ls -la /opt && echo kubevirt-csi-driver && mktemp /opt/test-XXXXXX"})
 }
 
 func podWithPvcSpec(podName, pvcName string, cmd, args []string) *k8sv1.Pod {
@@ -198,6 +218,29 @@ func podWithPvcSpec(podName, pvcName string, cmd, args []string) *k8sv1.Pod {
 	}
 }
 
+func addPvc(podSpec *k8sv1.Pod, pvcName string, mountPath string) *k8sv1.Pod {
+	volumeName := pvcName
+	podSpec.Spec.Volumes = append(
+		podSpec.Spec.Volumes,
+		k8sv1.Volume{
+			Name: volumeName,
+			VolumeSource: k8sv1.VolumeSource{
+				PersistentVolumeClaim: &k8sv1.PersistentVolumeClaimVolumeSource{
+					ClaimName: pvcName,
+				},
+			},
+		})
+
+	podSpec.Spec.Containers[0].VolumeMounts = append(
+		podSpec.Spec.Containers[0].VolumeMounts,
+		k8sv1.VolumeMount{
+			Name:      volumeName,
+			MountPath: mountPath,
+		})
+
+	return podSpec
+}
+
 func pvcSpec(pvcName, storageClassName, size string) *k8sv1.PersistentVolumeClaim {
 	quantity, err := resource.ParseQuantity(size)
 	Expect(err).ToNot(HaveOccurred())
@@ -228,11 +271,12 @@ func runPod(client v1.CoreV1Interface, namespace string, pod *k8sv1.Pod) *k8sv1.
 		if err != nil {
 			return err
 		}
-		if updatedPod.Status.Phase != k8sv1.PodRunning {
-			return fmt.Errorf("Pod in phase %s, expected Running", updatedPod.Status.Phase)
+		// TODO: change command and wait for completed/succeeded
+		if updatedPod.Status.Phase != k8sv1.PodSucceeded {
+			return fmt.Errorf("Pod in phase %s, expected Succeeded", updatedPod.Status.Phase)
 		}
 		return nil
-	}, 3*time.Minute, 5*time.Second).Should(Succeed(), "pod should reach running state")
+	}, 3*time.Minute, 5*time.Second).Should(Succeed(), "Pod should reach Succeeded state")
 
 	return newPod
 }
@@ -249,9 +293,6 @@ func deletePod(client v1.CoreV1Interface, ns, podName string) {
 	By("verify deleted")
 	Eventually(func() bool {
 		_, err := client.Pods(ns).Get(context.Background(), podName, metav1.GetOptions{})
-		if errors.IsNotFound(err) {
-			return true
-		}
-		return false
+		return errors.IsNotFound(err)
 	}, 3*time.Minute, 5*time.Second).Should(BeTrue(), "pod should disappear")
 }
