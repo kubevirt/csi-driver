@@ -236,7 +236,7 @@ var _ = Describe("IdentityService", func() {
 			})
 
 			It("should return a Ready response", func() {
-				Expect(res.GetReady().Value).Should(Equal(true))
+				Expect(res.GetReady().Value).Should(BeTrue())
 			})
 
 		})
