@@ -8,7 +8,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/utils/mount"
 )
@@ -66,7 +66,8 @@ var _ = Describe("NodeService", func() {
 							Block: &csi.VolumeCapability_BlockVolume{},
 						},
 					},
-					VolumeContext: map[string]string{serialParameter: serialID},
+					VolumeContext:     map[string]string{serialParameter: serialID},
+					StagingTargetPath: "/invalid/staging",
 				})
 				Expect(err).To(HaveOccurred())
 			})
@@ -86,7 +87,8 @@ var _ = Describe("NodeService", func() {
 							},
 						},
 					},
-					VolumeContext: map[string]string{serialParameter: serialID},
+					VolumeContext:     map[string]string{serialParameter: serialID},
+					StagingTargetPath: "/invalid/staging",
 				})
 				Expect(err).To(HaveOccurred())
 			})
@@ -106,7 +108,8 @@ var _ = Describe("NodeService", func() {
 							},
 						},
 					},
-					VolumeContext: map[string]string{serialParameter: serialID},
+					VolumeContext:     map[string]string{serialParameter: serialID},
+					StagingTargetPath: "/invalid/staging",
 				})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(res).ToNot(BeNil())
@@ -258,6 +261,7 @@ func newPublishRequest() *csi.NodePublishVolumeRequest {
 				},
 			},
 		},
+		TargetPath: "/target/path",
 	}
 }
 

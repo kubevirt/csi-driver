@@ -22,6 +22,7 @@ type Client interface {
 	ListVirtualMachines(namespace string) ([]kubevirtv1.VirtualMachineInstance, error)
 	DeleteDataVolume(namespace string, name string) error
 	CreateDataVolume(namespace string, dataVolume *cdiv1.DataVolume) (*cdiv1.DataVolume, error)
+	GetDataVolume(namespace string, name string) (*cdiv1.DataVolume, error)
 	AddVolumeToVM(namespace string, vmName string, hotPlugRequest *kubevirtv1.AddVolumeOptions) error
 	RemoveVolumeFromVM(namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error
 }
@@ -82,4 +83,8 @@ func (c *client) Ping(ctx context.Context) error {
 //DeleteDataVolume deletes a DataVolume from a namespace by name
 func (c *client) DeleteDataVolume(namespace string, name string) error {
 	return c.virtClient.CdiClient().CdiV1beta1().DataVolumes(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+func (c *client) GetDataVolume(namespace string, name string) (*cdiv1.DataVolume, error) {
+	return c.virtClient.CdiClient().CdiV1beta1().DataVolumes(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 }

@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"strings"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"k8s.io/utils/mount"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -24,32 +26,44 @@ var nodeCaps = []csi.NodeServiceCapability_RPC_Type{
 // NodeService implements the CSI Driver node service
 type NodeService struct {
 	nodeID       string
-	deviceLister deviceLister
-	fsMaker      fsMaker
+	deviceLister DeviceLister
+	fsMaker      FsMaker
 	fsMounter    mount.Interface
 	dirMaker     dirMaker
 }
 
-type deviceLister interface{ List() ([]byte, error) }
-type fsMaker interface {
+type DeviceLister interface{ List() ([]byte, error) }
+type FsMaker interface {
 	Make(device string, fsType string) error
 }
 type dirMaker interface {
 	Make(path string, perm os.FileMode) error
 }
 
+var NewMounter = func() mount.Interface {
+	return mount.New("")
+}
+
+var NewDeviceLister = func() DeviceLister {
+	return deviceListerFunc(func() ([]byte, error) {
+		klog.V(5).Info("lsblk -nJo SERIAL,FSTYPE,NAME")
+		// must be lsblk recent enough for json format
+		return exec.Command("lsblk", "-nJo", "SERIAL,FSTYPE,NAME").Output()
+	})
+}
+
+var NewFsMaker = func() FsMaker {
+	return fsMakerFunc(func(device, fsType string) error {
+		return makeFS(device, fsType)
+	})
+}
+
 func NewNodeService(nodeId string) *NodeService {
 	return &NodeService{
-		nodeID: nodeId,
-		deviceLister: deviceListerFunc(func() ([]byte, error) {
-			klog.V(5).Info("lsblk -nJo SERIAL,FSTYPE,NAME")
-			// must be lsblk recent enough for json format
-			return exec.Command("lsblk", "-nJo", "SERIAL,FSTYPE,NAME").Output()
-		}),
-		fsMaker: fsMakerFunc(func(device, fsType string) error {
-			return makeFS(device, fsType)
-		}),
-		fsMounter: mount.New(""),
+		nodeID:       nodeId,
+		deviceLister: NewDeviceLister(),
+		fsMaker:      NewFsMaker(),
+		fsMounter:    NewMounter(),
 		dirMaker: dirMakerFunc(func(path string, perm os.FileMode) error {
 			// MkdirAll returns nil if path already exists
 			return os.MkdirAll(path, perm)
@@ -75,8 +89,28 @@ func (d dirMakerFunc) Make(path string, perm os.FileMode) error {
 	return d(path, perm)
 }
 
+func (n *NodeService) validateNodeStageVolumeRequest(req *csi.NodeStageVolumeRequest) error {
+	if req == nil {
+		return status.Error(codes.InvalidArgument, "missing request")
+	}
+	// Check ID and targetPath
+	if len(req.GetVolumeId()) == 0 {
+		return status.Error(codes.InvalidArgument, "volume ID not provided")
+	}
+	if req.GetStagingTargetPath() == "" {
+		return status.Error(codes.InvalidArgument, "staging target path not provided")
+	}
+	if req.GetVolumeCapability() == nil {
+		return status.Error(codes.InvalidArgument, "volume capability not provided")
+	}
+	return nil
+}
+
 // NodeStageVolume prepares the volume for usage. If it's an FS type it creates a file system on the volume.
 func (n *NodeService) NodeStageVolume(_ context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
+	if err := n.validateNodeStageVolumeRequest(req); err != nil {
+		return nil, err
+	}
 	klog.Infof("Staging volume %s", req.VolumeId)
 
 	if req.VolumeCapability.GetBlock() != nil {
@@ -112,14 +146,71 @@ func (n *NodeService) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
+func (n *NodeService) validateNodeUnstageVolumeRequest(req *csi.NodeUnstageVolumeRequest) error {
+	if req == nil {
+		return status.Error(codes.InvalidArgument, "missing request")
+	}
+	// Check ID and targetPath
+	if len(req.GetVolumeId()) == 0 {
+		return status.Error(codes.InvalidArgument, "volume ID not provided")
+	}
+	if req.GetStagingTargetPath() == "" {
+		return status.Error(codes.InvalidArgument, "staging target path not provided")
+	}
+	return nil
+}
+
 // NodeUnstageVolume unstages a volume from the node
 func (n *NodeService) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
+	if err := n.validateNodeUnstageVolumeRequest(req); err != nil {
+		return nil, err
+	}
 	// nothing to do here, we don't erase the filesystem of a device.
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
+func (n *NodeService) validateRequestCapabilties(req *csi.NodePublishVolumeRequest) error {
+	if req == nil {
+		return status.Error(codes.InvalidArgument, "missing request")
+	}
+	// Check ID and targetPath
+	if len(req.GetVolumeId()) == 0 {
+		return status.Error(codes.InvalidArgument, "volume ID not provided")
+	}
+	if req.GetTargetPath() == "" {
+		return status.Error(codes.InvalidArgument, "target path not provided")
+	}
+	if req.GetVolumeCapability() == nil {
+		return status.Error(codes.InvalidArgument, "volume capability not provided")
+	}
+	return nil
+}
+
+// validateNodePublishRequest validates that the request contains all the required elements.
+func (n *NodeService) validateNodePublishRequest(req *csi.NodePublishVolumeRequest) error {
+	if err := n.validateRequestCapabilties(req); err != nil {
+		return err
+	}
+
+	if req.GetVolumeCapability().GetBlock() != nil {
+		return status.Error(codes.InvalidArgument, "cannot publish a non-block volume as block volume")
+	}
+	if req.GetVolumeCapability().GetMount() == nil {
+		return status.Error(codes.InvalidArgument, "can only publish a non-block volume")
+	}
+
+	return nil
+}
+
 //NodePublishVolume mounts the volume to the target path (req.GetTargetPath)
 func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+	if req != nil {
+		klog.V(3).Infof("Node Publish Request: %+v", *req)
+	}
+	if err := n.validateNodePublishRequest(req); err != nil {
+		return nil, err
+	}
+
 	// volumeID = serialID = kubevirt's DataVolume.metadata.uid
 	// TODO link to kubevirt code
 	device, err := getDeviceBySerialID(req.VolumeContext[serialParameter], n.deviceLister)
@@ -137,6 +228,8 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	//TODO support mount options
 	req.GetStagingTargetPath()
+	klog.Infof("Staging target path %s", req.GetStagingTargetPath())
+	klog.Infof("GetMount() %v", req.VolumeCapability.GetMount())
 	fsType := req.VolumeCapability.GetMount().FsType
 	klog.Infof("Mounting devicePath %s, on targetPath: %s with FS type: %s",
 		device, targetPath, fsType)
@@ -148,9 +241,26 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	return &csi.NodePublishVolumeResponse{}, nil
 }
+func (n *NodeService) validateNodeUnpublishRequest(req *csi.NodeUnpublishVolumeRequest) error {
+	// Check arguments
+	if len(req.GetVolumeId()) == 0 {
+		return status.Error(codes.InvalidArgument, "volume ID not provided")
+	}
+	if len(req.GetTargetPath()) == 0 {
+		return status.Error(codes.InvalidArgument, "target path not provided")
+	}
+	return nil
+}
 
 //NodeUnpublishVolume unmount the volume from the worker node
 func (n *NodeService) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
+	if req != nil {
+		klog.V(3).Infof("Node Unpublish Request: %+v", *req)
+	}
+	if err := n.validateNodeUnpublishRequest(req); err != nil {
+		return nil, err
+	}
+
 	klog.Infof("Unmounting %s", req.GetTargetPath())
 	err := n.fsMounter.Unmount(req.GetTargetPath())
 	if err != nil {
@@ -206,7 +316,7 @@ type device struct {
 	Fstype   string `json:"fstype"`
 }
 
-func getDeviceBySerialID(serialID string, deviceLister deviceLister) (device, error) {
+func getDeviceBySerialID(serialID string, deviceLister DeviceLister) (device, error) {
 	klog.Infof("Get the device details by serialID %s", serialID)
 
 	out, err := deviceLister.List()

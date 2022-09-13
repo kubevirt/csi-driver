@@ -111,3 +111,6 @@ build-e2e-test: ## Builds the test binary
 e2e-test: build-e2e-test ## run e2e tests
 	BIN_DIR=$(BIN_DIR) ./hack/run-e2e.sh
 
+.PHONY: sanity-test
+sanity-test:
+	./hack/run-sanity.sh
