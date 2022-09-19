@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"k8s.io/apimachinery/pkg/api/errors"
+	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"os"
 	"path/filepath"
 	"time"
@@ -22,6 +24,8 @@ import (
 var virtClient kubecli.KubevirtClient
 
 var _ = Describe("CreatePVC", func() {
+
+	const hostNameLabelKey = "kubernetes.io/hostname"
 
 	var tmpDir string
 	var tenantClient *kubernetes.Clientset
@@ -67,83 +71,228 @@ var _ = Describe("CreatePVC", func() {
 	})
 
 	It("creates a pvc and attaches to pod", Label("pvcCreation"), func() {
-
-		volumeName := "pv1"
-		image := "busybox"
-		podName := "test-pod"
 		pvcName := "test-pvc"
-		cmd := []string{"sh"}
-		args := []string{"-c", "while true; do ls -la /opt; echo this file system was made availble using kubevirt-csi-driver; mktmp /opt/test-XXXXXX; sleep 1m; done"}
 		storageClassName := "kubevirt"
+		pvc := pvcSpec(pvcName, storageClassName, "1Gi")
 
-		quantity, err := resource.ParseQuantity("1Gi")
+		By("creating a pvc")
+		_, err := tenantClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
 
-		pvc := &k8sv1.PersistentVolumeClaim{
-			ObjectMeta: metav1.ObjectMeta{Name: pvcName},
-			Spec: k8sv1.PersistentVolumeClaimSpec{
-				AccessModes: []k8sv1.PersistentVolumeAccessMode{k8sv1.ReadWriteOnce},
-				Resources: k8sv1.ResourceRequirements{
-					Requests: k8sv1.ResourceList{
-						"storage": quantity,
-					},
-				},
-				StorageClassName: &storageClassName,
-			},
-		}
+		By("creating a pod that attaches pvc")
+		runPod(
+			tenantClient.CoreV1(),
+			namespace,
+			attacherPod(pvc.Name))
+	})
 
-		pod := &k8sv1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: podName,
-			},
-			Spec: k8sv1.PodSpec{
-				RestartPolicy: k8sv1.RestartPolicyNever,
-				Containers: []k8sv1.Container{
-					{
-						Name:    podName,
-						Image:   image,
-						Command: cmd,
-						Args:    args,
-						VolumeMounts: []k8sv1.VolumeMount{
-							{
-								Name:      volumeName,
-								MountPath: "/opt",
-							},
-						},
-					},
-				},
-				Volumes: []k8sv1.Volume{
-					{
-						Name: volumeName,
-						VolumeSource: k8sv1.VolumeSource{
-							PersistentVolumeClaim: &k8sv1.PersistentVolumeClaimVolumeSource{
-								ClaimName: pvc.GetName(),
-							},
-						},
-					},
-				},
-			},
+	It("creates a pvc, attaches to pod, re-attach to another pod", Label("pvcCreation"), func() {
+		nodes, err := tenantClient.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		// select at least two node names
+		if len(nodes.Items) < 2 {
+			Skip("Can only run with 2 or more tenant nodes")
 		}
+		host1 := nodes.Items[0].Labels[hostNameLabelKey]
+		host2 := nodes.Items[1].Labels[hostNameLabelKey]
 
+		pvcName := "test-pvc"
+		storageClassName := "kubevirt"
+		pvc := pvcSpec(pvcName, storageClassName, "1Gi")
 		By("creating a pvc")
 		_, err = tenantClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
 
-		By("creating a pod that attaches pvc")
-		newPod, err := tenantClient.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+		podSpec := attacherPod(pvc.Name)
+		podSpec.Spec.NodeSelector = map[string]string{hostNameLabelKey: host1}
+
+		By(fmt.Sprintf("creating a pod that attaches pvc on node %s", host1))
+		pod := runPod(tenantClient.CoreV1(), namespace, podSpec)
+		deletePod(tenantClient.CoreV1(), namespace, pod.Name)
+
+		pod.Spec.NodeSelector = map[string]string{hostNameLabelKey: host2}
+		By(fmt.Sprintf("creating a pod that attaches pvc on node %s", host2))
+		anotherPod := runPod(tenantClient.CoreV1(), namespace, podSpec)
+		deletePod(tenantClient.CoreV1(), namespace, anotherPod.Name)
+	})
+
+	It("verify persistence - creates a pvc, attaches to writer pod, re-attach to a reader pod", Label("pvcCreation"), func() {
+		By("creating a pvc")
+		pvc := pvcSpec("test-pvc", "kubevirt", "1Gi")
+		_, err := tenantClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
 
-		By("Wait for pod to reach a running phase")
-		Eventually(func() error {
-			updatedPod, err := tenantClient.CoreV1().Pods(namespace).Get(context.Background(), newPod.Name, metav1.GetOptions{})
-			if err != nil {
-				return err
-			}
-			if updatedPod.Status.Phase != k8sv1.PodRunning {
-				return fmt.Errorf("Pod in phase %s, expected Running", updatedPod.Status.Phase)
-			}
-			return nil
-		}, 3*time.Minute, 5*time.Second).Should(Succeed(), "pod should reach running state")
+		By("creating a pod that writes to pvc on node")
+		writerPod := runPod(tenantClient.CoreV1(), namespace, writerPod(pvc.Name))
+		deletePod(tenantClient.CoreV1(), namespace, writerPod.Name)
 
+		By("creating a different pod that reads from pvc")
+		readerPod := runPod(tenantClient.CoreV1(), namespace, readerPod(pvc.Name))
+		deletePod(tenantClient.CoreV1(), namespace, readerPod.Name)
+	})
+
+	It("multi attach - creates 3 pvcs, attach all 3 to pod, detach all 3 from the pod", Label("pvcCreation"), func() {
+		By("creating a pvc")
+		pvc1 := pvcSpec("test-pvc1", "kubevirt", "1Gi")
+		_, err := tenantClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc1, metav1.CreateOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		pvc2 := pvcSpec("test-pvc2", "kubevirt", "1Gi")
+		_, err = tenantClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc2, metav1.CreateOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		pvc3 := pvcSpec("test-pvc3", "kubevirt", "1Gi")
+		_, err = tenantClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc3, metav1.CreateOptions{})
+		Expect(err).ToNot(HaveOccurred())
+
+		By("creating a pod that uses 3 PVCs")
+		podSpec := attacherPod(pvc1.Name)
+		addPvc(podSpec, pvc2.Name, "/pv2")
+		addPvc(podSpec, pvc3.Name, "/pv3")
+
+		pod := runPod(tenantClient.CoreV1(), namespace, podSpec)
+		deletePod(tenantClient.CoreV1(), namespace, pod.Name)
 	})
 })
+
+func writerPod(volumeName string) *k8sv1.Pod {
+	return podWithPvcSpec("writer-pod",
+		volumeName,
+		[]string{"sh"},
+		[]string{"-c", "echo testing > /opt/test.txt"})
+}
+
+func readerPod(pvcName string) *k8sv1.Pod {
+	return podWithPvcSpec("reader-pod",
+		pvcName,
+		[]string{"sh"},
+		[]string{"-c", "cat /opt/test.txt"})
+}
+
+func attacherPod(pvcName string) *k8sv1.Pod {
+	return podWithPvcSpec("test-pod",
+		pvcName,
+		[]string{"sh"},
+		[]string{"-c", "ls -la /opt && echo kubevirt-csi-driver && mktemp /opt/test-XXXXXX"})
+}
+
+func podWithPvcSpec(podName, pvcName string, cmd, args []string) *k8sv1.Pod {
+	image := "busybox"
+	volumeName := "pv1"
+
+	return &k8sv1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: podName,
+		},
+		Spec: k8sv1.PodSpec{
+			RestartPolicy: k8sv1.RestartPolicyNever,
+			Containers: []k8sv1.Container{
+				{
+					Name:    podName,
+					Image:   image,
+					Command: cmd,
+					Args:    args,
+					VolumeMounts: []k8sv1.VolumeMount{
+						{
+							Name:      volumeName,
+							MountPath: "/opt",
+						},
+					},
+				},
+			},
+			Volumes: []k8sv1.Volume{
+				{
+					Name: volumeName,
+					VolumeSource: k8sv1.VolumeSource{
+						PersistentVolumeClaim: &k8sv1.PersistentVolumeClaimVolumeSource{
+							ClaimName: pvcName,
+						},
+					},
+				},
+			},
+			// add toleration so we can use control node for tests
+			Tolerations: []k8sv1.Toleration{{
+				Key:      "node-role.kubernetes.io/master",
+				Operator: k8sv1.TolerationOpExists,
+				Effect:   k8sv1.TaintEffectNoSchedule,
+			}},
+		},
+	}
+}
+
+func addPvc(podSpec *k8sv1.Pod, pvcName string, mountPath string) *k8sv1.Pod {
+	volumeName := pvcName
+	podSpec.Spec.Volumes = append(
+		podSpec.Spec.Volumes,
+		k8sv1.Volume{
+			Name: volumeName,
+			VolumeSource: k8sv1.VolumeSource{
+				PersistentVolumeClaim: &k8sv1.PersistentVolumeClaimVolumeSource{
+					ClaimName: pvcName,
+				},
+			},
+		})
+
+	podSpec.Spec.Containers[0].VolumeMounts = append(
+		podSpec.Spec.Containers[0].VolumeMounts,
+		k8sv1.VolumeMount{
+			Name:      volumeName,
+			MountPath: mountPath,
+		})
+
+	return podSpec
+}
+
+func pvcSpec(pvcName, storageClassName, size string) *k8sv1.PersistentVolumeClaim {
+	quantity, err := resource.ParseQuantity(size)
+	Expect(err).ToNot(HaveOccurred())
+
+	pvc := &k8sv1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: pvcName},
+		Spec: k8sv1.PersistentVolumeClaimSpec{
+			AccessModes: []k8sv1.PersistentVolumeAccessMode{k8sv1.ReadWriteOnce},
+			Resources: k8sv1.ResourceRequirements{
+				Requests: k8sv1.ResourceList{
+					"storage": quantity,
+				},
+			},
+			StorageClassName: &storageClassName,
+		},
+	}
+
+	return pvc
+}
+
+func runPod(client v1.CoreV1Interface, namespace string, pod *k8sv1.Pod) *k8sv1.Pod {
+	newPod, err := client.Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+	Expect(err).ToNot(HaveOccurred())
+
+	By("Wait for pod to reach a completed phase")
+	Eventually(func() error {
+		updatedPod, err := client.Pods(namespace).Get(context.Background(), newPod.Name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		// TODO: change command and wait for completed/succeeded
+		if updatedPod.Status.Phase != k8sv1.PodSucceeded {
+			return fmt.Errorf("Pod in phase %s, expected Succeeded", updatedPod.Status.Phase)
+		}
+		return nil
+	}, 3*time.Minute, 5*time.Second).Should(Succeed(), "Pod should reach Succeeded state")
+
+	return newPod
+}
+
+func deletePod(client v1.CoreV1Interface, ns, podName string) {
+	By("Delete pod")
+	zero := int64(0)
+	err := client.Pods(ns).Delete(context.Background(), podName,
+		metav1.DeleteOptions{
+			GracePeriodSeconds: &zero,
+		})
+	Expect(err).ToNot(HaveOccurred())
+
+	By("verify deleted")
+	Eventually(func() bool {
+		_, err := client.Pods(ns).Get(context.Background(), podName, metav1.GetOptions{})
+		return errors.IsNotFound(err)
+	}, 3*time.Minute, 5*time.Second).Should(BeTrue(), "pod should disappear")
+}
