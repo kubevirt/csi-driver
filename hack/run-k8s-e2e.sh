@@ -13,20 +13,27 @@
 #See the License for the specific language governing permissions and
 #limitations under the License.
 set -e
-export KUBECONFIG=$(cluster-up/cluster-up/kubeconfig.sh)
+export KUBEVIRT_PROVIDER=k8s-1.23
 export TENANT_CLUSTER_NAME=${TENANT_CLUSTER_NAME:-kvcluster}
 export TENANT_CLUSTER_NAMESPACE=${TENANT_CLUSTER_NAMESPACE:-kvcluster}
 export KUBEVIRTCI_TAG=${KUBEVIRTCI_TAG:-2205231118-f12b50e}
+export KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-k8s-1.23}
 
-_kubectl=cluster-up/cluster-up/kubectl.sh
-_virtctl=./hack/tools/bin/virtctl
-_default_clusterctl_path=./hack/tools/bin/clusterctl
-_default_tmp_path=./hack/tools/bin/tmp
+test_pod=${TENANT_CLUSTER_NAME}-k8s-e2e-suite-runnner
+test_driver_cm=${TENANT_CLUSTER_NAME}-test-driver
+capk_secret=${TENANT_CLUSTER_NAME}-capk
 
 export CLUSTERCTL_PATH=${CLUSTERCTL_PATH:-${_default_clusterctl_path}}
 
+function cleanup {
+    ./kubevirtci kubectl delete pod --wait=false --ignore-not-found=true -n $TENANT_CLUSTER_NAMESPACE $test_pod > /dev/null 2>&1
+    ./kubevirtci kubectl delete cm --ignore-not-found=true -n $TENANT_CLUSTER_NAMESPACE $test_driver_cm > /dev/null 2>&1
+    ./kubevirtci kubectl delete secret --ignore-not-found=true -n $TENANT_CLUSTER_NAMESPACE $capk_secret > /dev/null 2>&1
+    rm -f ./capk.pem || true
+}
+
 function ensure_cluster_up {
-    ${_kubectl} get ns || ret=$?
+    ./kubevirtci kubectl get ns || ret=$?
     echo "Return $ret"
     if [ -z "$ret" ]; then
 	echo "Cluster running"
@@ -41,96 +48,85 @@ function ensure_synced {
     make cluster-sync-split
 }
 
-function get_control_plane_vm_name {
-    vms_list=$(${_kubectl} get vm -n ${TENANT_CLUSTER_NAMESPACE} --no-headers -o custom-columns=":metadata.name")
-    for vm in $vms_list
-    do
-        if [[ "$vm" == ${TENANT_CLUSTER_NAME}-control-plane* ]]; then
-            control_plane_vm_name=$vm
-	    return 0
-        fi
-    done
-    echo "control-plane vm is not found in namespace ${TENANT_CLUSTER_NAMESPACE} (looking for regex ${TENANT_CLUSTER_NAME}-control-plane*)"
-    exit 1
+function create_test_driver_cm {
+    echo "Creating test-driver CM"
+    ./kubevirtci kubectl create configmap -n $TENANT_CLUSTER_NAMESPACE $test_driver_cm --from-file=./hack/test-driver.yaml
 }
 
-function start_tenant_api_forward {
-    # Use the infra cluster kubeconfig from the environment variable otherwise the forward will fail
-    echo "${_virtctl} port-forward -n $TENANT_CLUSTER_NAMESPACE vmi/$control_plane_vm_name 64443:6443"
-    ${_virtctl} port-forward -n $TENANT_CLUSTER_NAMESPACE vmi/$control_plane_vm_name 64443:6443 > /dev/null 2>&1 &
-    trap 'kill $(jobs -p) > /dev/null 2>&1' EXIT
-}
-
-function get_tenant_kubeconfig_for_e2e {
-   echo "$CLUSTERCTL_PATH get kubeconfig ${TENANT_CLUSTER_NAME} -n ${TENANT_CLUSTER_NAMESPACE} > .${TENANT_CLUSTER_NAME}-kubeconfig-e2e"
-   $CLUSTERCTL_PATH get kubeconfig ${TENANT_CLUSTER_NAME} -n ${TENANT_CLUSTER_NAMESPACE} > .${TENANT_CLUSTER_NAME}-kubeconfig-e2e
-   # Modify the kubeconfig to achieve 3 things
-   # 1. Change API ip address to 127.0.0.1:64443 (the port forward)
-   # 2. Add insecure-skip-tls-verify: true
-   # 3. Remove the CA which cannot be defined if insecure-skip-tls-verify: true is set
-   # Need the insecure because the port-forward has changed the ip address and the cert doesn't know about 127.0.0.1
-   sed -i 's/server:.*/server: https:\/\/127.0.0.1:64443/' .${TENANT_CLUSTER_NAME}-kubeconfig-e2e
-   sed -i '/server:.*/a \ \ \ \ insecure-skip-tls-verify: true' .${TENANT_CLUSTER_NAME}-kubeconfig-e2e
-   sed -i '/certificate-authority-data/d' .${TENANT_CLUSTER_NAME}-kubeconfig-e2e
-   tenant_kubeconfig=.${TENANT_CLUSTER_NAME}-kubeconfig-e2e
-}
-
-function ensure_e2e_binary {
-    if [ ! -f "e2e.test" ]; then
-	# Would prefer to detect k8s version from tenant cluster.
-        curl --location https://dl.k8s.io/v1.22.0/kubernetes-test-linux-amd64.tar.gz |   tar --strip-components=3 -zxf - kubernetes/test/bin/e2e.test kubernetes/test/bin/ginkgo
-    else
-	echo "Binary exists"
-    fi
-}
-
-function enable_sshuttle {
-    if ! command -v sshuttle &> /dev/null
-    then
-      #Setup sshutle
-      dnf install -y sshuttle
-    fi
-
+function create_capk_secret {
+    echo "Creating ssh secret"
     # Find ssh key to connect
-    ${_kubectl} get secret -n $TENANT_CLUSTER_NAMESPACE kvcluster-ssh-keys -o jsonpath='{.data}' | grep key | awk -F '"' '{print $4}' | base64 -d > ./capk.pem
+    ./kubevirtci kubectl get secret -n $TENANT_CLUSTER_NAMESPACE kvcluster-ssh-keys -o jsonpath='{.data}' | grep key | awk -F '"' '{print $4}' | base64 -d > ./capk.pem
     chmod 600 ./capk.pem
-
-    vmis_list=($(${_kubectl} get vmi -n ${TENANT_CLUSTER_NAMESPACE} --no-headers -o custom-columns=":metadata.name"))
-    ssh_port=60022
-    for vmi in ${vmis_list[@]};
-    do
-	# Install python 3.9 so sshuttle can connect properly. If the nodes had python3.9 on them already we wouldn't need to install it.
-	echo "Installing python 3.9 on tenant nodes"
-        ./kubevirtci ssh-tenant $vmi ${TENANT_CLUSTER_NAMESPACE} "sudo apt install software-properties-common -y && sudo add-apt-repository ppa:deadsnakes/ppa -y && sudo apt install python3.9 -y"
-    done
-    
-    # Port forward for ssh
-    echo " ${_virtctl} port-forward -n $TENANT_CLUSTER_NAMESPACE vmi/$control_plane_vm_nam $ssh_port:22"
-    ${_virtctl} port-forward -n $TENANT_CLUSTER_NAMESPACE vmi/$control_plane_vm_name $ssh_port:22 > /dev/null 2>&1 &
-    trap 'kill $(jobs -p) > /dev/null 2>&1' EXIT
-
-    echo "Starting sshuttle"
-    echo "sshuttle -r capk@127.0.0.1:${ssh_port} 10.244.196.0/24 -e 'ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i ./capk.pem'"
-    sshuttle -r capk@127.0.0.1:${ssh_port} 10.244.196.0/24 -e 'ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i ./capk.pem' &
-    trap 'kill $(jobs -p) > /dev/null 2>&1' EXIT
-    echo "done"
+    ./kubevirtci kubectl create secret generic -n $TENANT_CLUSTER_NAMESPACE $capk_secret --from-file=./capk.pem
+    rm -f ./capk.pem || true
 }
 
+function start_test_pod {
+cat <<EOF | ./kubevirtci kubectl create -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${test_pod}
+  namespace: ${TENANT_CLUSTER_NAMESPACE}
+spec:
+  restartPolicy: Never
+  containers:
+  - name: test-suite
+    image: registry.access.redhat.com/ubi8/ubi:8.0
+    env:
+    - name: KUBECONFIG
+      value: /etc/kubernetes/kubeconfig/value
+    - name: TEST_DRIVER_PATH
+      value: "/etc/test-driver"
+    - name:  KUBE_SSH_USER
+      value: capk
+    - name: KUBE_SSH_KEY_PATH
+      value: /capk/capk.pem
+    command:
+    - /bin/bash
+    - -c
+    - |
+      curl --location https://dl.k8s.io/v1.22.0/kubernetes-test-linux-amd64.tar.gz |   tar --strip-components=3 -zxf - kubernetes/test/bin/e2e.test kubernetes/test/bin/ginkgo
+      chmod +x e2e.test
+      curl -LO "https://dl.k8s.io/release/v1.22.0/bin/linux/amd64/kubectl"
+      chmod +x kubectl
+      echo \$TEST_DRIVER_PATH
+      ./e2e.test -kubeconfig \${KUBECONFIG} -kubectl-path ./kubectl -ginkgo.v -ginkgo.focus='External.Storage.*csi.kubevirt.io.*' -ginkgo.skip='CSI Ephemeral-volume*' -storage.testdriver=\${TEST_DRIVER_PATH}/test-driver.yaml -provider=local
+    volumeMounts:
+    - name: kubeconfig
+      mountPath: "/etc/kubernetes/kubeconfig"
+      readOnly: true
+    - name: test-driver-config
+      mountPath: "/etc/test-driver"
+      readOnly: true
+    - name: capk
+      mountPath: "/capk"
+      readOnly: true
+  volumes:
+  - name: kubeconfig
+    secret:
+      secretName: ${TENANT_CLUSTER_NAME}-kubeconfig
+  - name: test-driver-config
+    configMap:
+      name: ${test_driver_cm}
+  - name: capk
+    secret:
+      secretName: ${capk_secret}
+EOF
+}
+
+trap cleanup EXIT SIGSTOP SIGKILL SIGTERM
 ensure_cluster_up
 ensure_synced
-get_control_plane_vm_name
-echo $control_plane_vm_name
-start_tenant_api_forward
-echo "API port forwarded"
-get_tenant_kubeconfig_for_e2e
-echo "Ensuring test binary exists"
-ensure_e2e_binary
-echo "Enabling sshuttle"
-enable_sshuttle
-echo "Starting test"
-export KUBE_SSH_KEY_PATH=./capk.pem
-export KUBE_SSH_USER=capk
+create_test_driver_cm
+create_capk_secret
+start_test_pod
+# Wait for pod to be ready before getting logs
+./kubevirtci kubectl wait pods -n $TENANT_CLUSTER_NAMESPACE ${test_pod} --for condition=Ready --timeout=180s
+./kubevirtci kubectl logs -fn $TENANT_CLUSTER_NAMESPACE ${test_pod}
 
-# Skip CSI ephemeral volumes as the driver doesn't support them (yet)
-./e2e.test -kubeconfig ${tenant_kubeconfig} -ginkgo.v -ginkgo.focus='External.Storage.*csi.kubevirt.io.*' -ginkgo.skip='CSI Ephemeral-volume*' -storage.testdriver=./hack/test-driver.yaml -provider=local
-
+exit_code=$(./kubevirtci kubectl get pod -n $TENANT_CLUSTER_NAMESPACE ${test_pod} --output="jsonpath={.status.containerStatuses[].state.terminated.exitCode}")
+# Make sure its a number
+exit_code=$(($exit_code + 0))
+exit $exit_code
