@@ -1,0 +1,22 @@
+StorageClass:
+  FromName: false
+  FromExistingClassName: kubevirt
+SnapshotClass:
+  FromName: false
+DriverInfo:
+  Name: csi.kubevirt.io
+  Capabilities:
+    block: false
+    controllerExpansion: false
+    exec: true
+    fsGroup: false
+    multipods: true
+    nodeExpansion: false
+    persistence: true
+    singleNodeVolume: false
+    snapshotDataSource: false
+    topology: false
+    capacity: false
+InlineVolumes:
+- shared: false
+
