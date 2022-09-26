@@ -92,7 +92,12 @@ spec:
       curl -LO "https://dl.k8s.io/release/v1.22.0/bin/linux/amd64/kubectl"
       chmod +x kubectl
       echo \$TEST_DRIVER_PATH
-      ./e2e.test -kubeconfig \${KUBECONFIG} -kubectl-path ./kubectl -ginkgo.v -ginkgo.focus='External.Storage.*csi.kubevirt.io.*' -ginkgo.skip='CSI Ephemeral-volume*' -storage.testdriver=\${TEST_DRIVER_PATH}/test-driver.yaml -provider=local
+      ./e2e.test -kubeconfig \${KUBECONFIG} -kubectl-path ./kubectl -ginkgo.v -ginkgo.focus='External.Storage.*csi.kubevirt.io.*' -ginkgo.skip='CSI Ephemeral-volume*' -storage.testdriver=\${TEST_DRIVER_PATH}/test-driver.yaml -provider=local -report-dir=/tmp
+      ret=\$?
+      while [ ! -f /tmp/exit.txt ]; do
+        sleep 2
+      done
+      exit \$ret
     volumeMounts:
     - name: kubeconfig
       mountPath: "/etc/kubernetes/kubeconfig"
@@ -124,7 +129,19 @@ create_capk_secret
 start_test_pod
 # Wait for pod to be ready before getting logs
 ./kubevirtci kubectl wait pods -n $TENANT_CLUSTER_NAMESPACE ${test_pod} --for condition=Ready --timeout=180s
-./kubevirtci kubectl logs -fn $TENANT_CLUSTER_NAMESPACE ${test_pod}
+./kubevirtci kubectl logs -fn $TENANT_CLUSTER_NAMESPACE ${test_pod} >&1 &
+
+while [[ ! $(./kubevirtci kubectl exec -n $TENANT_CLUSTER_NAMESPACE ${test_pod} -- ls /tmp/junit_01.xml 2>/dev/null) ]]; do
+  sleep 30
+done
+
+if [[ -n "$ARTIFACTS" ]]; then
+  echo "Copying results"
+  ./kubevirtci kubectl cp ${TENANT_CLUSTER_NAMESPACE}/${test_pod}:/tmp/junit_01.xml $ARTIFACTS/junit.functest.xml
+fi
+
+./kubevirtci kubectl exec -n $TENANT_CLUSTER_NAMESPACE ${test_pod} -- touch /tmp/exit.txt
+sleep 5
 
 exit_code=$(./kubevirtci kubectl get pod -n $TENANT_CLUSTER_NAMESPACE ${test_pod} --output="jsonpath={.status.containerStatuses[].state.terminated.exitCode}")
 # Make sure its a number

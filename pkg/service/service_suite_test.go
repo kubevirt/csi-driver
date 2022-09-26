@@ -288,7 +288,7 @@ func (m successfulMounter) List() ([]mount.MountPoint, error) {
 }
 
 func (m successfulMounter) IsLikelyNotMountPoint(file string) (bool, error) {
-	panic("implement me")
+	return true, nil
 }
 
 func (m successfulMounter) GetMountRefs(pathname string) ([]string, error) {
