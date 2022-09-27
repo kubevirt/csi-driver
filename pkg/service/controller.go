@@ -89,6 +89,9 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	dv.Kind = "DataVolume"
 	dv.APIVersion = cdiv1.SchemeGroupVersion.String()
 	dv.ObjectMeta.Labels = c.infraClusterLabels
+	dv.ObjectMeta.Annotations = map[string]string{
+		"cdi.kubevirt.io/storage.deleteAfterCompletion": "false",
+	}
 	dv.Spec.PVC = &corev1.PersistentVolumeClaimSpec{
 		AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 		StorageClassName: &storageClassName,
