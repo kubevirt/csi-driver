@@ -69,6 +69,9 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	// Prepare parameters for the DataVolume
 	storageClassName := req.Parameters[infraStorageClassNameParameter]
 	volumeMode := getVolumeModeFromRequest(req)
+	if volumeMode == corev1.PersistentVolumeBlock {
+		return nil, status.Error(codes.InvalidArgument, "block mode not supported")
+	}
 	storageSize := req.GetCapacityRange().GetRequiredBytes()
 	dvName := req.Name
 	value, ok := req.Parameters[busParameter]

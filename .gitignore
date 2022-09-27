@@ -6,6 +6,10 @@
 *.dylib
 kubevirt-csi-driver
 
+#k8s e2e suite
+.kvcluster-kubeconfig-e2e
+capk.pem
+
 # Test binary, built with `go test -c`
 *.test
 

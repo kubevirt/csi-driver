@@ -29,17 +29,6 @@ func TestCreateVolume_Success(t *testing.T) {
 	assert.Equal(t, testVolumeStorageSize, response.GetVolume().GetCapacityBytes())
 }
 
-func TestCreateVolume_SuccessBlockDevice(t *testing.T) {
-	// Set mode to block device
-	testVolumeMode = corev1.PersistentVolumeBlock
-
-	client := &ControllerClientMock{t: t}
-	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
-
-	_, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest()) // The call to client.CreateDataVolume will test volume mode
-	assert.Nil(t, err)
-}
-
 func TestCreateVolume_CreateDataVolumeFail(t *testing.T) {
 	client := &ControllerClientMock{t: t, FailCreateDataVolume: true}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}

@@ -220,6 +220,14 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	targetPath := req.GetTargetPath()
+	notMnt, err := n.fsMounter.IsLikelyNotMountPoint(targetPath)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if !notMnt {
+		klog.Infof("Volume %s already mounted on %s", req.GetVolumeId(), targetPath)
+		return &csi.NodePublishVolumeResponse{}, nil
+	}
 	err = n.dirMaker.Make(targetPath, 0750)
 	// MkdirAll returns nil if path already exists
 	if err != nil {
@@ -229,6 +237,7 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	//TODO support mount options
 	req.GetStagingTargetPath()
 	klog.Infof("Staging target path %s", req.GetStagingTargetPath())
+
 	klog.Infof("GetMount() %v", req.VolumeCapability.GetMount())
 	fsType := req.VolumeCapability.GetMount().FsType
 	klog.Infof("Mounting devicePath %s, on targetPath: %s with FS type: %s",

@@ -118,9 +118,15 @@ function kubevirtci::build() {
 }
 
 function kubevirtci::ssh_tenant() {
+	if [ -z "$1" ]; then
+		echo "No VM supplied"
+	fi
 	vmi_name=$1
 	vmi_namespace=${2:-$TENANT_CLUSTER_NAMESPACE}
-
+	if [ ! -z "$2" ]; then
+		shift
+	fi
+	shift
 	mkdir -p $_default_tmp_path
 
 	echo "vmi $vmi_name namespace $vmi_namespace"
@@ -128,8 +134,7 @@ function kubevirtci::ssh_tenant() {
 	${_kubectl} get secret -n $TENANT_CLUSTER_NAMESPACE kvcluster-ssh-keys -o jsonpath='{.data}' | grep key | awk -F '"' '{print $4}' | base64 -d > ${_default_tmp_path}/key.pem
 
 	chmod 600 ${_default_tmp_path}/key.pem
-
-	ssh -o IdentitiesOnly=yes -o "StrictHostKeyChecking=no" -o "ProxyCommand=$_default_virtctl_path port-forward --stdio=true $vmi_name.$vmi_namespace 22" capk@$vmi_name.$vmi_namespace -i ${_default_tmp_path}/key.pem
+	ssh -o IdentitiesOnly=yes -o "StrictHostKeyChecking=no" -o "ProxyCommand=$_default_virtctl_path port-forward --stdio=true $vmi_name.$vmi_namespace 22" capk@$vmi_name.$vmi_namespace -i ${_default_tmp_path}/key.pem "$@"
 
 	rm ${_default_tmp_path}/key.pem
 }
