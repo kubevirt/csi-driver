@@ -18,6 +18,22 @@ The term "tenant cluster" refers to the k8s cluster installed on kubevirt VMs, a
 - Access to terminal with `kubectl` installed
 
 ## Deployment
+
+#### Run all in one script 
+export the following environmet variables
+`export INFRA_CLUSTER_KUBECONFIG=<path to the Infra cluster kubeconfig file>`
+`export INFRA_CLUSTER_TENANT_NAMESPACE=<The namespace on the Infra cluster where the Tenant cluster is deployed to>`
+`export INFRA_STORAGE_CLASS_NAME=<The storage class that the kubevirt csi will map to>`
+`export TENANT_CLUSTER_NAME=<name of the tenant cluster>`
+`export TENANT_CLUSTER_KUBEECONFIG=<path to the Tenant cluster kubeconfig file>`
+
+Change to the deploy directory and run install-kubevirt-csi.sh
+`cd ./deploy`
+`././install-kubevirt-csi.sh`
+
+If you have any issues with the script above, follow the manual steps below.
+
+#### Run manual steps
 - use `deploy/infra-cluster-service-account.yaml` to create a service account in kubevirt cluster (use '-n' flag in create command for specifying the kubevirt cluster namespace)
 - create kubeconfig for service account
     - Run `./hack/create-infra-kubeconfig.sh > temp_kubeconfig.yaml`  
@@ -27,8 +43,11 @@ The term "tenant cluster" refers to the k8s cluster installed on kubevirt VMs, a
 
 - create namespace for the driver in tenant cluster
     - Use `deploy/000-namespace.yaml`
-- use `deploy/secret.yaml` for creating the necessary secret in the tenant cluster
+- use `deploy/secret-template.yaml` for creating the necessary secret in the tenant cluster
     - set kubeconfig: [base64 of kubeconfig from previous step]
+        - `export INFRA_KUBEVIRT_CSI_SERVICE_KUBECONFIG_BASE64=$(cat temp_kubeconfig.yaml | base64 -w 0)`
+        - `envsubst < ./deploy/secret-template.yaml > ./secret-processed.yaml`
+        - Apply the secret-processed.yaml 
 - use `deploy/configmap.yaml` for creating the driver's config
     - set infraClusterNamespace to the kubevirt cluster namespace.
     - set infraClusterLabels. The format is 'key=value,key=value,...'. The driver creates resources in the infra cluster. These resources are labeled with the values you supply in infraClusterLabels. Provide values that make the labels unique to your cluster. One usage of such labels is for destroying the tenant cluster. The labels tells us what resources were created in the infra cluster for serving the tenant.

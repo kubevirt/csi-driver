@@ -4,5 +4,5 @@ metadata:
   name: driver-config
   namespace: kubevirt-csi-driver
 data:
-  infraClusterNamespace: kvcluster
-  infraClusterLabels: csi-driver/cluster=tenant
+  infraClusterNamespace: $INFRA_CLUSTER_TENANT_NAMESPACE
+  infraClusterLabels: csi-driver/cluster=$TENANT_CLUSTER_NAME
