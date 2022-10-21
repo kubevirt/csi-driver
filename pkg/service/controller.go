@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -21,10 +22,11 @@ import (
 )
 
 const (
-	infraStorageClassNameParameter = "infraStorageClassName"
-	busParameter                   = "bus"
-	busDefaultValue                = kubevirtv1.DiskBus("scsi")
-	serialParameter                = "serial"
+	infraStorageClassNameParameter       = "infraStorageClassName"
+	useDefaultInfraStorageClassParameter = "useDefaultInfraStorageClass"
+	busParameter                         = "bus"
+	busDefaultValue                      = kubevirtv1.DiskBus("scsi")
+	serialParameter                      = "serial"
 )
 
 //ControllerService implements the controller interface. See README for details.
@@ -68,6 +70,7 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	// Prepare parameters for the DataVolume
 	storageClassName := req.Parameters[infraStorageClassNameParameter]
+	useDefaultStorageClass := req.Parameters[useDefaultInfraStorageClassParameter]
 	volumeMode := getVolumeModeFromRequest(req)
 	if volumeMode == corev1.PersistentVolumeBlock {
 		return nil, status.Error(codes.InvalidArgument, "block mode not supported")
@@ -93,14 +96,19 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 		"cdi.kubevirt.io/storage.deleteAfterCompletion": "false",
 	}
 	dv.Spec.PVC = &corev1.PersistentVolumeClaimSpec{
-		AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-		StorageClassName: &storageClassName,
-		VolumeMode:       &volumeMode,
+		AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+		VolumeMode:  &volumeMode,
 		Resources: corev1.ResourceRequirements{
 			Requests: corev1.ResourceList{
 				corev1.ResourceStorage: *resource.NewScaledQuantity(storageSize, 0)},
 		},
 	}
+
+	useDefaultSC, _ := strconv.ParseBool(useDefaultStorageClass)
+	if !useDefaultSC {
+		dv.Spec.PVC.StorageClassName = &storageClassName
+	}
+
 	dv.Spec.Source = &cdiv1.DataVolumeSource{}
 	dv.Spec.Source.Blank = &cdiv1.DataVolumeBlankImage{}
 

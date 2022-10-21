@@ -29,6 +29,23 @@ func TestCreateVolume_Success(t *testing.T) {
 	assert.Equal(t, testVolumeStorageSize, response.GetVolume().GetCapacityBytes())
 }
 
+func TestCreateVolumeDefaultStorageClass_Success(t *testing.T) {
+
+	testUseDefaultStorageClass = "true"
+	defer func() { testUseDefaultStorageClass = "" }()
+
+	client := &ControllerClientMock{t: t}
+	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
+
+	response, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest())
+	assert.Nil(t, err)
+
+	assert.Equal(t, testVolumeName, response.GetVolume().GetVolumeId())
+	assert.Equal(t, testDataVolumeUID, response.GetVolume().VolumeContext[serialParameter])
+	assert.Equal(t, string(getBusType()), response.GetVolume().VolumeContext[busParameter])
+	assert.Equal(t, testVolumeStorageSize, response.GetVolume().GetCapacityBytes())
+}
+
 func TestCreateVolume_CreateDataVolumeFail(t *testing.T) {
 	client := &ControllerClientMock{t: t, FailCreateDataVolume: true}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
@@ -87,17 +104,18 @@ func TestUnpublishVolume_Success(t *testing.T) {
 //
 
 var (
-	testVolumeName                                = "pvc-3d8be521-6e4b-4a87-add4-1961bf62f4ea"
-	testInfraStorageClassName                     = "infra-storage"
-	testVolumeStorageSize     int64               = 1024 * 1024 * 1024 * 3
-	testInfraNamespace                            = "tenant-cluster-2"
-	testNodeID                                    = "6FC9C805-B3A0-570B-9D1B-3B8B9CFC9FB7"
-	testVMName                                    = "test-vm"
-	testVMUID                                     = "6fc9c805-b3a0-570b-9d1b-3b8b9cfc9fb7"
-	testDataVolumeUID                             = "2d0111d5-494f-4731-8f67-122b27d3c366"
-	testVolumeMode                                = corev1.PersistentVolumeFilesystem
-	testBusType               *kubevirtv1.DiskBus = nil // nil==do not pass bus type
-	testInfraLabels                               = map[string]string{"infra-label-name": "infra-label-value"}
+	testVolumeName                                 = "pvc-3d8be521-6e4b-4a87-add4-1961bf62f4ea"
+	testInfraStorageClassName                      = "infra-storage"
+	testUseDefaultStorageClass                     = ""
+	testVolumeStorageSize      int64               = 1024 * 1024 * 1024 * 3
+	testInfraNamespace                             = "tenant-cluster-2"
+	testNodeID                                     = "6FC9C805-B3A0-570B-9D1B-3B8B9CFC9FB7"
+	testVMName                                     = "test-vm"
+	testVMUID                                      = "6fc9c805-b3a0-570b-9d1b-3b8b9cfc9fb7"
+	testDataVolumeUID                              = "2d0111d5-494f-4731-8f67-122b27d3c366"
+	testVolumeMode                                 = corev1.PersistentVolumeFilesystem
+	testBusType                *kubevirtv1.DiskBus = nil // nil==do not pass bus type
+	testInfraLabels                                = map[string]string{"infra-label-name": "infra-label-value"}
 )
 
 func getBusType() kubevirtv1.DiskBus {
@@ -124,6 +142,9 @@ func getCreateVolumeRequest() *csi.CreateVolumeRequest {
 
 	parameters := map[string]string{}
 	parameters[infraStorageClassNameParameter] = testInfraStorageClassName
+	if testUseDefaultStorageClass != "" {
+		parameters[useDefaultInfraStorageClassParameter] = testUseDefaultStorageClass
+	}
 	if testBusType != nil {
 		parameters[busParameter] = string(*testBusType)
 	}
@@ -222,7 +243,11 @@ func (c *ControllerClientMock) CreateDataVolume(namespace string, dataVolume *cd
 
 	// Test input
 	assert.Equal(c.t, testVolumeName, dataVolume.GetName())
-	assert.Equal(c.t, testInfraStorageClassName, *dataVolume.Spec.PVC.StorageClassName)
+	if testUseDefaultStorageClass == "true" {
+		assert.Nil(c.t, dataVolume.Spec.PVC.StorageClassName)
+	} else {
+		assert.Equal(c.t, testInfraStorageClassName, *dataVolume.Spec.PVC.StorageClassName)
+	}
 	q, ok := dataVolume.Spec.PVC.Resources.Requests[corev1.ResourceStorage]
 	assert.True(c.t, ok)
 	assert.Equal(c.t, 0, q.CmpInt64(testVolumeStorageSize))
