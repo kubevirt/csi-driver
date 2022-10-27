@@ -93,14 +93,21 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 		"cdi.kubevirt.io/storage.deleteAfterCompletion": "false",
 	}
 	dv.Spec.PVC = &corev1.PersistentVolumeClaimSpec{
-		AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-		StorageClassName: &storageClassName,
-		VolumeMode:       &volumeMode,
+		AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+		VolumeMode:  &volumeMode,
 		Resources: corev1.ResourceRequirements{
 			Requests: corev1.ResourceList{
 				corev1.ResourceStorage: *resource.NewScaledQuantity(storageSize, 0)},
 		},
 	}
+
+	// Only set the storageclass if it is defined. Otherwise we use the
+	// default storage class which means leaving the storageclass empty
+	// (nil) on the PVC
+	if storageClassName != "" {
+		dv.Spec.PVC.StorageClassName = &storageClassName
+	}
+
 	dv.Spec.Source = &cdiv1.DataVolumeSource{}
 	dv.Spec.Source.Blank = &cdiv1.DataVolumeBlankImage{}
 
