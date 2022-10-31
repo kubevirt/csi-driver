@@ -16,6 +16,24 @@ import (
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 )
 
+func TestCreateVolumeDefaultStorageClass_Success(t *testing.T) {
+
+	origStorageClass := testInfraStorageClassName
+	testInfraStorageClassName = ""
+	defer func() { testInfraStorageClassName = origStorageClass }()
+
+	client := &ControllerClientMock{t: t}
+	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
+
+	response, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest())
+	assert.Nil(t, err)
+
+	assert.Equal(t, testVolumeName, response.GetVolume().GetVolumeId())
+	assert.Equal(t, testDataVolumeUID, response.GetVolume().VolumeContext[serialParameter])
+	assert.Equal(t, string(getBusType()), response.GetVolume().VolumeContext[busParameter])
+	assert.Equal(t, testVolumeStorageSize, response.GetVolume().GetCapacityBytes())
+}
+
 func TestCreateVolume_Success(t *testing.T) {
 	client := &ControllerClientMock{t: t}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels}
@@ -123,7 +141,9 @@ func getCreateVolumeRequest() *csi.CreateVolumeRequest {
 	}
 
 	parameters := map[string]string{}
-	parameters[infraStorageClassNameParameter] = testInfraStorageClassName
+	if testInfraStorageClassName != "" {
+		parameters[infraStorageClassNameParameter] = testInfraStorageClassName
+	}
 	if testBusType != nil {
 		parameters[busParameter] = string(*testBusType)
 	}
@@ -222,7 +242,11 @@ func (c *ControllerClientMock) CreateDataVolume(namespace string, dataVolume *cd
 
 	// Test input
 	assert.Equal(c.t, testVolumeName, dataVolume.GetName())
-	assert.Equal(c.t, testInfraStorageClassName, *dataVolume.Spec.PVC.StorageClassName)
+	if testInfraStorageClassName != "" {
+		assert.Equal(c.t, testInfraStorageClassName, *dataVolume.Spec.PVC.StorageClassName)
+	} else {
+		assert.Nil(c.t, dataVolume.Spec.PVC.StorageClassName)
+	}
 	q, ok := dataVolume.Spec.PVC.Resources.Requests[corev1.ResourceStorage]
 	assert.True(c.t, ok)
 	assert.Equal(c.t, 0, q.CmpInt64(testVolumeStorageSize))
