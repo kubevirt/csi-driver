@@ -5,6 +5,7 @@ import (
 	klog "k8s.io/klog/v2"
 
 	"kubevirt.io/csi-driver/pkg/kubevirt"
+	"kubevirt.io/csi-driver/pkg/util"
 )
 
 var (
@@ -26,6 +27,7 @@ func NewKubevirtCSIDriver(virtClient kubevirt.Client,
 	identityClientset kubernetes.Interface,
 	infraClusterNamespace string,
 	infraClusterLabels map[string]string,
+	storageClassEnforcement util.StorageClassEnforcement,
 	nodeID string,
 	runNodeService bool,
 	runControllerService bool) *KubevirtCSIDriver {
@@ -35,9 +37,10 @@ func NewKubevirtCSIDriver(virtClient kubevirt.Client,
 
 	if runControllerService {
 		d.ControllerService = &ControllerService{
-			virtClient:            virtClient,
-			infraClusterNamespace: infraClusterNamespace,
-			infraClusterLabels:    infraClusterLabels,
+			virtClient:             virtClient,
+			infraClusterNamespace:  infraClusterNamespace,
+			infraClusterLabels:     infraClusterLabels,
+			storageClassEnforcement: storageClassEnforcement,
 		}
 	}
 

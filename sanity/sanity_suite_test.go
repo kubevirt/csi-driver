@@ -12,6 +12,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/mount"
 	"kubevirt.io/csi-driver/pkg/service"
+	"kubevirt.io/csi-driver/pkg/util"
 )
 
 var (
@@ -40,10 +41,17 @@ var _ = ginkgo.BeforeSuite(func() {
 	service.NewFsMaker = func() service.FsMaker {
 		return &fakeFsMaker{}
 	}
+
+	storagClassEnforcement := util.StorageClassEnforcement{
+		AllowAll:     true,
+		AllowDefault: true,
+	}
+
 	driver := service.NewKubevirtCSIDriver(virtClient,
 		identityClientset,
 		infraClusterNamespace,
 		infraClusterLabelsMap,
+		storagClassEnforcement,
 		nodeID,
 		true,
 		true)
