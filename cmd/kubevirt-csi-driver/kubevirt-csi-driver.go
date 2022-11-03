@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v2"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -17,14 +18,17 @@ import (
 
 	"kubevirt.io/csi-driver/pkg/kubevirt"
 	"kubevirt.io/csi-driver/pkg/service"
+	"kubevirt.io/csi-driver/pkg/util"
 )
 
 var (
-	endpoint               = flag.String("endpoint", "unix:/csi/csi.sock", "CSI endpoint")
-	nodeName               = flag.String("node-name", "", "The node name - the node this pods runs on")
-	infraClusterNamespace  = flag.String("infra-cluster-namespace", "", "The infra-cluster namespace")
-	infraClusterKubeconfig = flag.String("infra-cluster-kubeconfig", "", "the infra-cluster kubeconfig file. If not set, defaults to in cluster config.")
-	infraClusterLabels     = flag.String("infra-cluster-labels", "", "The infra-cluster labels to use when creating resources in infra cluster. 'name=value' fields separated by a comma")
+	endpoint                     = flag.String("endpoint", "unix:/csi/csi.sock", "CSI endpoint")
+	nodeName                     = flag.String("node-name", "", "The node name - the node this pods runs on")
+	infraClusterNamespace        = flag.String("infra-cluster-namespace", "", "The infra-cluster namespace")
+	infraClusterKubeconfig       = flag.String("infra-cluster-kubeconfig", "", "the infra-cluster kubeconfig file. If not set, defaults to in cluster config.")
+	infraClusterLabels           = flag.String("infra-cluster-labels", "", "The infra-cluster labels to use when creating resources in infra cluster. 'name=value' fields separated by a comma")
+	// infraStorageClassEnforcement = flag.String("infra-storage-class-enforcement", "", "A string encoded yaml that represents the policy of enforcing which infra storage classes are allowed in persistentVolume of type kubevirt")
+	infraStorageClassEnforcement = os.Getenv("INFRA_STORAGE_CLASS_ENFORCEMENT")
 
 	tenantClusterKubeconfig = flag.String("tenant-cluster-kubeconfig", "", "the tenant cluster kubeconfig file. If not set, defaults to in cluster config.")
 
@@ -81,7 +85,6 @@ func handle() {
 		if err != nil {
 			klog.Fatalf("failed to build tenant cluster config: %v", err)
 		}
-
 	} else {
 		tenantRestConfig = inClusterConfig
 	}
@@ -126,11 +129,25 @@ func handle() {
 	}
 
 	infraClusterLabelsMap := parseLabels()
+	var storageClassEnforcement util.StorageClassEnforcement
+	//prase yaml
+	if infraStorageClassEnforcement == "" {
+		storageClassEnforcement = util.StorageClassEnforcement{
+			AllowAll:     true,
+			AllowDefault: true,
+		}
+	} else {
+		err := yaml.Unmarshal([]byte(infraStorageClassEnforcement), &storageClassEnforcement)
+		if err != nil {
+			klog.Fatalf("Failed to parse infra-storage-class-enforcement", err)
+		}
+	}
 
 	driver := service.NewKubevirtCSIDriver(virtClient,
 		identityClientset,
 		*infraClusterNamespace,
 		infraClusterLabelsMap,
+		storageClassEnforcement,
 		nodeID,
 		*runNodeService,
 		*runControllerService)

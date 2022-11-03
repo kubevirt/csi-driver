@@ -18,6 +18,7 @@ import (
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
 	client "kubevirt.io/csi-driver/pkg/kubevirt"
+	"kubevirt.io/csi-driver/pkg/util"
 )
 
 const (
@@ -27,16 +28,31 @@ const (
 	serialParameter                = "serial"
 )
 
+var (
+	unallowedStorageClass = status.Error(codes.InvalidArgument, "infraStorageclass is not in the allowed list")
+)
+
 //ControllerService implements the controller interface. See README for details.
 type ControllerService struct {
-	virtClient            client.Client
-	infraClusterNamespace string
-	infraClusterLabels    map[string]string
+	virtClient             client.Client
+	infraClusterNamespace  string
+	infraClusterLabels     map[string]string
+	storageClassEnforcement util.StorageClassEnforcement
 }
 
 var controllerCaps = []csi.ControllerServiceCapability_RPC_Type{
 	csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 	csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME, // attach/detach
+}
+
+// Contains tells whether a contains x.
+func contains(arr []string, val string) bool {
+	for _, itrVal := range arr {
+		if val == itrVal {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *ControllerService) validateCreateVolumeRequest(req *csi.CreateVolumeRequest) error {
@@ -50,6 +66,22 @@ func (c *ControllerService) validateCreateVolumeRequest(req *csi.CreateVolumeReq
 	caps := req.GetVolumeCapabilities()
 	if caps == nil {
 		return status.Error(codes.InvalidArgument, "volume capabilities missing in request")
+	}
+
+	if c.storageClassEnforcement.AllowAll {
+		return nil
+	}
+
+	storageClassName := req.Parameters[infraStorageClassNameParameter]
+	if storageClassName == "" {
+		if c.storageClassEnforcement.AllowDefault {
+			return nil
+		} else {
+			return unallowedStorageClass	
+		}
+	}
+	if !contains(c.storageClassEnforcement.AllowList, storageClassName) {
+		return unallowedStorageClass
 	}
 
 	return nil
