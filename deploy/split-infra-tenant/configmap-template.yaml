@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: driver-config
-  namespace: kvcluster
-data:
-  infraClusterNamespace: kvcluster
-  infraClusterLabels: csi-driver/cluster=tenant

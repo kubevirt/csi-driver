@@ -1,0 +1,4 @@
+commonLabels:
+  app: kubevirt-csi-driver
+resources:
+- deploy.yaml

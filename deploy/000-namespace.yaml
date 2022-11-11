@@ -1,9 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: kubevirt-csi-driver
-  annotations:
-    openshift.io/node-selector: ""
-  labels:
-    name: kubevirt-csi-driver
-

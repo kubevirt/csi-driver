@@ -1,71 +1,94 @@
 #!/usr/bin/env bash
-
+source hack/common.sh
 set -euo pipefail
 
-RESOURCES_DIR=_ci-configs
-mkdir -p ${RESOURCES_DIR}
-INFRA_KUBECONFIG_IN_TENANT_FILE=${RESOURCES_DIR}/infra_kubeconfig.yaml
-TENANT_SECRET_FILE=${RESOURCES_DIR}/tenant_secret.yaml
-INFRA_KUBECONFIG_STORAGECLASS_FILE=${RESOURCES_DIR}/storageclass.yaml
+TENANT_CLUSTER_NAMESPACE=${TENANT_CLUSTER_NAMESPACE:-kvcluster}
+CSI_DRIVER_NAMESPACE=${CSI_DRIVER_NAMESPACE:-kubevirt-csi-driver}
+INFRA_STORAGE_CLASS=${INFRA_STORAGE_CLASS:-local}
+REGISTRY=${REGISTRY:-192.168.66.2:5000}
+TARGET_NAME=${TARGET_NAME:-kubevirt-csi-driver}
+TAG=${TAG:-latest}
 
-# Create kubeconfig to access infra cluster from tenant cluster
-function cluster::create_infra_kubeconfig() {
-    export INFRA_KUBECONFIG_IN_TENANT_FILE
-  ./hack/create-infra-kubeconfig.sh  > $INFRA_KUBECONFIG_IN_TENANT_FILE
-  #  Try to find the url in universal way: maybe it is node ip and service port??
-  #         sed -i -r 's/127.0.0.1:[0-9]+/192.168.66.101:6443/g' kubeconfig-e2e
-  #
-  #❯ ./kubevirtci kubectl get node -o wide
-  #NAME     STATUS   ROLES                         AGE   VERSION   INTERNAL-IP      EXTERNAL-IP   OS-IMAGE          KERNEL-VERSION          CONTAINER-RUNTIME
-  #node01   Ready    control-plane,master,worker   46m   v1.23.6   192.168.66.101   <none>        CentOS Stream 8   4.18.0-383.el8.x86_64   cri-o://1.22.4
-  #
-  #❯ ./kubevirtci kubectl get svc -o wide -n kvcluster
-  #NAME           TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)    AGE   SELECTOR
-  #kvcluster-lb   ClusterIP   10.101.163.253   <none>        6443/TCP   41m   cluster.x-k8s.io/cluster-name=kvcluster,cluster.x-k8s.io/role=control-plane
-  #
-  sed -i -r 's/127.0.0.1:[0-9]+/192.168.66.101:6443/g' $INFRA_KUBECONFIG_IN_TENANT_FILE
+function tenant::deploy_kubeconfig_secret() {
+  TOKEN_NAME=$(_kubectl -n $TENANT_CLUSTER_NAMESPACE get serviceaccount/kubevirt-csi -o jsonpath='{.secrets[0].name}')
+  CA_CRT=$(_kubectl -n $TENANT_CLUSTER_NAMESPACE get secret $TOKEN_NAME -o json | jq '.data["ca.crt"]' | xargs echo)
+  TOKEN=$(_kubectl -n $TENANT_CLUSTER_NAMESPACE get secret $TOKEN_NAME -o json | jq '.data["token"]' | xargs echo | base64 -d)
+  INTERNAL_IP=$(_kubectl get node -l "node-role.kubernetes.io/control-plane" -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+
+  kubeconfig=$(cat <<- END
+apiVersion: v1
+clusters:
+- cluster:
+    insecure-skip-tls-verify: true
+    server: https://$INTERNAL_IP:6443
+  name: infra-cluster
+contexts:
+- context:
+    cluster: infra-cluster
+    namespace: $TENANT_CLUSTER_NAMESPACE
+    user: kubevirt-csi
+  name: only-context
+current-context: only-context
+kind: Config
+preferences: {}
+users:
+- name: kubevirt-csi
+  user:
+    token: $TOKEN
+END
+)
+
+  cat <<- END | ./kubevirtci kubectl-tenant apply -f -
+apiVersion: v1
+kind: Secret
+metadata:
+  name: infra-cluster-credentials
+  namespace: $CSI_DRIVER_NAMESPACE
+data:
+  kubeconfig: $(echo "$kubeconfig" | base64 -w 0)
+END
 }
 
-# Add kubeconfig as base64 to secret
-function cluster::add_kubeconfig_to_secret() {
-  export INFRA_KUBECONFIG_IN_TENANT_CONTENT=$(cat $INFRA_KUBECONFIG_IN_TENANT_FILE | base64 -w 0)
-  envsubst < ./deploy/secret-template.yaml > ${TENANT_SECRET_FILE}
+function cluster::generate_tenant_controller_overlay() {
+  cat <<- END > ./deploy/controller-tenant/dev-overlay/controller.yaml
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: kubevirt-csi-controller
+  namespace: kubevirt-csi-driver
+  labels:
+    app: kubevirt-csi-driver
+spec:
+  template:
+    spec:
+      containers:
+        - name: csi-driver
+          image: $REGISTRY/$TARGET_NAME:$TAG
+END
 }
 
-function cluster::install_csi_driver() {
-#  export MANIFEST_IMG="registry:5000/kubevirt-csi-driver"
-# 192.168.66.2 is the ip of registry visible from tenant cluster, from the VMI
-  export MANIFEST_IMG="192.168.66.2:5000/kubevirt-csi-driver"
-  export MANIFEST_TAG="latest"
-
-  # TODO: ugly, needs to be changed,
-  # also the image reference can be made configurable, if external registry is used like quay.io it can be used here
-  sed -r "s#quay.io/kubevirt/csi-driver:latest#${MANIFEST_IMG}:${MANIFEST_TAG}#g" ./deploy/030-node.yaml > ${RESOURCES_DIR}/030-node.yaml
-  sed -r "s#quay.io/kubevirt/csi-driver:latest#${MANIFEST_IMG}:${MANIFEST_TAG}#g" ./deploy/040-controller.yaml > ${RESOURCES_DIR}/040-controller.yaml
-
-  ./kubevirtci kubectl-tenant apply -f ./deploy/000-csi-driver.yaml
-  ./kubevirtci kubectl-tenant apply -f ./deploy/020-autorization.yaml
-  ./kubevirtci kubectl-tenant apply -f ${RESOURCES_DIR}/030-node.yaml
-  ./kubevirtci kubectl-tenant apply -f ${RESOURCES_DIR}/040-controller.yaml
+function cluster::generate_node_overlay() {
+  cat <<- END > ./deploy/tenant/dev-overlay/node.yaml
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: kubevirt-csi-node
+  namespace: kubevirt-csi-driver
+spec:
+  template:
+    spec:
+      containers:
+        - name: csi-driver
+          image: $REGISTRY/$TARGET_NAME:$TAG
+          volumeMounts:
+            - name: infracluster
+              mountPath: "/var/run/secrets/infracluster"
+      volumes:
+        - name: infracluster
+          secret:
+            secretName: infra-cluster-credentials
+END
 }
-
-# Apply storage class used by csi.kubevirt.io
-function cluster::create_storageclass() {
-  export INFRA_KUBECONFIG_STORAGECLASS_FILE
-  cp ./deploy/example/storageclass.yaml $INFRA_KUBECONFIG_STORAGECLASS_FILE
-  sed -i -r 's/standard/local/g' $INFRA_KUBECONFIG_STORAGECLASS_FILE
-  ./kubevirtci kubectl-tenant apply -f $INFRA_KUBECONFIG_STORAGECLASS_FILE
-}
-
-# ******************************************************
-# Prepare cluster for csi driver
-# ******************************************************
-./kubevirtci kubectl -n kvcluster apply -f ./deploy/infra-cluster-service-account.yaml
-./kubevirtci kubectl-tenant apply -f ./deploy/000-namespace.yaml
-cluster::create_infra_kubeconfig
-cluster::add_kubeconfig_to_secret
-./kubevirtci kubectl-tenant apply -f ${TENANT_SECRET_FILE}
-./kubevirtci kubectl-tenant apply -f ./deploy/configmap-template.yaml
 
 # ******************************************************
 # Build the driver
@@ -73,13 +96,35 @@ cluster::add_kubeconfig_to_secret
 ./kubevirtci build
 
 # ******************************************************
-# Deploy the driver
+# Create namespace and put infra cluster secret in it
 # ******************************************************
-cluster::install_csi_driver
-cluster::create_storageclass
+mkdir -p ./deploy/controller-tenant/dev-overlay
+mkdir -p ./deploy/tenant/dev-overlay
+cluster::generate_tenant_dev_kustomization
+cluster::generate_controller_dev_kustomization "controller-tenant" $CSI_DRIVER_NAMESPACE
+tenant::deploy_csidriver_namespace $CSI_DRIVER_NAMESPACE
+_kubectl -n $TENANT_CLUSTER_NAMESPACE apply -f ./deploy/infra-cluster-service-account.yaml
+
+# ******************************************************
+# Generate kustomize overlay for development environment
+# ******************************************************
+tenant::deploy_kubeconfig_secret
+cluster::generate_driver_configmap_overlay "tenant"
+cluster::generate_tenant_controller_overlay
+cluster::generate_node_overlay
+cluster::generate_storageclass_overlay "tenant" $INFRA_STORAGE_CLASS
+
+# ******************************************************
+# Deploy the tenant yaml
+# ******************************************************
+_kubectl_tenant apply --kustomize ./deploy/tenant/dev-overlay
+# ******************************************************
+# Deploy the controller yaml
+# ******************************************************
+_kubectl_tenant apply --kustomize ./deploy/controller-tenant/dev-overlay
 
 # ******************************************************
 # Wait for driver to rollout
 # ******************************************************
-./kubevirtci kubectl-tenant rollout status ds/kubevirt-csi-node -n kubevirt-csi-driver --timeout=5m
-./kubevirtci kubectl-tenant rollout status deployment/kubevirt-csi-controller -n kubevirt-csi-driver --timeout=5m
+_kubectl_tenant rollout status ds/kubevirt-csi-node -n $CSI_DRIVER_NAMESPACE --timeout=5m
+_kubectl_tenant rollout status deployment/kubevirt-csi-controller -n $CSI_DRIVER_NAMESPACE --timeout=5m
