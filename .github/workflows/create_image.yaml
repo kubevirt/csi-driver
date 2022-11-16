@@ -1,0 +1,25 @@
+on:
+  pull_request:
+    branches:
+    - main
+    types: [closed]
+name: Create and push image
+
+jobs:
+  build-and-push-image:
+    if: ${{ github.event.pull_request.merged && (github.repository == 'kubevirt/csi-driver'}})
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: build image
+      shell: bash
+      env:
+        QUAY_PWD: ${{secrets.QUAY_TOKEN}}
+        REGISTRY: "quay.io/kubevirt"
+        TARGET_NAME: "kubevirt-csi-driver"
+        TAG: "latest"
+      run: |
+        echo "${QUAY_PWD}" | docker login -u="kubevirt+csidriver" quay.io --password-stdin
+        make image-build
+        make image-push
