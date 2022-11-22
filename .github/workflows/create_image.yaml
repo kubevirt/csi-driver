@@ -1,25 +1,33 @@
 on:
-  pull_request:
+  push:
     branches:
     - main
-    types: [closed]
+    tags:
+    - "v*"
+
 name: Create and push image
 
 jobs:
   build-and-push-image:
-    if: ${{ github.event.pull_request.merged && (github.repository == 'kubevirt/csi-driver') }}
+    if: ${{ github.repository == 'kubevirt/csi-driver' }}
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
+
     - name: build image
       shell: bash
       env:
         QUAY_PWD: ${{secrets.QUAY_TOKEN}}
         REGISTRY: "quay.io/kubevirt"
         TARGET_NAME: "kubevirt-csi-driver"
-        TAG: "latest"
+        TAG: ${{ github.ref_name }}
       run: |
+        # for branch (only main is supported), use "latest" for image tag. For tags, use the tag name.
+        if [[ "${TAG}" == "main" ]]; then
+          TAG=latest
+        fi
+        
         echo "${QUAY_PWD}" | docker login -u="kubevirt+csidriver" quay.io --password-stdin
         make image-build
         make image-push
