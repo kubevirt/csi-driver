@@ -7,7 +7,7 @@ name: Create and push image
 
 jobs:
   build-and-push-image:
-    if: ${{ github.event.pull_request.merged && (github.repository == 'kubevirt/csi-driver'}})
+    if: ${{ github.event.pull_request.merged && (github.repository == 'kubevirt/csi-driver') }}
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
