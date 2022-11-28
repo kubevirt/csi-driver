@@ -80,13 +80,6 @@ spec:
       containers:
         - name: csi-driver
           image: $REGISTRY/$TARGET_NAME:$TAG
-          volumeMounts:
-            - name: infracluster
-              mountPath: "/var/run/secrets/infracluster"
-      volumes:
-        - name: infracluster
-          secret:
-            secretName: infra-cluster-credentials
 END
 }
 
