@@ -30,3 +30,7 @@ _ci-configs/
 /.kvcluster-kubeconfig
 hack/tools/bin/
 
+# kustomize dev overlay
+/deploy/controller-tenant/dev-overlay/*.yaml
+/deploy/controller-infra/dev-overlay/*.yaml
+/deploy/tenant/dev-overlay/*.yaml

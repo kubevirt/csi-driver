@@ -14,36 +14,167 @@ The term "tenant cluster" refers to the k8s cluster installed on kubevirt VMs, a
 
 ## Pre-requisite
 - Kubernetes cluster
-- Running version 1.18 or later
+- Running version 1.24 or later
 - Access to terminal with `kubectl` installed
 
 ## Deployment
-- use `deploy/infra-cluster-service-account.yaml` to create a service account in kubevirt cluster (use '-n' flag in create command for specifying the kubevirt cluster namespace)
-- create kubeconfig for service account
-    - Run `./hack/create-infra-kubeconfig.sh > temp_kubeconfig.yaml`  
-    - Test your kubeconfig. Try listing resources of type VMI in the kubevirt cluster namespace.
-    - This kubeconfig is configured with server url accessible from local machine `127.0.0.1:[0-9]+`, to use it in tenant 
-  cluster the url has to changed to that of a VM: `sed -i -r 's/127.0.0.1:[0-9]+/192.168.66.101:6443/g' temp_kubeconfig.yaml`
+For this example it is assumed that the namespace in which the tenant VMs are deployed is called `kvcluster`.
 
-- create namespace for the driver in tenant cluster
-    - Use `deploy/000-namespace.yaml`
-- use `deploy/secret.yaml` for creating the necessary secret in the tenant cluster
-    - set kubeconfig: [base64 of kubeconfig from previous step]
-- use `deploy/configmap.yaml` for creating the driver's config
-    - set infraClusterNamespace to the kubevirt cluster namespace.
-    - set infraClusterLabels. The format is 'key=value,key=value,...'. The driver creates resources in the infra cluster. These resources are labeled with the values you supply in infraClusterLabels. Provide values that make the labels unique to your cluster. One usage of such labels is for destroying the tenant cluster. The labels tells us what resources were created in the infra cluster for serving the tenant.
-- deploy files under `deploy` in  tenant cluster
-    - 000-csi-driver.yaml
-    - 020-authorization.yaml
-    - 030-node.yaml
-    - 040-controller.yaml
-- create StorageClass and PersistentVolumeClaim - see `deploy/example`
-- Enable HotplugVolumes feature gate
-    - In case your Kubevirt namespace has the ConfigMap 'kubevirt-config' then use `deploy/example/kubevirt-config.yaml` for adding the feature gate to it. Look at the path {.data.feature-gates}
-    - Otherwise, add the feature gate to the resource of type Kubevirt. There should be a single resource of this type and its name is irrelevant. See `deploy/example/kubevirt.yaml`
-    - Pay attention that in some deployments there are operators that will restore previous configuration. You will have to stop these operators for editing the resources.Some operators allow configuration through their own CRD. HCO is such an operator. See [HCO cluster configuration](https://github.com/kubevirt/hyperconverged-cluster-operator/blob/master/docs/cluster-configuration.md) to understand how HCO feature gates are configured.
+For split deployment
+```bash
+# Deploy infra service account
+kubectl -n kvcluster apply -f ./deploy/infra-cluster-service-account.yaml
+# Deploy the tenant resources not including the controller with the overlay in deploy/tenant/overlay
+kubectl_tenant apply --kubeconfig $TENANT_KUBECONFIG --kustomize ./deploy/tenant/overlay
+# Deploy the controller resources in the infra cluster with the overlay in deploy/controller-infra/overlay
+kubectl apply --kustomize ./deploy/controller-infra/overlay
+```
 
-## Examples
+For tenant controller deployment
+```bash
+# Deploy the infra kubeconfig secret in the tenant cluster, this depends on the infra cluster.
+kubectl -n kubevirt-csi-driver --kubeconfig $TENANT_KUBECONFIG apply -f <yaml of secret>
+# Deploy infra service account
+kubectl -n kvcluster apply -f ./deploy/infra-cluster-service-account.yaml
+# Deploy the tenant resources not including the controller with the overlay in deploy/tenant/overlay
+kubectl_tenant apply --kubeconfig $TENANT_KUBECONFIG --kustomize ./deploy/tenant/overlay
+# Deploy the controller resources in the tenant cluster with the overlay in deploy/controller-tenant/overlay
+kubectl apply --kubeconfig $TENANT_KUBECONFIG --kustomize ./deploy/controller-tenant/overlay
+```
+### Split deployment
+A split deployment is where the controller is deployed in the namespace of the tenant cluster inside of the infra cluster. This means the controller lives in the same namespace as the tenant cluster Virtual Machines. The daemonset is still deployed in the tenant cluster. This allows to not give the tenat cluster access to the infra cluster in order to manage DataVolumes in the infra cluster.
+
+`./deploy/controller-infra/overlay/kustomize.yaml` looks like this:
+```yaml
+bases:
+- ../base
+namespace: kvcluster
+patchesStrategicMerge:
+- controller.yaml
+resources:
+- infra-namespace-configmap.yaml
+```
+Note the namespace is the namespace of the tenant cluster in the infra cluster.
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: driver-config
+  namespace: kubevirt-csi-driver
+data:
+  infraClusterNamespace: kvcluster
+  infraClusterLabels: csi-driver/cluster=tenant
+```
+
+```yaml
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: kubevirt-csi-controller
+  namespace: kubevirt-csi-driver
+  labels:
+    app: kubevirt-csi-driver
+spec:
+  template:
+    spec:
+      containers:
+        - name: csi-driver
+          image: <registry visible in tenant>/kubevirt-csi-driver:latest
+```
+
+### Full tenant deployment
+A Tenant deployment is where both controller and daemonset are deployed in the tenant cluster. This means the controller in the tenant cluster needs access to the infra cluster in order to manage DataVolumes in the infra cluster. In addition to applying the controller the common tenant resources also have to be applied.
+
+`./deploy/controller-tenant/overlay/kustomize.yaml` looks like this:
+```yaml
+bases:
+- ../base
+namespace: kubevirt-csi-driver
+patchesStrategicMerge:
+- controller.yaml
+```
+The namespace in the tenant cluster is `kubevirt-csi-driver` and we are merging the controller.yaml into the main deployment yaml.
+The base deployment references a secret called `kvcluster-kubeconfig` which should contain the kubeconfig that allows the controller to manage DataVolumes in the infra cluster. It is expected this secret is created with the overlay, and specified in the `kustomize.yaml`
+
+Deployment supports [kustomize](https://github.com/kubernetes-sigs/kustomize) when deploying the controller and you can use an overlay like this `./deploy/controller-tenant/overlay/controller.yaml`
+```yaml
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: kubevirt-csi-controller
+  namespace: kubevirt-csi-driver
+  labels:
+    app: kubevirt-csi-driver
+spec:
+  template:
+    spec:
+      containers:
+        - name: csi-driver
+          image: <registry visible in tenant>/kubevirt-csi-driver:latest
+```
+Replace the registry and image to the one used. 
+
+### Common tenant resources
+Both tenant deployment and split deployments require resources that are common to be deployed in the tenant cluster. The overlay references the base in `./deploy/tenant/base` like this:
+```yaml
+bases:
+- ../base
+namespace: kubevirt-csi-driver
+patchesStrategicMerge:
+- infra-namespace-configmap.yaml
+- node.yaml
+- storageclass.yaml
+```
+The namespace has to match the namespace in the controller-tenant deployment if you use that method of deploying.
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: driver-config
+  namespace: kubevirt-csi-driver
+data:
+  infraClusterNamespace: kvcluster #namespace in infra cluster that holds the tenant cluster VMs
+  infraClusterLabels: csi-driver/cluster=tenant
+```
+Change the `infraClusterNamespace` to be what is in use in your cluster.
+
+```yaml
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: kubevirt-csi-node
+  namespace: kubevirt-csi-driver
+spec:
+  template:
+    spec:
+      containers:
+        - name: csi-driver
+          image: <registry visible in tenant>/kubevirt-csi-driver:latest
+```
+Replace the registry and image to the one used. 
+
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: kubevirt
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: csi.kubevirt.io
+parameters:
+  infraStorageClassName: local
+  bus: scsi
+```
+Set `infraStorageClassName` to the storage class in the infra cluster that will are used to create the DataVolumes in. 
+
+### Configuring KubeVirt
+
+Enable HotplugVolumes feature gate:
+  - In case your Kubevirt namespace has the ConfigMap 'kubevirt-config' then use `deploy/example/kubevirt-config.yaml` for adding the feature gate to it. Look at the path {.data.feature-gates}
+  - Otherwise, add the feature gate to the resource of type Kubevirt. There should be a single resource of this type and its name is irrelevant. See `deploy/example/kubevirt.yaml`
+  - Pay attention that in some deployments there are operators that will restore previous configuration. You will have to stop these operators for editing the resources.Some operators allow configuration through their own CRD. HCO is such an operator. See [HCO cluster configuration](https://github.com/kubevirt/hyperconverged-cluster-operator/blob/master/docs/cluster-configuration.md) to understand how HCO feature gates are configured.
 
 ## Building the binaries
 

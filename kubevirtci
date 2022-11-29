@@ -178,7 +178,7 @@ function kubevirtci::create_cluster() {
 	$CLUSTERCTL_PATH generate cluster ${TENANT_CLUSTER_NAME} --target-namespace ${TENANT_CLUSTER_NAMESPACE} --kubernetes-version ${CAPK_GUEST_K8S_VERSION} --control-plane-machine-count=1 --worker-machine-count=1 --from $template | ${_kubectl} apply -f -
 
 	echo "Wait for tenant cluster to be ready"
-	${_kubectl} wait cluster -n kvcluster kvcluster --for=condition=Ready --timeout=10m
+	${_kubectl} wait cluster -n ${TENANT_CLUSTER_NAMESPACE} kvcluster --for=condition=Ready --timeout=10m
 
 	echo "Wait for tenant cluster kubernetes apiserver up"
 	kubevirtci::retry_until_success kubevirtci::kubectl_tenant get pods -n kube-system
@@ -308,14 +308,14 @@ function kubevirtci::kubectl_tenant {
     vms_list=$(${_kubectl} get vm -n ${TENANT_CLUSTER_NAMESPACE} --no-headers -o custom-columns=":metadata.name")
     for vm in $vms_list
     do
-	if [[ "$vm" == ${TENANT_CLUSTER_NAME}-control-plane* ]]; then
+	if [[ "$vm" == kvcluster-control-plane* ]]; then
             control_plane_vm_name=$vm
 	fi
     done
     if [ -n "${control_plane_vm_name}" ]; then
-  	echo "Found control plane VM: ${control_plane_vm_name} in namespace ${TENANT_CLUSTER_NAMESPACE}"
+	echo "Found control plane VM: ${control_plane_vm_name} in namespace ${TENANT_CLUSTER_NAMESPACE}"
     else
-  	echo "control-plane vm is not found in namespace ${TENANT_CLUSTER_NAMESPACE} (looking for regex ${TENANT_CLUSTER_NAME}-control-plane*)"
+	echo "control-plane vm is not found in namespace ${TENANT_CLUSTER_NAMESPACE} (looking for regex kvcluster-control-plane*)"
 	exit 1
     fi
     ${_default_virtctl_path} port-forward -n ${TENANT_CLUSTER_NAMESPACE} vm/${control_plane_vm_name} 64443:6443 > /dev/null 2>&1 &
