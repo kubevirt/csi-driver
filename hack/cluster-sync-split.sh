@@ -95,5 +95,5 @@ _kubectl apply --kustomize ./deploy/controller-infra/dev-overlay
 # ******************************************************
 # Wait for driver to rollout
 # ******************************************************
-_kubectl_tenant rollout status ds/kubevirt-csi-node -n $CSI_DRIVER_NAMESPACE --timeout=5m
-_kubectl rollout status deployment/kubevirt-csi-controller -n $TENANT_CLUSTER_NAMESPACE --timeout=5m
+_kubectl_tenant rollout status ds/kubevirt-csi-node -n $CSI_DRIVER_NAMESPACE --timeout=10m
+_kubectl rollout status deployment/kubevirt-csi-controller -n $TENANT_CLUSTER_NAMESPACE --timeout=10m
