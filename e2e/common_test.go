@@ -2,6 +2,7 @@ package e2e_test
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -50,21 +51,24 @@ func newTenantClusterAccess(namespace string, tenantKubeconfigFile string) tenan
 }
 
 func (t *tenantClusterAccess) generateClient() (*kubernetes.Clientset, error) {
-	localPort := t.listener.Addr().(*net.TCPAddr).Port
-	cmd := exec.Command(ClusterctlPath, "get", "kubeconfig", "kvcluster",
-		"--namespace", t.namespace)
-	stdout, _ := RunCmd(cmd)
-	if err := os.WriteFile(t.tenantKubeconfigFile, stdout, 0644); err != nil {
-		return nil, err
-	}
-	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		&clientcmd.ClientConfigLoadingRules{ExplicitPath: t.tenantKubeconfigFile},
-		&clientcmd.ConfigOverrides{
+	overrides := &clientcmd.ConfigOverrides{}
+	if _, err := os.Stat(t.tenantKubeconfigFile); errors.Is(err, os.ErrNotExist) {
+		localPort := t.listener.Addr().(*net.TCPAddr).Port
+		cmd := exec.Command(ClusterctlPath, "get", "kubeconfig", "kvcluster",
+			"--namespace", t.namespace)
+		stdout, _ := RunCmd(cmd)
+		if err := os.WriteFile(t.tenantKubeconfigFile, stdout, 0644); err != nil {
+			return nil, err
+		}
+		overrides = &clientcmd.ConfigOverrides{
 			ClusterInfo: clientcmdapi.Cluster{
 				Server:                fmt.Sprintf("https://127.0.0.1:%d", localPort),
 				InsecureSkipTLSVerify: true,
 			},
-		})
+		}
+	}
+	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		&clientcmd.ClientConfigLoadingRules{ExplicitPath: t.tenantKubeconfigFile}, overrides)
 	restConfig, err := clientConfig.ClientConfig()
 	if err != nil {
 		return nil, err
@@ -167,4 +171,15 @@ func (t *tenantClusterAccess) handleConnectionError(err error) {
 	if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
 		glog.Errorf("error handling portForward connection: %v", err)
 	}
+}
+
+func generateInfraClient() (*kubernetes.Clientset, error) {
+	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		&clientcmd.ClientConfigLoadingRules{ExplicitPath: InfraKubeConfig}, &clientcmd.ConfigOverrides{})
+	restConfig, err := clientConfig.ClientConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	return kubernetes.NewForConfig(restConfig)
 }

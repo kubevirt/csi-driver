@@ -14,10 +14,15 @@ import (
 )
 
 // Test suite required arguments
-var KubectlPath string
-var ClusterctlPath string
-var DumpPath string
-var WorkingDir string
+var (
+	KubectlPath           string
+	ClusterctlPath        string
+	DumpPath              string
+	WorkingDir            string
+	TenantKubeConfig      string
+	InfraClusterNamespace string
+	InfraKubeConfig       string
+)
 
 // Initialize test required arguments
 func init() {
@@ -25,29 +30,38 @@ func init() {
 	flag.StringVar(&ClusterctlPath, "clusterctl-path", "", "Path to the clusterctl binary")
 	flag.StringVar(&DumpPath, "dump-path", "", "Path to the kubevirt artifacts dump cmd binary")
 	flag.StringVar(&WorkingDir, "working-dir", "", "Path used for e2e test files")
+	flag.StringVar(&TenantKubeConfig, "tenant-kubeconfig", "", "Path to tenant kubeconfig")
+	flag.StringVar(&InfraKubeConfig, "infra-kubeconfig", "", "Path to infra kubeconfig")
+	flag.StringVar(&InfraClusterNamespace, "infra-cluster-namespace", "kv-guest-cluster", "Namespace of the guest cluster in the infra cluster")
 }
 
 func TestE2E(t *testing.T) {
-	// Make sure that valid arguments have been passed for this test suite run.
-	if KubectlPath == "" {
-		t.Fatal("kubectl-path required")
-	} else if _, err := os.Stat(KubectlPath); os.IsNotExist(err) {
-		t.Fatalf("invalid kubectl-path path: %s doesn't exist", KubectlPath)
-	}
-	if ClusterctlPath == "" {
-		t.Fatal("clusterctl-path required")
-	} else if _, err := os.Stat(ClusterctlPath); os.IsNotExist(err) {
-		t.Fatalf("invalid clusterctl-path path: %s doesn't exist", ClusterctlPath)
-	}
-	if WorkingDir == "" {
-		t.Fatal("working-dir required")
-	} else if _, err := os.Stat(WorkingDir); os.IsNotExist(err) {
-		t.Fatalf("invalid working-dir path: %s doesn't exist", WorkingDir)
+	if len(TenantKubeConfig) == 0 {
+		// Make sure that valid arguments have been passed for this test suite run.
+		if KubectlPath == "" {
+			t.Fatal("kubectl-path or tenant-kubeconfig required")
+		} else if _, err := os.Stat(KubectlPath); os.IsNotExist(err) {
+			t.Fatalf("invalid kubectl-path path: %s doesn't exist", KubectlPath)
+		}
+		if ClusterctlPath == "" {
+			t.Fatal("clusterctl-path required")
+		} else if _, err := os.Stat(ClusterctlPath); os.IsNotExist(err) {
+			t.Fatalf("invalid clusterctl-path path: %s doesn't exist", ClusterctlPath)
+		}
+		if WorkingDir == "" {
+			t.Fatal("working-dir required")
+		} else if _, err := os.Stat(WorkingDir); os.IsNotExist(err) {
+			t.Fatalf("invalid working-dir path: %s doesn't exist", WorkingDir)
+		}
 	}
 	if DumpPath != "" {
 		if _, err := os.Stat(DumpPath); os.IsNotExist(err) {
 			t.Fatalf("invalid dump-path: %s doesn't exist", DumpPath)
 		}
+	}
+
+	if len(InfraKubeConfig) == 0 {
+		t.Fatal("infra kubeconfig required")
 	}
 
 	RegisterFailHandler(Fail)

@@ -31,5 +31,4 @@ fi
         
 rm -rf $TEST_WORKING_DIR
 mkdir -p $TEST_WORKING_DIR
-$BIN_DIR/e2e.test -ginkgo.v -test.v -ginkgo.no-color --kubectl-path $KUBECTL_PATH --clusterctl-path $CLUSTERCTL_PATH  --working-dir $TEST_WORKING_DIR --dump-path $DUMP_PATH
-
+$BIN_DIR/e2e.test -ginkgo.v -test.v -ginkgo.no-color --kubectl-path $KUBECTL_PATH --clusterctl-path $CLUSTERCTL_PATH  --working-dir $TEST_WORKING_DIR --dump-path $DUMP_PATH --infra-kubeconfig=$KUBECONFIG --infra-cluster-namespace=clusters-kv-guest-cluster
