@@ -10,9 +10,7 @@ TARGET_NAME=${TARGET_NAME:-kubevirt-csi-driver}
 TAG=${TAG:-latest}
 
 function tenant::deploy_kubeconfig_secret() {
-  TOKEN_NAME=$(_kubectl -n $TENANT_CLUSTER_NAMESPACE get serviceaccount/kubevirt-csi -o jsonpath='{.secrets[0].name}')
-  CA_CRT=$(_kubectl -n $TENANT_CLUSTER_NAMESPACE get secret $TOKEN_NAME -o json | jq '.data["ca.crt"]' | xargs echo)
-  TOKEN=$(_kubectl -n $TENANT_CLUSTER_NAMESPACE get secret $TOKEN_NAME -o json | jq '.data["token"]' | xargs echo | base64 -d)
+  TOKEN=$(_kubectl create token kubevirt-csi -n $TENANT_CLUSTER_NAMESPACE)
   INTERNAL_IP=$(_kubectl get node -l "node-role.kubernetes.io/control-plane" -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
 
   kubeconfig=$(cat <<- END

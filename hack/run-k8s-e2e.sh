@@ -13,11 +13,10 @@
 #See the License for the specific language governing permissions and
 #limitations under the License.
 set -e
-export KUBEVIRT_PROVIDER=k8s-1.23
 export TENANT_CLUSTER_NAME=${TENANT_CLUSTER_NAME:-kvcluster}
 export TENANT_CLUSTER_NAMESPACE=${TENANT_CLUSTER_NAMESPACE:-kvcluster}
-export KUBEVIRTCI_TAG=${KUBEVIRTCI_TAG:-2205231118-f12b50e}
-export KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-k8s-1.23}
+export KUBEVIRTCI_TAG=${KUBEVIRTCI_TAG:-2301240001-e641e98}
+export KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-k8s-1.25}
 
 test_pod=${TENANT_CLUSTER_NAME}-k8s-e2e-suite-runnner
 test_driver_cm=${TENANT_CLUSTER_NAME}-test-driver
