@@ -11,7 +11,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/utils/pointer"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -279,7 +278,6 @@ func podWithPvcSpec(podName, pvcName string, cmd, args []string) *k8sv1.Pod {
 		},
 		Spec: k8sv1.PodSpec{
 			SecurityContext: &k8sv1.PodSecurityContext{
-				RunAsNonRoot: pointer.BoolPtr(true),
 				SeccompProfile: &k8sv1.SeccompProfile{
 					Type: k8sv1.SeccompProfileTypeRuntimeDefault,
 				},

@@ -10,6 +10,7 @@ DUMP_PATH=${TOOLS_DIR}/bin/kubevirt-${DUMP_VERSION}-dump
 TEST_WORKING_DIR=${TOOLS_DIR}/e2e-test-workingdir
 export ARTIFACTS=${ARTIFACTS:-k8s-reporter}
 export KUBECONFIG=$(./kubevirtci kubeconfig)                                                                
+export INFRA_CLUSTER_NAMESPACE=${INFRA_CLUSTER_NAMESPACE:-kvcluster}
 mkdir -p $ARTIFACTS
 
 if [ ! -f "$DUMP_PATH" ]; then
@@ -31,4 +32,5 @@ fi
         
 rm -rf $TEST_WORKING_DIR
 mkdir -p $TEST_WORKING_DIR
-$BIN_DIR/e2e.test -ginkgo.v -test.v -ginkgo.no-color --kubectl-path $KUBECTL_PATH --clusterctl-path $CLUSTERCTL_PATH  --working-dir $TEST_WORKING_DIR --dump-path $DUMP_PATH --infra-kubeconfig=$KUBECONFIG --infra-cluster-namespace=clusters-kv-guest-cluster
+
+$BIN_DIR/e2e.test -ginkgo.v -test.v -ginkgo.no-color --kubectl-path $KUBECTL_PATH --clusterctl-path $CLUSTERCTL_PATH  --working-dir $TEST_WORKING_DIR --dump-path $DUMP_PATH --infra-kubeconfig=$KUBECONFIG --infra-cluster-namespace=${INFRA_CLUSTER_NAMESPACE}
