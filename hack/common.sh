@@ -118,3 +118,9 @@ metadata:
     name: $1
 END
 }
+
+function cluster::patch_local_storage_profile() {
+if ./kubevirtci kubectl get storageprofile local; then
+  ./kubevirtci kubectl patch storageprofile local --type='merge' -p '{"spec":{"claimPropertySets":[{"accessModes":["ReadWriteOnce"], "volumeMode": "Filesystem"}]}}'
+fi
+}
