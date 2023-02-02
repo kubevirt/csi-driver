@@ -28,7 +28,7 @@ type NodeService struct {
 	nodeID       string
 	deviceLister DeviceLister
 	fsMaker      FsMaker
-	fsMounter    mount.Interface
+	mounter      mount.Interface
 	dirMaker     dirMaker
 }
 
@@ -63,7 +63,7 @@ func NewNodeService(nodeId string) *NodeService {
 		nodeID:       nodeId,
 		deviceLister: NewDeviceLister(),
 		fsMaker:      NewFsMaker(),
-		fsMounter:    NewMounter(),
+		mounter:      NewMounter(),
 		dirMaker: dirMakerFunc(func(path string, perm os.FileMode) error {
 			// MkdirAll returns nil if path already exists
 			return os.MkdirAll(path, perm)
@@ -113,36 +113,31 @@ func (n *NodeService) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 	}
 	klog.Infof("Staging volume %s", req.VolumeId)
 
-	if req.VolumeCapability.GetBlock() != nil {
-		err := fmt.Errorf("block mode is not supported")
-		klog.Error(err)
-		return nil, err
+	if req.VolumeCapability.GetMount() != nil {
+		// Filesystem volume mode, create FS if needed
+		// get the VMI volumes which are under VMI.spec.volumes
+		// serialID = kubevirt's DataVolume.UID
+		device, err := getDeviceBySerialID(req.VolumeContext[serialParameter], n.deviceLister)
+		if err != nil {
+			klog.Errorf("Failed to fetch device by serialID %s", req.VolumeId)
+			return nil, err
+		}
+
+		// is there a filesystem on this device?
+		if device.Fstype != "" {
+			klog.Infof("Detected fs %s", device.Fstype)
+			return &csi.NodeStageVolumeResponse{}, nil
+		}
+
+		fsType := req.VolumeCapability.GetMount().FsType
+		// no filesystem - create it
+		klog.Infof("Creating FS %s on device %s", fsType, device)
+		err = n.fsMaker.Make(device.Path, fsType)
+		if err != nil {
+			klog.Errorf("Could not create filesystem %s on %s", fsType, device)
+			return nil, err
+		}
 	}
-
-	// get the VMI volumes which are under VMI.spec.volumes
-	// serialID = kubevirt's DataVolume.UID
-
-	device, err := getDeviceBySerialID(req.VolumeContext[serialParameter], n.deviceLister)
-	if err != nil {
-		klog.Errorf("failed to fetch device by serialID %s", req.VolumeId)
-		return nil, err
-	}
-
-	// is there a filesystem on this device?
-	if device.Fstype != "" {
-		klog.Infof("Detected fs %s", device.Fstype)
-		return &csi.NodeStageVolumeResponse{}, nil
-	}
-
-	fsType := req.VolumeCapability.GetMount().FsType
-	// no filesystem - create it
-	klog.Infof("Creating FS %s on device %s", fsType, device)
-	err = n.fsMaker.Make(device.Path, fsType)
-	if err != nil {
-		klog.Errorf("could not create filesystem %s on %s", fsType, device)
-		return nil, err
-	}
-
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
@@ -192,11 +187,11 @@ func (n *NodeService) validateNodePublishRequest(req *csi.NodePublishVolumeReque
 		return err
 	}
 
-	if req.GetVolumeCapability().GetBlock() != nil {
-		return status.Error(codes.InvalidArgument, "cannot publish a non-block volume as block volume")
+	if req.GetVolumeCapability().GetBlock() != nil && req.GetVolumeCapability().GetMount() != nil {
+		return status.Error(codes.InvalidArgument, "cannot publish volume as both block and filesystem")
 	}
-	if req.GetVolumeCapability().GetMount() == nil {
-		return status.Error(codes.InvalidArgument, "can only publish a non-block volume")
+	if req.GetVolumeCapability().GetMount() == nil && req.GetVolumeCapability().GetBlock() == nil {
+		return status.Error(codes.InvalidArgument, "volume mode is not specified")
 	}
 
 	return nil
@@ -211,6 +206,12 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, err
 	}
 
+	mountOptions := []string{}
+	block := req.GetVolumeCapability().GetBlock() != nil
+	if block {
+		mountOptions = append(mountOptions, "bind")
+	}
+
 	// volumeID = serialID = kubevirt's DataVolume.metadata.uid
 	// TODO link to kubevirt code
 	device, err := getDeviceBySerialID(req.VolumeContext[serialParameter], n.deviceLister)
@@ -220,7 +221,7 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	targetPath := req.GetTargetPath()
-	notMnt, err := n.fsMounter.IsLikelyNotMountPoint(targetPath)
+	notMnt, err := n.mounter.IsLikelyNotMountPoint(targetPath)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -228,21 +229,35 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		klog.Infof("Volume %s already mounted on %s", req.GetVolumeId(), targetPath)
 		return &csi.NodePublishVolumeResponse{}, nil
 	}
-	err = n.dirMaker.Make(targetPath, 0750)
-	// MkdirAll returns nil if path already exists
-	if err != nil {
-		return nil, err
-	}
 
 	//TODO support mount options
-	req.GetStagingTargetPath()
-	klog.Infof("Staging target path %s", req.GetStagingTargetPath())
+	stagingTarget := req.GetStagingTargetPath()
+	klog.Infof("Staging target path %s", stagingTarget)
 
-	klog.Infof("GetMount() %v", req.VolumeCapability.GetMount())
-	fsType := req.VolumeCapability.GetMount().FsType
-	klog.Infof("Mounting devicePath %s, on targetPath: %s with FS type: %s",
-		device, targetPath, fsType)
-	err = n.fsMounter.Mount(device.Path, targetPath, fsType, []string{})
+	fsType := ""
+	if block {
+		// Make sure target file exists for bind mount
+		f, err := os.OpenFile(targetPath, os.O_CREATE, os.FileMode(0644))
+		if err != nil {
+			if !os.IsExist(err) {
+				return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("could not create bind target for block volume %s", targetPath))
+			}
+		} else {
+			_ = f.Close()
+		}
+	} else {
+		err = n.dirMaker.Make(targetPath, 0750)
+		// MkdirAll returns nil if path already exists
+		if err != nil {
+			return nil, err
+		}
+		klog.Infof("GetMount() %v", req.VolumeCapability.GetMount())
+		fsType = req.VolumeCapability.GetMount().FsType
+		klog.Infof("Mounting devicePath %s, on targetPath: %s with FS type: %s",
+			device, targetPath, fsType)
+	}
+
+	err = n.mounter.Mount(device.Path, targetPath, fsType, mountOptions)
 	if err != nil {
 		klog.Errorf("failed mounting %v", err)
 		return nil, err
@@ -271,7 +286,7 @@ func (n *NodeService) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	}
 
 	klog.Infof("Unmounting %s", req.GetTargetPath())
-	err := n.fsMounter.Unmount(req.GetTargetPath())
+	err := n.mounter.Unmount(req.GetTargetPath())
 	if err != nil {
 		klog.Infof("failed to unmount")
 		return nil, err
@@ -356,12 +371,14 @@ func makeFS(device string, fsType string) error {
 
 	var cmd *exec.Cmd
 	var stdout, stderr bytes.Buffer
-	if strings.HasPrefix(fsType, "ext") {
-		cmd = exec.Command("mkfs", "-F", "-t", fsType, device)
+	if strings.HasPrefix(fsType, "ext4") {
+		// Don't reserve root space on ext4, since these volumes are mounted it makes no sense
+		// to reserve the space.
+		cmd = exec.Command("mkfs", "-m", "0", "-F", "-t", fsType, device)
 	} else if strings.HasPrefix(fsType, "xfs") {
 		cmd = exec.Command("mkfs", "-t", fsType, "-f", device)
 	} else {
-		return errors.New(fsType + " is not supported, only xfs and ext are supported")
+		return errors.New(fsType + " is not supported, only xfs and ext4 are supported")
 	}
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

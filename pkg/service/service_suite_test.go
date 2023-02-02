@@ -43,7 +43,7 @@ var _ = Describe("NodeService", func() {
 		underTest.dirMaker = dirMakerFunc(func(string, os.FileMode) error {
 			return nil
 		})
-		underTest.fsMounter = successfulMounter{}
+		underTest.mounter = successfulMounter{}
 	})
 
 	Describe("Staging a volume", func() {
@@ -58,8 +58,8 @@ var _ = Describe("NodeService", func() {
 		})
 
 		Context("With Block mode", func() {
-			It("should fail", func() {
-				_, err := underTest.NodeStageVolume(context.TODO(), &csi.NodeStageVolumeRequest{
+			It("should succeed", func() {
+				res, err := underTest.NodeStageVolume(context.TODO(), &csi.NodeStageVolumeRequest{
 					VolumeId: "pvc-123",
 					VolumeCapability: &csi.VolumeCapability{
 						AccessType: &csi.VolumeCapability_Block{
@@ -69,7 +69,8 @@ var _ = Describe("NodeService", func() {
 					VolumeContext:     map[string]string{serialParameter: serialID},
 					StagingTargetPath: "/invalid/staging",
 				})
-				Expect(err).To(HaveOccurred())
+				Expect(err).ToNot(HaveOccurred())
+				Expect(res).ToNot(BeNil())
 			})
 		})
 
@@ -143,7 +144,7 @@ var _ = Describe("NodeService", func() {
 
 		Context("With matching serial ID and failing mount", func() {
 			It("should fail", func() {
-				underTest.fsMounter = failingMounter{}
+				underTest.mounter = failingMounter{}
 				res, err := underTest.NodePublishVolume(context.TODO(), newPublishRequest())
 				Expect(err).To(HaveOccurred())
 				Expect(res).To(BeNil())
@@ -162,7 +163,7 @@ var _ = Describe("NodeService", func() {
 	Describe("Un-Publishing a volume", func() {
 		Context("With failing umount", func() {
 			It("should fail", func() {
-				underTest.fsMounter = failingMounter{}
+				underTest.mounter = failingMounter{}
 				res, err := underTest.NodeUnpublishVolume(context.TODO(), &csi.NodeUnpublishVolumeRequest{
 					VolumeId: "pvc-123",
 				})
