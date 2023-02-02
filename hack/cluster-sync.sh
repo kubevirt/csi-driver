@@ -104,6 +104,7 @@ cluster::generate_driver_configmap_overlay "tenant"
 cluster::generate_tenant_controller_overlay
 cluster::generate_node_overlay
 cluster::generate_storageclass_overlay "tenant" $INFRA_STORAGE_CLASS
+cluster::patch_local_storage_profile
 
 # ******************************************************
 # Deploy the tenant yaml

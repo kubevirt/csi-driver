@@ -22,7 +22,7 @@ func TestCreateVolumeDefaultStorageClass_Success(t *testing.T) {
 	origStorageClass := testInfraStorageClassName
 	testInfraStorageClassName = ""
 	storageClassEnforcement = util.StorageClassEnforcement{
-		AllowAll: true,
+		AllowAll:     true,
 		AllowDefault: true,
 	}
 	defer func() { testInfraStorageClassName = origStorageClass }()
@@ -78,8 +78,8 @@ func TestCreateVolume_NotAllowedStorageClass(t *testing.T) {
 	allowedStorageClasses = []string{"allowedClass"}
 	allowAllStorageClasses = false
 	storageClassEnforcement = util.StorageClassEnforcement{
-		AllowList: []string{"allowedClass"},
-		AllowAll: false,
+		AllowList:    []string{"allowedClass"},
+		AllowAll:     false,
 		AllowDefault: true,
 	}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
@@ -141,8 +141,8 @@ var (
 	testInfraLabels                               = map[string]string{"infra-label-name": "infra-label-value"}
 	allowedStorageClasses                         = []string{}
 	allowAllStorageClasses                        = true
-	storageClassEnforcement = util.StorageClassEnforcement{
-		AllowAll: true,
+	storageClassEnforcement                       = util.StorageClassEnforcement{
+		AllowAll:     true,
 		AllowDefault: true,
 	}
 )
@@ -272,14 +272,13 @@ func (c *ControllerClientMock) CreateDataVolume(namespace string, dataVolume *cd
 	// Test input
 	assert.Equal(c.t, testVolumeName, dataVolume.GetName())
 	if testInfraStorageClassName != "" {
-		assert.Equal(c.t, testInfraStorageClassName, *dataVolume.Spec.PVC.StorageClassName)
+		assert.Equal(c.t, testInfraStorageClassName, *dataVolume.Spec.Storage.StorageClassName)
 	} else {
-		assert.Nil(c.t, dataVolume.Spec.PVC.StorageClassName)
+		assert.Nil(c.t, dataVolume.Spec.Storage.StorageClassName)
 	}
-	q, ok := dataVolume.Spec.PVC.Resources.Requests[corev1.ResourceStorage]
+	q, ok := dataVolume.Spec.Storage.Resources.Requests[corev1.ResourceStorage]
 	assert.True(c.t, ok)
 	assert.Equal(c.t, 0, q.CmpInt64(testVolumeStorageSize))
-	assert.Equal(c.t, testVolumeMode, *dataVolume.Spec.PVC.VolumeMode)
 	assert.Equal(c.t, testInfraLabels, dataVolume.Labels)
 
 	// Input OK. Now prepare result

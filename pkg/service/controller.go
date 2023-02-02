@@ -34,9 +34,9 @@ var (
 
 //ControllerService implements the controller interface. See README for details.
 type ControllerService struct {
-	virtClient             client.Client
-	infraClusterNamespace  string
-	infraClusterLabels     map[string]string
+	virtClient              client.Client
+	infraClusterNamespace   string
+	infraClusterLabels      map[string]string
 	storageClassEnforcement util.StorageClassEnforcement
 }
 
@@ -77,7 +77,7 @@ func (c *ControllerService) validateCreateVolumeRequest(req *csi.CreateVolumeReq
 		if c.storageClassEnforcement.AllowDefault {
 			return nil
 		} else {
-			return unallowedStorageClass	
+			return unallowedStorageClass
 		}
 	}
 	if !contains(c.storageClassEnforcement.AllowList, storageClassName) {
@@ -124,9 +124,7 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	dv.ObjectMeta.Annotations = map[string]string{
 		"cdi.kubevirt.io/storage.deleteAfterCompletion": "false",
 	}
-	dv.Spec.PVC = &corev1.PersistentVolumeClaimSpec{
-		AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-		VolumeMode:  &volumeMode,
+	dv.Spec.Storage = &cdiv1.StorageSpec{
 		Resources: corev1.ResourceRequirements{
 			Requests: corev1.ResourceList{
 				corev1.ResourceStorage: *resource.NewScaledQuantity(storageSize, 0)},
@@ -137,7 +135,7 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	// default storage class which means leaving the storageclass empty
 	// (nil) on the PVC
 	if storageClassName != "" {
-		dv.Spec.PVC.StorageClassName = &storageClassName
+		dv.Spec.Storage.StorageClassName = &storageClassName
 	}
 
 	dv.Spec.Source = &cdiv1.DataVolumeSource{}
@@ -153,10 +151,10 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	} else if err != nil {
 		return nil, err
 	} else {
-		if existingDv != nil && existingDv.Spec.PVC != nil {
+		if existingDv != nil && existingDv.Spec.Storage != nil {
 			// Verify capacity of original matches requested size.
-			existingRequest := existingDv.Spec.PVC.Resources.Requests[corev1.ResourceStorage]
-			newRequest := dv.Spec.PVC.Resources.Requests[corev1.ResourceStorage]
+			existingRequest := existingDv.Spec.Storage.Resources.Requests[corev1.ResourceStorage]
+			newRequest := dv.Spec.Storage.Resources.Requests[corev1.ResourceStorage]
 			if newRequest.Cmp(existingRequest) != 0 {
 				return nil, status.Error(codes.AlreadyExists, "Requested storage size does not match existing size")
 			}

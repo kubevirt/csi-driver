@@ -120,11 +120,18 @@ spec:
 EOF
 }
 
+function patch_local_storage_profile() {
+if ./kubevirtci kubectl get storageprofile local; then
+  ./kubevirtci kubectl patch storageprofile local --type='merge' -p '{"spec":{"claimPropertySets":[{"accessModes":["ReadWriteOnce"], "volumeMode": "Filesystem"}]}}'
+fi
+}
+
 trap cleanup EXIT SIGSTOP SIGKILL SIGTERM
 ensure_cluster_up
 ensure_synced
 create_test_driver_cm
 create_capk_secret
+patch_local_storage_profile
 start_test_pod
 # Wait for pod to be ready before getting logs
 ./kubevirtci kubectl wait pods -n $TENANT_CLUSTER_NAMESPACE ${test_pod} --for condition=Ready --timeout=180s
