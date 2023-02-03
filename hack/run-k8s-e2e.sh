@@ -73,6 +73,14 @@ spec:
   containers:
   - name: test-suite
     image: registry.access.redhat.com/ubi8/ubi:8.0
+    securityContext:
+      allowPrivilegeEscalation: false
+      runAsNonRoot: true
+      runAsUser: 1000
+      capabilities:
+        drop: ["ALL"]
+      seccompProfile:
+        type: "RuntimeDefault"
     env:
     - name: KUBECONFIG
       value: /etc/kubernetes/kubeconfig/value

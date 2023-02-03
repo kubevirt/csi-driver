@@ -17,6 +17,9 @@ DriverInfo:
     snapshotDataSource: false
     topology: false
     capacity: false
+  SupportedFsType:
+    ext4: {}
+    xfs: {}
 InlineVolumes:
 - shared: false
 

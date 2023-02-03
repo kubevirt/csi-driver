@@ -285,11 +285,16 @@ func (n *NodeService) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, err
 	}
 
-	klog.Infof("Unmounting %s", req.GetTargetPath())
-	err := n.mounter.Unmount(req.GetTargetPath())
+	targetPath := req.GetTargetPath()
+	klog.Infof("Unmounting %s", targetPath)
+	err := n.mounter.Unmount(targetPath)
 	if err != nil {
 		klog.Infof("failed to unmount")
 		return nil, err
+	}
+
+	if err = os.RemoveAll(targetPath); err != nil {
+		return nil, fmt.Errorf("remove target path: %w", err)
 	}
 
 	return &csi.NodeUnpublishVolumeResponse{}, nil
