@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -111,6 +112,11 @@ func (k *fakeKubeVirtClient) ListVirtualMachines(namespace string) ([]kubevirtv1
 	return res, nil
 }
 
+func (k *fakeKubeVirtClient) GetVirtualMachine(namespace, vmName string) (*kubevirtv1.VirtualMachineInstance, error) {
+	vmKey := getKey(namespace, vmName)
+	return k.vmiMap[vmKey], nil
+}
+
 func (k *fakeKubeVirtClient) DeleteDataVolume(namespace string, name string) error {
 	key := getKey(namespace, name)
 	delete(k.dvMap, key)
@@ -153,6 +159,10 @@ func (k *fakeKubeVirtClient) RemoveVolumeFromVM(namespace string, vmName string,
 		return fmt.Errorf("VM %s/%s not found", namespace, vmName)
 	}
 	delete(k.hotpluggedMap, hotPlugRequest.Name)
+	return nil
+}
+
+func (k *fakeKubeVirtClient) EnsureVolumeAvailable(namespace, vmName, volumeName string, timeout time.Duration) error {
 	return nil
 }
 

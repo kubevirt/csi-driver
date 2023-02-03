@@ -124,7 +124,7 @@ func (n *NodeService) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 
 	device, err := getDeviceBySerialID(req.VolumeContext[serialParameter], n.deviceLister)
 	if err != nil {
-		klog.Errorf("Failed to fetch device by serialID %s", req.VolumeId)
+		klog.Errorf("failed to fetch device by serialID %s", req.VolumeId)
 		return nil, err
 	}
 
@@ -139,7 +139,7 @@ func (n *NodeService) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 	klog.Infof("Creating FS %s on device %s", fsType, device)
 	err = n.fsMaker.Make(device.Path, fsType)
 	if err != nil {
-		klog.Errorf("Could not create filesystem %s on %s", fsType, device)
+		klog.Errorf("could not create filesystem %s on %s", fsType, device)
 		return nil, err
 	}
 
@@ -215,7 +215,7 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	// TODO link to kubevirt code
 	device, err := getDeviceBySerialID(req.VolumeContext[serialParameter], n.deviceLister)
 	if err != nil {
-		klog.Errorf("Failed to fetch device by serialID %s ", req.VolumeId)
+		klog.Errorf("failed to fetch device by serialID %s ", req.VolumeId)
 		return nil, err
 	}
 
@@ -244,7 +244,7 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		device, targetPath, fsType)
 	err = n.fsMounter.Mount(device.Path, targetPath, fsType, []string{})
 	if err != nil {
-		klog.Errorf("Failed mounting %v", err)
+		klog.Errorf("failed mounting %v", err)
 		return nil, err
 	}
 
@@ -273,7 +273,7 @@ func (n *NodeService) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	klog.Infof("Unmounting %s", req.GetTargetPath())
 	err := n.fsMounter.Unmount(req.GetTargetPath())
 	if err != nil {
-		klog.Infof("Failed to unmount")
+		klog.Infof("failed to unmount")
 		return nil, err
 	}
 
@@ -337,7 +337,7 @@ func getDeviceBySerialID(serialID string, deviceLister DeviceLister) (device, er
 	devices := devices{}
 	err = json.Unmarshal(out, &devices)
 	if err != nil {
-		klog.Errorf("Failed to parse json output from lsblk: %s", err)
+		klog.Errorf("failed to parse json output from lsblk: %s", err)
 		return device{}, err
 	}
 

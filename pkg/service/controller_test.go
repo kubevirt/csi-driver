@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/stretchr/testify/assert"
@@ -242,7 +243,8 @@ func (c *ControllerClientMock) ListVirtualMachines(namespace string) ([]kubevirt
 	return []kubevirtv1.VirtualMachineInstance{
 		{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: testVMName,
+				Name:      testVMName,
+				Namespace: namespace,
 			},
 			Spec: kubevirtv1.VirtualMachineInstanceSpec{
 				Domain: kubevirtv1.DomainSpec{
@@ -254,6 +256,27 @@ func (c *ControllerClientMock) ListVirtualMachines(namespace string) ([]kubevirt
 		},
 	}, nil
 }
+
+func (c *ControllerClientMock) GetVirtualMachine(namespace, name string) (*kubevirtv1.VirtualMachineInstance, error) {
+	if c.FailListVirtualMachines {
+		return nil, errors.New("ListVirtualMachines failed")
+	}
+
+	return &kubevirtv1.VirtualMachineInstance{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: kubevirtv1.VirtualMachineInstanceSpec{
+			Domain: kubevirtv1.DomainSpec{
+				Firmware: &kubevirtv1.Firmware{
+					UUID: types.UID(testVMUID),
+				},
+			},
+		},
+	}, nil
+}
+
 func (c *ControllerClientMock) DeleteDataVolume(namespace string, name string) error {
 	if c.FailDeleteDataVolume {
 		return errors.New("DeleteDataVolume failed")
@@ -320,5 +343,9 @@ func (c *ControllerClientMock) RemoveVolumeFromVM(namespace string, vmName strin
 	assert.Equal(c.t, testVMName, vmName)
 	assert.Equal(c.t, testVolumeName, removeVolumeOptions.Name)
 
+	return nil
+}
+
+func (c *ControllerClientMock) EnsureVolumeAvailable(namespace, vmName, volumeName string, timeout time.Duration) error {
 	return nil
 }

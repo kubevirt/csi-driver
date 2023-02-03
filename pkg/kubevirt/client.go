@@ -2,8 +2,10 @@ package kubevirt
 
 import (
 	"context"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	kubevirtv1 "kubevirt.io/api/core/v1"
@@ -20,11 +22,13 @@ type ClientBuilderFuncType func(kubeconfig string) (Client, error)
 type Client interface {
 	Ping(ctx context.Context) error
 	ListVirtualMachines(namespace string) ([]kubevirtv1.VirtualMachineInstance, error)
+	GetVirtualMachine(namespace, name string) (*kubevirtv1.VirtualMachineInstance, error)
 	DeleteDataVolume(namespace string, name string) error
 	CreateDataVolume(namespace string, dataVolume *cdiv1.DataVolume) (*cdiv1.DataVolume, error)
 	GetDataVolume(namespace string, name string) (*cdiv1.DataVolume, error)
 	AddVolumeToVM(namespace string, vmName string, hotPlugRequest *kubevirtv1.AddVolumeOptions) error
 	RemoveVolumeFromVM(namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error
+	EnsureVolumeAvailable(namespace, vmName, volumeName string, timeout time.Duration) error
 }
 
 type client struct {
@@ -60,13 +64,35 @@ func (c *client) RemoveVolumeFromVM(namespace string, vmName string, hotPlugRequ
 	return c.virtClient.VirtualMachineInstance(namespace).RemoveVolume(vmName, hotPlugRequest)
 }
 
-//ListVirtualMachines fetches a list of VMIs from a namespace
+//EnsureVolumeAvailable checks to make sure the volume is available in the node before returning, checks for 2 minutes
+func (c *client) EnsureVolumeAvailable(namespace, vmName, volumeName string, timeout time.Duration) error {
+	return wait.PollImmediate(time.Second, timeout, func() (done bool, err error) {
+		vmi, err := c.virtClient.VirtualMachineInstance(namespace).Get(vmName, &metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		for _, volume := range vmi.Status.VolumeStatus {
+			if volume.Name == volumeName && volume.Phase == kubevirtv1.VolumeReady {
+				return true, nil
+			}
+		}
+		// Have not found the ready hotplugged volume
+		return false, nil
+	})
+}
+
+//ListVirtualMachines fetches a list of VMIs from the passed in namespace
 func (c *client) ListVirtualMachines(namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
 	list, err := c.virtClient.VirtualMachineInstance(namespace).List(&metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 	return list.Items, nil
+}
+
+//GetVirtualMachine gets a VMIs from the passed in namespace
+func (c *client) GetVirtualMachine(namespace, name string) (*kubevirtv1.VirtualMachineInstance, error) {
+	return c.virtClient.VirtualMachineInstance(namespace).Get(name, &metav1.GetOptions{})
 }
 
 //CreateDataVolume creates a new DataVolume under a namespace

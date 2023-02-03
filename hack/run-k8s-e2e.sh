@@ -86,6 +86,7 @@ spec:
     - /bin/bash
     - -c
     - |
+      cd /tmp
       curl --location https://dl.k8s.io/v1.22.0/kubernetes-test-linux-amd64.tar.gz |   tar --strip-components=3 -zxf - kubernetes/test/bin/e2e.test kubernetes/test/bin/ginkgo
       chmod +x e2e.test
       curl -LO "https://dl.k8s.io/release/v1.22.0/bin/linux/amd64/kubectl"

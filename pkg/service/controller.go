@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -145,7 +146,7 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 		// Create DataVolume
 		dv, err = c.virtClient.CreateDataVolume(c.infraClusterNamespace, dv)
 		if err != nil {
-			klog.Error("Failed creating DataVolume " + dvName)
+			klog.Error("failed creating DataVolume " + dvName)
 			return nil, err
 		}
 	} else if err != nil {
@@ -202,7 +203,7 @@ func (c *ControllerService) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 
 	err := c.virtClient.DeleteDataVolume(c.infraClusterNamespace, dvName)
 	if err != nil {
-		klog.Error("Failed deleting DataVolume " + dvName)
+		klog.Error("failed deleting DataVolume " + dvName)
 		return nil, err
 	}
 
@@ -239,7 +240,7 @@ func (c *ControllerService) ControllerPublishVolume(
 	// Get VM name
 	vmName, err := c.getVMNameByCSINodeID(req.NodeId)
 	if err != nil {
-		klog.Error("Failed getting VM Name for node ID " + req.NodeId)
+		klog.Error("failed getting VM Name for node ID " + req.NodeId)
 		return nil, err
 	}
 
@@ -269,9 +270,28 @@ func (c *ControllerService) ControllerPublishVolume(
 		},
 	}
 
-	err = c.virtClient.AddVolumeToVM(c.infraClusterNamespace, vmName, addVolumeOptions)
+	volumeFound := false
+	vm, err := c.virtClient.GetVirtualMachine(c.infraClusterNamespace, vmName)
 	if err != nil {
-		klog.Errorf("Failed adding volume %s to VM %s, %v", dvName, vmName, err)
+		return nil, err
+	}
+	for _, volumeStatus := range vm.Status.VolumeStatus {
+		if volumeStatus.Name == dvName {
+			volumeFound = true
+			break
+		}
+	}
+	if !volumeFound {
+		err = c.virtClient.AddVolumeToVM(c.infraClusterNamespace, vmName, addVolumeOptions)
+		if err != nil {
+			klog.Errorf("failed adding volume %s to VM %s, %v", dvName, vmName, err)
+			return nil, err
+		}
+	}
+
+	err = c.virtClient.EnsureVolumeAvailable(c.infraClusterNamespace, vmName, dvName, time.Minute*2)
+	if err != nil {
+		klog.Errorf("volume %s failed to be ready in time in VM %s, %v", dvName, vmName, err)
 		return nil, err
 	}
 
@@ -309,7 +329,7 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 	// Detach DataVolume from VM
 	err = c.virtClient.RemoveVolumeFromVM(c.infraClusterNamespace, vmName, &kubevirtv1.RemoveVolumeOptions{Name: dvName})
 	if err != nil {
-		klog.Error("Failed removing volume " + dvName + " from VM " + vmName)
+		klog.Error("failed removing volume " + dvName + " from VM " + vmName)
 		return nil, err
 	}
 
@@ -406,7 +426,7 @@ func (c *ControllerService) ControllerGetVolume(_ context.Context, _ *csi.Contro
 func (c *ControllerService) getVMNameByCSINodeID(nodeID string) (string, error) {
 	list, err := c.virtClient.ListVirtualMachines(c.infraClusterNamespace)
 	if err != nil {
-		klog.Error("Failed listing VMIs in infra cluster")
+		klog.Error("failed listing VMIs in infra cluster")
 		return "", status.Error(codes.NotFound, fmt.Sprintf("failed listing VMIs in infra cluster %v", err))
 	}
 
