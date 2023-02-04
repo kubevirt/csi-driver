@@ -230,24 +230,15 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return &csi.NodePublishVolumeResponse{}, nil
 	}
 
-	//TODO support mount options
-	stagingTarget := req.GetStagingTargetPath()
-	klog.Infof("Staging target path %s", stagingTarget)
-
 	fsType := ""
 	if block {
-		// Make sure target file exists for bind mount
-		f, err := os.OpenFile(targetPath, os.O_CREATE, os.FileMode(0644))
+		err = n.ensureMountFileExists(targetPath)
 		if err != nil {
-			if !os.IsExist(err) {
-				return nil, status.Error(codes.AlreadyExists, fmt.Sprintf("could not create bind target for block volume %s", targetPath))
-			}
-		} else {
-			_ = f.Close()
+			return nil, err
 		}
 	} else {
-		err = n.dirMaker.Make(targetPath, 0750)
 		// MkdirAll returns nil if path already exists
+		err = n.dirMaker.Make(targetPath, 0750)
 		if err != nil {
 			return nil, err
 		}
@@ -265,6 +256,24 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	return &csi.NodePublishVolumeResponse{}, nil
 }
+
+// Make sure target file exists for bind mount
+func (n *NodeService) ensureMountFileExists(mountFile string) error {
+	_, err := os.Stat(mountFile)
+
+	if err == nil {
+		return nil
+	} else if errors.Is(err, os.ErrNotExist) {
+		var f *os.File
+		f, err = os.OpenFile(mountFile, os.O_CREATE, os.FileMode(0640))
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+	}
+	return err
+}
+
 func (n *NodeService) validateNodeUnpublishRequest(req *csi.NodeUnpublishVolumeRequest) error {
 	// Check arguments
 	if len(req.GetVolumeId()) == 0 {
