@@ -383,7 +383,12 @@ func runPod(client v1.CoreV1Interface, namespace string, pod *k8sv1.Pod) *k8sv1.
 		}
 		return nil
 	}, 3*time.Minute, 5*time.Second).Should(Succeed(), "Pod should reach Succeeded state")
-
+	//Ensure we don't see couldn't find device by serial id in pod event log.
+	events, err := client.Events(namespace).List(context.Background(), metav1.ListOptions{FieldSelector: fmt.Sprintf("involvedObject.name=%s", newPod.Name), TypeMeta: metav1.TypeMeta{Kind: "Pod"}})
+	Expect(err).ToNot(HaveOccurred())
+	for _, event := range events.Items {
+		Expect(event.Message).ToNot(ContainSubstring("find device by serial id"))
+	}
 	return newPod
 }
 
