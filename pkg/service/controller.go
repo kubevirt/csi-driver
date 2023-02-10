@@ -101,10 +101,6 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	// Prepare parameters for the DataVolume
 	storageClassName := req.Parameters[infraStorageClassNameParameter]
-	volumeMode := getVolumeModeFromRequest(req)
-	if volumeMode == corev1.PersistentVolumeBlock {
-		return nil, status.Error(codes.InvalidArgument, "block mode not supported")
-	}
 	storageSize := req.GetCapacityRange().GetRequiredBytes()
 	dvName := req.Name
 	value, ok := req.Parameters[busParameter]
@@ -437,21 +433,4 @@ func (c *ControllerService) getVMNameByCSINodeID(nodeID string) (string, error) 
 	}
 
 	return "", status.Error(codes.NotFound, fmt.Sprintf("failed to find VM with domain.firmware.uuid %v", nodeID))
-}
-
-func getVolumeModeFromRequest(req *csi.CreateVolumeRequest) corev1.PersistentVolumeMode {
-	volumeMode := corev1.PersistentVolumeFilesystem // Set default in case not found in request
-
-	for _, cap := range req.VolumeCapabilities {
-		if cap == nil {
-			continue
-		}
-
-		if _, ok := cap.GetAccessType().(*csi.VolumeCapability_Block); ok {
-			volumeMode = corev1.PersistentVolumeBlock
-			break
-		}
-	}
-
-	return volumeMode
 }

@@ -6,7 +6,7 @@ SnapshotClass:
 DriverInfo:
   Name: csi.kubevirt.io
   Capabilities:
-    block: false
+    block: true
     controllerExpansion: false
     exec: true
     fsGroup: false
@@ -17,6 +17,9 @@ DriverInfo:
     snapshotDataSource: false
     topology: false
     capacity: false
+  SupportedFsType:
+    ext4: {}
+    xfs: {}
 InlineVolumes:
 - shared: false
 
