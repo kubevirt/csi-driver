@@ -2,55 +2,55 @@
 
 package v1alpha1
 
-func (VirtualMachineFlavor) SwaggerDoc() map[string]string {
+func (VirtualMachineInstancetype) SwaggerDoc() map[string]string {
 	return map[string]string{
-		"":     "VirtualMachineFlavor resource contains quantitative and resource related VirtualMachine configuration\nthat can be used by multiple VirtualMachine resources.\n\n+k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object\n+genclient",
-		"spec": "Required spec describing the flavor",
+		"":     "VirtualMachineInstancetype resource contains quantitative and resource related VirtualMachine configuration\nthat can be used by multiple VirtualMachine resources.\n\n+k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object\n+genclient",
+		"spec": "Required spec describing the instancetype",
 	}
 }
 
-func (VirtualMachineFlavorList) SwaggerDoc() map[string]string {
+func (VirtualMachineInstancetypeList) SwaggerDoc() map[string]string {
 	return map[string]string{
-		"": "VirtualMachineFlavorList is a list of VirtualMachineFlavor resources.\n\n+k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object",
+		"": "VirtualMachineInstancetypeList is a list of VirtualMachineInstancetype resources.\n\n+k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object",
 	}
 }
 
-func (VirtualMachineClusterFlavor) SwaggerDoc() map[string]string {
+func (VirtualMachineClusterInstancetype) SwaggerDoc() map[string]string {
 	return map[string]string{
-		"":     "VirtualMachineClusterFlavor is a cluster scoped version of VirtualMachineFlavor resource.\n\n+k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object\n+genclient\n+genclient:nonNamespaced",
-		"spec": "Required spec describing the flavor",
+		"":     "VirtualMachineClusterInstancetype is a cluster scoped version of VirtualMachineInstancetype resource.\n\n+k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object\n+genclient\n+genclient:nonNamespaced",
+		"spec": "Required spec describing the instancetype",
 	}
 }
 
-func (VirtualMachineClusterFlavorList) SwaggerDoc() map[string]string {
+func (VirtualMachineClusterInstancetypeList) SwaggerDoc() map[string]string {
 	return map[string]string{
-		"": "VirtualMachineClusterFlavorList is a list of VirtualMachineClusterFlavor resources.\n\n+k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object",
+		"": "VirtualMachineClusterInstancetypeList is a list of VirtualMachineClusterInstancetype resources.\n\n+k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object",
 	}
 }
 
-func (VirtualMachineFlavorSpecRevision) SwaggerDoc() map[string]string {
+func (VirtualMachineInstancetypeSpecRevision) SwaggerDoc() map[string]string {
 	return map[string]string{
-		"":           "VirtualMachineFlavorSpecRevision is used to capture a versioned copy of VirtualMachineFlavorSpec within a ControllerRevision\n\n**WARNING** This struct should never change ensuring it can always be unmarshaled from a ControllerRevision",
-		"apiVersion": "The specific version of VirtualMachineFlavorSpec that is contained below",
-		"spec":       "This is a marshaled version of the VirtualMachineFlavorSpec\n+listType=atomic",
+		"":           "VirtualMachineInstancetypeSpecRevision is used to capture a versioned copy of VirtualMachineInstancetypeSpec within a ControllerRevision\n\n**WARNING** This struct should never change ensuring it can always be unmarshaled from a ControllerRevision",
+		"apiVersion": "The specific version of VirtualMachineInstancetypeSpec that is contained below",
+		"spec":       "This is a marshaled version of the VirtualMachineInstancetypeSpec\n+listType=atomic",
 	}
 }
 
-func (VirtualMachineFlavorSpec) SwaggerDoc() map[string]string {
+func (VirtualMachineInstancetypeSpec) SwaggerDoc() map[string]string {
 	return map[string]string{
-		"":                "VirtualMachineFlavorSpec is a description of the VirtualMachineFlavor or VirtualMachineClusterFlavor.\n\nCPU and Memory are required attributes with both requiring that their Guest attribute is defined, ensuring a number of vCPUs and amount of RAM is always provided by each flavor.",
-		"cpu":             "Required CPU related attributes of the flavor.",
-		"memory":          "Required Memory related attributes of the flavor.",
-		"gpus":            "Optionally defines any GPU devices associated with the flavor.\n\n+optional\n+listType=atomic",
-		"hostDevices":     "Optionally defines any HostDevices associated with the flavor.\n\n+optional\n+listType=atomic",
-		"ioThreadsPolicy": "Optionally defines the IOThreadsPolicy to be used by the flavor.\n\n+optional",
-		"launchSecurity":  "Optionally defines the LaunchSecurity to be used by the flavor.\n\n+optional",
+		"":                "VirtualMachineInstancetypeSpec is a description of the VirtualMachineInstancetype or VirtualMachineClusterInstancetype.\n\nCPU and Memory are required attributes with both requiring that their Guest attribute is defined, ensuring a number of vCPUs and amount of RAM is always provided by each instancetype.",
+		"cpu":             "Required CPU related attributes of the instancetype.",
+		"memory":          "Required Memory related attributes of the instancetype.",
+		"gpus":            "Optionally defines any GPU devices associated with the instancetype.\n\n+optional\n+listType=atomic",
+		"hostDevices":     "Optionally defines any HostDevices associated with the instancetype.\n\n+optional\n+listType=atomic",
+		"ioThreadsPolicy": "Optionally defines the IOThreadsPolicy to be used by the instancetype.\n\n+optional",
+		"launchSecurity":  "Optionally defines the LaunchSecurity to be used by the instancetype.\n\n+optional",
 	}
 }
 
-func (CPUFlavor) SwaggerDoc() map[string]string {
+func (CPUInstancetype) SwaggerDoc() map[string]string {
 	return map[string]string{
-		"":                      "CPUFlavor contains the CPU related configuration of a given VirtualMachineFlavorSpec.\n\nGuest is a required attribute and defines the number of vCPUs to be exposed to the guest by the flavor.",
+		"":                      "CPUInstancetype contains the CPU related configuration of a given VirtualMachineInstancetypeSpec.\n\nGuest is a required attribute and defines the number of vCPUs to be exposed to the guest by the instancetype.",
 		"guest":                 "Required number of vCPUs to expose to the guest.\n\nThe resulting CPU topology being derived from the optional PreferredCPUTopology attribute of CPUPreferences that itself defaults to PreferCores.",
 		"model":                 "Model specifies the CPU model inside the VMI.\nList of available models https://github.com/libvirt/libvirt/tree/master/src/cpu_map.\nIt is possible to specify special cases like \"host-passthrough\" to get the same CPU as the node\nand \"host-model\" to get CPU closest to the node one.\nDefaults to host-model.\n+optional",
 		"dedicatedCPUPlacement": "DedicatedCPUPlacement requests the scheduler to place the VirtualMachineInstance on a node\nwith enough dedicated pCPUs and pin the vCPUs to it.\n+optional",
@@ -60,9 +60,9 @@ func (CPUFlavor) SwaggerDoc() map[string]string {
 	}
 }
 
-func (MemoryFlavor) SwaggerDoc() map[string]string {
+func (MemoryInstancetype) SwaggerDoc() map[string]string {
 	return map[string]string{
-		"":          "MemoryFlavor contains the Memory related configuration of a given VirtualMachineFlavorSpec.\n\nGuest is a required attribute and defines the amount of RAM to be exposed to the guest by the flavor.",
+		"":          "MemoryInstancetype contains the Memory related configuration of a given VirtualMachineInstancetypeSpec.\n\nGuest is a required attribute and defines the amount of RAM to be exposed to the guest by the instancetype.",
 		"guest":     "Required amount of memory which is visible inside the guest OS.",
 		"hugepages": "Optionally enables the use of hugepages for the VirtualMachineInstance instead of regular memory.\n+optional",
 	}
@@ -130,6 +130,7 @@ func (DevicePreferences) SwaggerDoc() map[string]string {
 		"preferredAutoattachMemBalloon":       "PreferredAutoattachMemBalloon optionally defines the preferred value of AutoattachMemBalloon\n\n+optional",
 		"preferredAutoattachPodInterface":     "PreferredAutoattachPodInterface optionally defines the preferred value of AutoattachPodInterface\n\n+optional",
 		"preferredAutoattachSerialConsole":    "PreferredAutoattachSerialConsole optionally defines the preferred value of AutoattachSerialConsole\n\n+optional",
+		"preferredAutoattachInputDevice":      "PreferredAutoattachInputDevice optionally defines the preferred value of AutoattachInputDevice\n\n+optional",
 		"preferredDisableHotplug":             "PreferredDisableHotplug optionally defines the preferred value of DisableHotplug\n\n+optional",
 		"preferredVirtualGPUOptions":          "PreferredVirtualGPUOptions optionally defines the preferred value of VirtualGPUOptions\n\n+optional",
 		"preferredSoundModel":                 "PreferredSoundModel optionally defines the preferred model for Sound devices.\n\n+optional",

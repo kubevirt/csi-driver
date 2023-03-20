@@ -1,6 +1,6 @@
 module kubevirt.io/csi-driver
 
-go 1.18
+go 1.19
 
 require (
 	github.com/container-storage-interface/spec v1.6.0
@@ -24,9 +24,9 @@ require (
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/klog/v2 v2.70.1
 	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9
-	kubevirt.io/api v0.55.0
-	kubevirt.io/client-go v0.55.0
-	kubevirt.io/containerized-data-importer-api v1.52.0
+	kubevirt.io/api v0.59.0
+	kubevirt.io/client-go v0.59.0
+	kubevirt.io/containerized-data-importer-api v1.56.0
 )
 
 require (
@@ -34,7 +34,7 @@ require (
 	github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 // indirect
 	github.com/coreos/prometheus-operator v0.38.1-0.20200424145508-7e176fda06cc // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/emicklei/go-restful v2.15.0+incompatible // indirect
+	github.com/emicklei/go-restful v2.16.0+incompatible // indirect
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/go-kit/kit v0.10.0 // indirect
@@ -90,29 +90,29 @@ replace (
 	github.com/operator-framework/operator-lifecycle-manager => github.com/operator-framework/operator-lifecycle-manager v0.0.0-20190128024246-5eb7ae5bdb7a
 	github.com/u-root/u-root => github.com/u-root/u-root v1.0.1
 	gopkg.in/yaml.v2 => gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api => k8s.io/api v0.24.0
-	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.24.0
-	k8s.io/apimachinery => k8s.io/apimachinery v0.24.0
-	k8s.io/apiserver => k8s.io/apiserver v0.24.0
-	k8s.io/cli-runtime => k8s.io/cli-runtime v0.24.0
-	k8s.io/client-go => k8s.io/client-go v0.24.0
-	k8s.io/cloud-provider => k8s.io/cloud-provider v0.24.0
-	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.24.0
-	k8s.io/code-generator => k8s.io/code-generator v0.24.0
-	k8s.io/component-base => k8s.io/component-base v0.24.0
-	k8s.io/component-helpers => k8s.io/component-helpers v0.24.0
-	k8s.io/controller-manager => k8s.io/controller-manager v0.24.0
-	k8s.io/cri-api => k8s.io/cri-api v0.24.0
-	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.24.0
-	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.24.0
-	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.24.0
-	k8s.io/kube-proxy => k8s.io/kube-proxy v0.24.0
-	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.24.0
-	k8s.io/kubectl => k8s.io/kubectl v0.24.0
-	k8s.io/kubelet => k8s.io/kubelet v0.24.0
-	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.24.0
-	k8s.io/metrics => k8s.io/metrics v0.24.0
-	k8s.io/mount-utils => k8s.io/mount-utils v0.24.0
-	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.24.0
-	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.24.0
+	k8s.io/api => k8s.io/api v0.24.2
+	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.24.2
+	k8s.io/apimachinery => k8s.io/apimachinery v0.24.2
+	k8s.io/apiserver => k8s.io/apiserver v0.24.2
+	k8s.io/cli-runtime => k8s.io/cli-runtime v0.24.2
+	k8s.io/client-go => k8s.io/client-go v0.24.2
+	k8s.io/cloud-provider => k8s.io/cloud-provider v0.24.2
+	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.24.2
+	k8s.io/code-generator => k8s.io/code-generator v0.24.2
+	k8s.io/component-base => k8s.io/component-base v0.24.2
+	k8s.io/component-helpers => k8s.io/component-helpers v0.24.2
+	k8s.io/controller-manager => k8s.io/controller-manager v0.24.2
+	k8s.io/cri-api => k8s.io/cri-api v0.24.2
+	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.24.2
+	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.24.2
+	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.24.2
+	k8s.io/kube-proxy => k8s.io/kube-proxy v0.24.2
+	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.24.2
+	k8s.io/kubectl => k8s.io/kubectl v0.24.2
+	k8s.io/kubelet => k8s.io/kubelet v0.24.2
+	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.24.2
+	k8s.io/metrics => k8s.io/metrics v0.24.2
+	k8s.io/mount-utils => k8s.io/mount-utils v0.24.2
+	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.24.2
+	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.24.2
 )

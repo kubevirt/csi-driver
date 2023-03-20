@@ -2,6 +2,7 @@ package e2e_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -107,7 +108,7 @@ func (t *tenantClusterAccess) startForwardingTenantAPI() error {
 }
 
 func (t *tenantClusterAccess) findControlPlaneVMIName() (string, error) {
-	vmiList, err := virtClient.VirtualMachineInstance(t.namespace).List(&metav1.ListOptions{})
+	vmiList, err := virtClient.VirtualMachineInstance(t.namespace).List(context.TODO(), &metav1.ListOptions{})
 	if err != nil {
 		return "", err
 	}
