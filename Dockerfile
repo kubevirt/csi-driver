@@ -1,4 +1,4 @@
-ARG builder_image=docker.io/library/golang:1.18.2
+ARG builder_image=docker.io/library/golang:1.19.7
 FROM ${builder_image} AS builder
 WORKDIR /src/kubevirt-csi-driver
 COPY . .

@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The KubeVirt Authors.
+Copyright 2023 The KubeVirt Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,10 +24,10 @@ import (
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
-
 	clonev1alpha1 "kubevirt.io/client-go/generated/kubevirt/clientset/versioned/typed/clone/v1alpha1"
 	exportv1alpha1 "kubevirt.io/client-go/generated/kubevirt/clientset/versioned/typed/export/v1alpha1"
-	flavorv1alpha1 "kubevirt.io/client-go/generated/kubevirt/clientset/versioned/typed/flavor/v1alpha1"
+	instancetypev1alpha1 "kubevirt.io/client-go/generated/kubevirt/clientset/versioned/typed/instancetype/v1alpha1"
+	instancetypev1alpha2 "kubevirt.io/client-go/generated/kubevirt/clientset/versioned/typed/instancetype/v1alpha2"
 	migrationsv1alpha1 "kubevirt.io/client-go/generated/kubevirt/clientset/versioned/typed/migrations/v1alpha1"
 	poolv1alpha1 "kubevirt.io/client-go/generated/kubevirt/clientset/versioned/typed/pool/v1alpha1"
 	snapshotv1alpha1 "kubevirt.io/client-go/generated/kubevirt/clientset/versioned/typed/snapshot/v1alpha1"
@@ -37,7 +37,8 @@ type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	CloneV1alpha1() clonev1alpha1.CloneV1alpha1Interface
 	ExportV1alpha1() exportv1alpha1.ExportV1alpha1Interface
-	FlavorV1alpha1() flavorv1alpha1.FlavorV1alpha1Interface
+	InstancetypeV1alpha1() instancetypev1alpha1.InstancetypeV1alpha1Interface
+	InstancetypeV1alpha2() instancetypev1alpha2.InstancetypeV1alpha2Interface
 	MigrationsV1alpha1() migrationsv1alpha1.MigrationsV1alpha1Interface
 	PoolV1alpha1() poolv1alpha1.PoolV1alpha1Interface
 	SnapshotV1alpha1() snapshotv1alpha1.SnapshotV1alpha1Interface
@@ -47,12 +48,13 @@ type Interface interface {
 // version included in a Clientset.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	cloneV1alpha1      *clonev1alpha1.CloneV1alpha1Client
-	exportV1alpha1     *exportv1alpha1.ExportV1alpha1Client
-	flavorV1alpha1     *flavorv1alpha1.FlavorV1alpha1Client
-	migrationsV1alpha1 *migrationsv1alpha1.MigrationsV1alpha1Client
-	poolV1alpha1       *poolv1alpha1.PoolV1alpha1Client
-	snapshotV1alpha1   *snapshotv1alpha1.SnapshotV1alpha1Client
+	cloneV1alpha1        *clonev1alpha1.CloneV1alpha1Client
+	exportV1alpha1       *exportv1alpha1.ExportV1alpha1Client
+	instancetypeV1alpha1 *instancetypev1alpha1.InstancetypeV1alpha1Client
+	instancetypeV1alpha2 *instancetypev1alpha2.InstancetypeV1alpha2Client
+	migrationsV1alpha1   *migrationsv1alpha1.MigrationsV1alpha1Client
+	poolV1alpha1         *poolv1alpha1.PoolV1alpha1Client
+	snapshotV1alpha1     *snapshotv1alpha1.SnapshotV1alpha1Client
 }
 
 // CloneV1alpha1 retrieves the CloneV1alpha1Client
@@ -65,9 +67,14 @@ func (c *Clientset) ExportV1alpha1() exportv1alpha1.ExportV1alpha1Interface {
 	return c.exportV1alpha1
 }
 
-// FlavorV1alpha1 retrieves the FlavorV1alpha1Client
-func (c *Clientset) FlavorV1alpha1() flavorv1alpha1.FlavorV1alpha1Interface {
-	return c.flavorV1alpha1
+// InstancetypeV1alpha1 retrieves the InstancetypeV1alpha1Client
+func (c *Clientset) InstancetypeV1alpha1() instancetypev1alpha1.InstancetypeV1alpha1Interface {
+	return c.instancetypeV1alpha1
+}
+
+// InstancetypeV1alpha2 retrieves the InstancetypeV1alpha2Client
+func (c *Clientset) InstancetypeV1alpha2() instancetypev1alpha2.InstancetypeV1alpha2Interface {
+	return c.instancetypeV1alpha2
 }
 
 // MigrationsV1alpha1 retrieves the MigrationsV1alpha1Client
@@ -114,7 +121,11 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 	if err != nil {
 		return nil, err
 	}
-	cs.flavorV1alpha1, err = flavorv1alpha1.NewForConfig(&configShallowCopy)
+	cs.instancetypeV1alpha1, err = instancetypev1alpha1.NewForConfig(&configShallowCopy)
+	if err != nil {
+		return nil, err
+	}
+	cs.instancetypeV1alpha2, err = instancetypev1alpha2.NewForConfig(&configShallowCopy)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +155,8 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 	var cs Clientset
 	cs.cloneV1alpha1 = clonev1alpha1.NewForConfigOrDie(c)
 	cs.exportV1alpha1 = exportv1alpha1.NewForConfigOrDie(c)
-	cs.flavorV1alpha1 = flavorv1alpha1.NewForConfigOrDie(c)
+	cs.instancetypeV1alpha1 = instancetypev1alpha1.NewForConfigOrDie(c)
+	cs.instancetypeV1alpha2 = instancetypev1alpha2.NewForConfigOrDie(c)
 	cs.migrationsV1alpha1 = migrationsv1alpha1.NewForConfigOrDie(c)
 	cs.poolV1alpha1 = poolv1alpha1.NewForConfigOrDie(c)
 	cs.snapshotV1alpha1 = snapshotv1alpha1.NewForConfigOrDie(c)
@@ -158,7 +170,8 @@ func New(c rest.Interface) *Clientset {
 	var cs Clientset
 	cs.cloneV1alpha1 = clonev1alpha1.New(c)
 	cs.exportV1alpha1 = exportv1alpha1.New(c)
-	cs.flavorV1alpha1 = flavorv1alpha1.New(c)
+	cs.instancetypeV1alpha1 = instancetypev1alpha1.New(c)
+	cs.instancetypeV1alpha2 = instancetypev1alpha2.New(c)
 	cs.migrationsV1alpha1 = migrationsv1alpha1.New(c)
 	cs.poolV1alpha1 = poolv1alpha1.New(c)
 	cs.snapshotV1alpha1 = snapshotv1alpha1.New(c)

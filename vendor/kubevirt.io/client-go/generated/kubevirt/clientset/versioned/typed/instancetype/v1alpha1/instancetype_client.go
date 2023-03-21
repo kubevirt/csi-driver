@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The KubeVirt Authors.
+Copyright 2023 The KubeVirt Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,42 +20,41 @@ package v1alpha1
 
 import (
 	rest "k8s.io/client-go/rest"
-
-	v1alpha1 "kubevirt.io/api/flavor/v1alpha1"
+	v1alpha1 "kubevirt.io/api/instancetype/v1alpha1"
 	"kubevirt.io/client-go/generated/kubevirt/clientset/versioned/scheme"
 )
 
-type FlavorV1alpha1Interface interface {
+type InstancetypeV1alpha1Interface interface {
 	RESTClient() rest.Interface
-	VirtualMachineClusterFlavorsGetter
+	VirtualMachineClusterInstancetypesGetter
 	VirtualMachineClusterPreferencesGetter
-	VirtualMachineFlavorsGetter
+	VirtualMachineInstancetypesGetter
 	VirtualMachinePreferencesGetter
 }
 
-// FlavorV1alpha1Client is used to interact with features provided by the flavor.kubevirt.io group.
-type FlavorV1alpha1Client struct {
+// InstancetypeV1alpha1Client is used to interact with features provided by the instancetype.kubevirt.io group.
+type InstancetypeV1alpha1Client struct {
 	restClient rest.Interface
 }
 
-func (c *FlavorV1alpha1Client) VirtualMachineClusterFlavors() VirtualMachineClusterFlavorInterface {
-	return newVirtualMachineClusterFlavors(c)
+func (c *InstancetypeV1alpha1Client) VirtualMachineClusterInstancetypes() VirtualMachineClusterInstancetypeInterface {
+	return newVirtualMachineClusterInstancetypes(c)
 }
 
-func (c *FlavorV1alpha1Client) VirtualMachineClusterPreferences() VirtualMachineClusterPreferenceInterface {
+func (c *InstancetypeV1alpha1Client) VirtualMachineClusterPreferences() VirtualMachineClusterPreferenceInterface {
 	return newVirtualMachineClusterPreferences(c)
 }
 
-func (c *FlavorV1alpha1Client) VirtualMachineFlavors(namespace string) VirtualMachineFlavorInterface {
-	return newVirtualMachineFlavors(c, namespace)
+func (c *InstancetypeV1alpha1Client) VirtualMachineInstancetypes(namespace string) VirtualMachineInstancetypeInterface {
+	return newVirtualMachineInstancetypes(c, namespace)
 }
 
-func (c *FlavorV1alpha1Client) VirtualMachinePreferences(namespace string) VirtualMachinePreferenceInterface {
+func (c *InstancetypeV1alpha1Client) VirtualMachinePreferences(namespace string) VirtualMachinePreferenceInterface {
 	return newVirtualMachinePreferences(c, namespace)
 }
 
-// NewForConfig creates a new FlavorV1alpha1Client for the given config.
-func NewForConfig(c *rest.Config) (*FlavorV1alpha1Client, error) {
+// NewForConfig creates a new InstancetypeV1alpha1Client for the given config.
+func NewForConfig(c *rest.Config) (*InstancetypeV1alpha1Client, error) {
 	config := *c
 	if err := setConfigDefaults(&config); err != nil {
 		return nil, err
@@ -64,12 +63,12 @@ func NewForConfig(c *rest.Config) (*FlavorV1alpha1Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &FlavorV1alpha1Client{client}, nil
+	return &InstancetypeV1alpha1Client{client}, nil
 }
 
-// NewForConfigOrDie creates a new FlavorV1alpha1Client for the given config and
+// NewForConfigOrDie creates a new InstancetypeV1alpha1Client for the given config and
 // panics if there is an error in the config.
-func NewForConfigOrDie(c *rest.Config) *FlavorV1alpha1Client {
+func NewForConfigOrDie(c *rest.Config) *InstancetypeV1alpha1Client {
 	client, err := NewForConfig(c)
 	if err != nil {
 		panic(err)
@@ -77,9 +76,9 @@ func NewForConfigOrDie(c *rest.Config) *FlavorV1alpha1Client {
 	return client
 }
 
-// New creates a new FlavorV1alpha1Client for the given RESTClient.
-func New(c rest.Interface) *FlavorV1alpha1Client {
-	return &FlavorV1alpha1Client{c}
+// New creates a new InstancetypeV1alpha1Client for the given RESTClient.
+func New(c rest.Interface) *InstancetypeV1alpha1Client {
+	return &InstancetypeV1alpha1Client{c}
 }
 
 func setConfigDefaults(config *rest.Config) error {
@@ -97,7 +96,7 @@ func setConfigDefaults(config *rest.Config) error {
 
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
-func (c *FlavorV1alpha1Client) RESTClient() rest.Interface {
+func (c *InstancetypeV1alpha1Client) RESTClient() rest.Interface {
 	if c == nil {
 		return nil
 	}

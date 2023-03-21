@@ -20,12 +20,15 @@
 package v1alpha1
 
 import (
+	"time"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
-	App = "virt-exporter"
+	App                = "virt-exporter"
+	DefaultDurationTTL = 2 * time.Hour
 )
 
 // VirtualMachineExport defines the operation of exporting a VM source
@@ -54,8 +57,16 @@ type VirtualMachineExportList struct {
 type VirtualMachineExportSpec struct {
 	Source corev1.TypedLocalObjectReference `json:"source"`
 
-	// TokenSecretRef is the name of the secret that contains the token used by the export server pod
-	TokenSecretRef string `json:"tokenSecretRef"`
+	// +optional
+	// TokenSecretRef is the name of the custom-defined secret that contains the token used by the export server pod
+	TokenSecretRef *string `json:"tokenSecretRef,omitempty"`
+
+	// ttlDuration limits the lifetime of an export
+	// If this field is set, after this duration has passed from counting from CreationTimestamp,
+	// the export is eligible to be automatically deleted.
+	// If this field is omitted, a reasonable default is applied.
+	// +optional
+	TTLDuration *metav1.Duration `json:"ttlDuration,omitempty"`
 }
 
 // VirtualMachineExportPhase is the current phase of the VirtualMachineExport
@@ -68,6 +79,8 @@ const (
 	Ready VirtualMachineExportPhase = "Ready"
 	// Terminated means the Virtual Machine export is terminated and no longer available
 	Terminated VirtualMachineExportPhase = "Terminated"
+	// Skipped means the export is invalid in a way so the exporter pod cannot start, and we are skipping creating the exporter server pod.
+	Skipped VirtualMachineExportPhase = "Skipped"
 )
 
 // VirtualMachineExportStatus is the status for a VirtualMachineExport resource
@@ -77,6 +90,14 @@ type VirtualMachineExportStatus struct {
 
 	// +optional
 	Links *VirtualMachineExportLinks `json:"links,omitempty"`
+
+	// +optional
+	// TokenSecretRef is the name of the secret that contains the token used by the export server pod
+	TokenSecretRef *string `json:"tokenSecretRef,omitempty"`
+
+	// The time at which the VM Export will be completely removed according to specified TTL
+	// Formula is CreationTimestamp + TTL
+	TTLExpirationTime *metav1.Time `json:"ttlExpirationTime,omitempty"`
 
 	// +optional
 	// ServiceName is the name of the service created associated with the Virtual Machine export. It will be used to
@@ -105,8 +126,32 @@ type VirtualMachineExportLink struct {
 	// +listType=map
 	// +listMapKey=name
 	// +optional
-	Volumes []VirtualMachineExportVolume `json:"volumes"`
+	Volumes []VirtualMachineExportVolume `json:"volumes,omitempty"`
+
+	// Manifests is a list of available manifests for the export
+	// +listType=map
+	// +listMapKey=type
+	// +optional
+	Manifests []VirtualMachineExportManifest `json:"manifests,omitempty"`
 }
+
+// VirtualMachineExportManifest contains the type and URL of the exported manifest
+type VirtualMachineExportManifest struct {
+	// Type is the type of manifest returned
+	Type ExportManifestType `json:"type"`
+
+	// Url is the url of the endpoint that returns the manifest
+	Url string `json:"url"`
+}
+
+type ExportManifestType string
+
+const (
+	// AllManifests returns all manifests except for the token secret
+	AllManifests ExportManifestType = "all"
+	// AuthHeader returns a CDI compatible secret containing the token as an Auth header
+	AuthHeader ExportManifestType = "auth-header-secret"
+)
 
 // VirtualMachineExportVolume contains the name and available formats for the exported volume
 type VirtualMachineExportVolume struct {
@@ -147,6 +192,8 @@ const (
 	ConditionReady ConditionType = "Ready"
 	// ConditionPVC is the condition of the PVC we are exporting
 	ConditionPVC ConditionType = "PVCReady"
+	// ConditionVolumesCreated is the condition to see if volumes are created from volume snapshots
+	ConditionVolumesCreated ConditionType = "VolumesCreated"
 )
 
 // Condition defines conditions

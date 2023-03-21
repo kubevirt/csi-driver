@@ -27,101 +27,101 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-// VirtualMachineFlavor resource contains quantitative and resource related VirtualMachine configuration
+// VirtualMachineInstancetype resource contains quantitative and resource related VirtualMachine configuration
 // that can be used by multiple VirtualMachine resources.
 //
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient
-type VirtualMachineFlavor struct {
+type VirtualMachineInstancetype struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// Required spec describing the flavor
-	Spec VirtualMachineFlavorSpec `json:"spec"`
+	// Required spec describing the instancetype
+	Spec VirtualMachineInstancetypeSpec `json:"spec"`
 }
 
-// VirtualMachineFlavorList is a list of VirtualMachineFlavor resources.
+// VirtualMachineInstancetypeList is a list of VirtualMachineInstancetype resources.
 //
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type VirtualMachineFlavorList struct {
+type VirtualMachineInstancetypeList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []VirtualMachineFlavor `json:"items"`
+	Items           []VirtualMachineInstancetype `json:"items"`
 }
 
-// VirtualMachineClusterFlavor is a cluster scoped version of VirtualMachineFlavor resource.
+// VirtualMachineClusterInstancetype is a cluster scoped version of VirtualMachineInstancetype resource.
 //
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient
 // +genclient:nonNamespaced
-type VirtualMachineClusterFlavor struct {
+type VirtualMachineClusterInstancetype struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// Required spec describing the flavor
-	Spec VirtualMachineFlavorSpec `json:"spec"`
+	// Required spec describing the instancetype
+	Spec VirtualMachineInstancetypeSpec `json:"spec"`
 }
 
-// VirtualMachineClusterFlavorList is a list of VirtualMachineClusterFlavor resources.
+// VirtualMachineClusterInstancetypeList is a list of VirtualMachineClusterInstancetype resources.
 //
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type VirtualMachineClusterFlavorList struct {
+type VirtualMachineClusterInstancetypeList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []VirtualMachineClusterFlavor `json:"items"`
+	Items           []VirtualMachineClusterInstancetype `json:"items"`
 }
 
-// VirtualMachineFlavorSpecRevision is used to capture a versioned copy of VirtualMachineFlavorSpec within a ControllerRevision
+// VirtualMachineInstancetypeSpecRevision is used to capture a versioned copy of VirtualMachineInstancetypeSpec within a ControllerRevision
 //
 // **WARNING** This struct should never change ensuring it can always be unmarshaled from a ControllerRevision
-type VirtualMachineFlavorSpecRevision struct {
+type VirtualMachineInstancetypeSpecRevision struct {
 
-	// The specific version of VirtualMachineFlavorSpec that is contained below
+	// The specific version of VirtualMachineInstancetypeSpec that is contained below
 	APIVersion string `json:"apiVersion" protobuf:"bytes,2,opt,name=apiVersion"`
 
-	// This is a marshaled version of the VirtualMachineFlavorSpec
+	// This is a marshaled version of the VirtualMachineInstancetypeSpec
 	// +listType=atomic
 	Spec []byte `json:"spec"`
 }
 
-// VirtualMachineFlavorSpec is a description of the VirtualMachineFlavor or VirtualMachineClusterFlavor.
+// VirtualMachineInstancetypeSpec is a description of the VirtualMachineInstancetype or VirtualMachineClusterInstancetype.
 //
-// CPU and Memory are required attributes with both requiring that their Guest attribute is defined, ensuring a number of vCPUs and amount of RAM is always provided by each flavor.
-type VirtualMachineFlavorSpec struct {
+// CPU and Memory are required attributes with both requiring that their Guest attribute is defined, ensuring a number of vCPUs and amount of RAM is always provided by each instancetype.
+type VirtualMachineInstancetypeSpec struct {
 
-	// Required CPU related attributes of the flavor.
-	CPU CPUFlavor `json:"cpu"`
+	// Required CPU related attributes of the instancetype.
+	CPU CPUInstancetype `json:"cpu"`
 
-	// Required Memory related attributes of the flavor.
-	Memory MemoryFlavor `json:"memory"`
+	// Required Memory related attributes of the instancetype.
+	Memory MemoryInstancetype `json:"memory"`
 
-	// Optionally defines any GPU devices associated with the flavor.
+	// Optionally defines any GPU devices associated with the instancetype.
 	//
 	// +optional
 	// +listType=atomic
 	GPUs []v1.GPU `json:"gpus,omitempty"`
 
-	// Optionally defines any HostDevices associated with the flavor.
+	// Optionally defines any HostDevices associated with the instancetype.
 	//
 	// +optional
 	// +listType=atomic
 	HostDevices []v1.HostDevice `json:"hostDevices,omitempty"`
 
-	// Optionally defines the IOThreadsPolicy to be used by the flavor.
+	// Optionally defines the IOThreadsPolicy to be used by the instancetype.
 	//
 	// +optional
 	IOThreadsPolicy *v1.IOThreadsPolicy `json:"ioThreadsPolicy,omitempty"`
 
-	// Optionally defines the LaunchSecurity to be used by the flavor.
+	// Optionally defines the LaunchSecurity to be used by the instancetype.
 	//
 	// +optional
 	LaunchSecurity *v1.LaunchSecurity `json:"launchSecurity,omitempty"`
 }
 
-// CPUFlavor contains the CPU related configuration of a given VirtualMachineFlavorSpec.
+// CPUInstancetype contains the CPU related configuration of a given VirtualMachineInstancetypeSpec.
 //
-// Guest is a required attribute and defines the number of vCPUs to be exposed to the guest by the flavor.
-type CPUFlavor struct {
+// Guest is a required attribute and defines the number of vCPUs to be exposed to the guest by the instancetype.
+type CPUInstancetype struct {
 
 	// Required number of vCPUs to expose to the guest.
 	//
@@ -155,13 +155,13 @@ type CPUFlavor struct {
 	Realtime *v1.Realtime `json:"realtime,omitempty"`
 }
 
-// MemoryFlavor contains the Memory related configuration of a given VirtualMachineFlavorSpec.
+// MemoryInstancetype contains the Memory related configuration of a given VirtualMachineInstancetypeSpec.
 //
-// Guest is a required attribute and defines the amount of RAM to be exposed to the guest by the flavor.
-type MemoryFlavor struct {
+// Guest is a required attribute and defines the amount of RAM to be exposed to the guest by the instancetype.
+type MemoryInstancetype struct {
 
 	// Required amount of memory which is visible inside the guest OS.
-	Guest *resource.Quantity `json:"guest,omitempty"`
+	Guest resource.Quantity `json:"guest"`
 
 	// Optionally enables the use of hugepages for the VirtualMachineInstance instead of regular memory.
 	// +optional
@@ -306,6 +306,11 @@ type DevicePreferences struct {
 	// +optional
 	PreferredAutoattachSerialConsole *bool `json:"preferredAutoattachSerialConsole,omitempty"`
 
+	// PreferredAutoattachInputDevice optionally defines the preferred value of AutoattachInputDevice
+	//
+	// +optional
+	PreferredAutoattachInputDevice *bool `json:"preferredAutoattachInputDevice,omitempty"`
+
 	// PreferredDisableHotplug optionally defines the preferred value of DisableHotplug
 	//
 	// +optional
@@ -329,12 +334,12 @@ type DevicePreferences struct {
 	// PreferredInputBus optionally defines the preferred bus for Input devices.
 	//
 	// +optional
-	PreferredInputBus string `json:"preferredInputBus,omitempty"`
+	PreferredInputBus v1.InputBus `json:"preferredInputBus,omitempty"`
 
 	// PreferredInputType optionally defines the preferred type for Input devices.
 	//
 	// +optional
-	PreferredInputType string `json:"preferredInputType,omitempty"`
+	PreferredInputType v1.InputType `json:"preferredInputType,omitempty"`
 
 	// PreferredDiskBus optionally defines the preferred bus for Disk Disk devices.
 	//
