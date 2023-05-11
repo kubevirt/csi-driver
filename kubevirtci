@@ -12,8 +12,8 @@ export KUBEVIRT_NUM_NODES=${KUBEVIRT_NUM_NODES:-1}
 export KUBEVIRT_MEMORY_SIZE=${KUBEVIRT_MEMORY_SIZE:-15360M}
 export KUBEVIRT_DEPLOY_CDI="true"
 export METALLB_VERSION="v0.12.1"
-export CAPK_RELEASE_VERSION="v0.1.0-rc.0"
-export CLUSTERCTL_VERSION="v1.0.0"
+export CAPK_RELEASE_VERSION="v0.1.6"
+export CLUSTERCTL_VERSION="v1.4.2"
 export CALICO_VERSION="v3.21"
 export KUBEVIRT_VERSION="v0.58.0"
 export NODE_VM_IMAGE_TEMPLATE=${NODE_VM_IMAGE_TEMPLATE:-quay.io/capk/ubuntu-2004-container-disk:v1.22.0}
@@ -168,9 +168,11 @@ function kubevirtci::create_cluster() {
 	export IMAGE_REPO=k8s.gcr.io
 	export CRI_PATH="/var/run/containerd/containerd.sock"
 	template=templates/cluster-template.yaml
-
 	if [ ! -f $template ]; then
-		template="https://github.com/kubernetes-sigs/cluster-api-provider-kubevirt/blob/main/templates/cluster-template.yaml"
+		#can't pass the url directly because clusterctl doesn't resolve the redirects properly.
+		mkdir -p templates
+	    curl -L "https://github.com/kubernetes-sigs/cluster-api-provider-kubevirt/releases/download/$CAPK_RELEASE_VERSION/cluster-template.yaml" --output $template
+		remove_template=true
 	fi
 
 	echo "Using cluster template $template"
@@ -185,6 +187,10 @@ function kubevirtci::create_cluster() {
 
 	echo "Waiting for worker VM in tenant cluster namespace"
 	kubevirtci::retry_until_success kubevirtci::vm_matches "${TENANT_CLUSTER_NAME}-md-"
+
+	if [ ${remove_template} ]; then
+	  rm -rf templates
+	fi
 }
 
 
