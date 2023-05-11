@@ -170,9 +170,10 @@ function kubevirtci::create_cluster() {
 	template=templates/cluster-template.yaml
 	if [ ! -f $template ]; then
 		#can't pass the url directly because clusterctl doesn't resolve the redirects properly.
-		mkdir -p templates
-	    curl -L "https://github.com/kubernetes-sigs/cluster-api-provider-kubevirt/releases/download/$CAPK_RELEASE_VERSION/cluster-template.yaml" --output $template
-		remove_template=true
+		tmp_template=$(mktemp -d)
+		template="$tmp_template/cluster-template.yaml"
+		echo "saving template to $template"
+		curl -L "https://github.com/kubernetes-sigs/cluster-api-provider-kubevirt/releases/download/$CAPK_RELEASE_VERSION/cluster-template.yaml" --output $template
 	fi
 
 	echo "Using cluster template $template"
@@ -188,8 +189,8 @@ function kubevirtci::create_cluster() {
 	echo "Waiting for worker VM in tenant cluster namespace"
 	kubevirtci::retry_until_success kubevirtci::vm_matches "${TENANT_CLUSTER_NAME}-md-"
 
-	if [ ${remove_template} ]; then
-	  rm -rf templates
+	if [ $tmp_template ]; then
+		rm -rf $tmp_template
 	fi
 }
 
