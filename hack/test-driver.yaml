@@ -9,7 +9,7 @@ DriverInfo:
     block: true
     controllerExpansion: false
     exec: true
-    fsGroup: false
+    fsGroup: true
     multipods: true
     nodeExpansion: false
     persistence: true
