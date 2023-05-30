@@ -118,6 +118,18 @@ func TestPublishVolume_Success(t *testing.T) {
 
 func TestUnpublishVolume_Success(t *testing.T) {
 	client := &ControllerClientMock{t: t}
+	client.virtualMachineStatus.VolumeStatus = append(client.virtualMachineStatus.VolumeStatus, kubevirtv1.VolumeStatus{
+		Name:          testVolumeName,
+		HotplugVolume: &kubevirtv1.HotplugVolumeStatus{},
+	})
+	controller := ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
+
+	_, err := controller.ControllerUnpublishVolume(context.TODO(), getUnpublishVolumeRequest())
+	assert.Nil(t, err)
+}
+
+func TestUnpublishVolume_Nothotplugged(t *testing.T) {
+	client := &ControllerClientMock{t: t}
 	controller := ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
 
 	_, err := controller.ControllerUnpublishVolume(context.TODO(), getUnpublishVolumeRequest())
@@ -219,6 +231,7 @@ type ControllerClientMock struct {
 	FailCreateDataVolume    bool
 	FailAddVolumeToVM       bool
 	FailRemoveVolumeFromVM  bool
+	virtualMachineStatus    kubevirtv1.VirtualMachineInstanceStatus
 
 	t *testing.T
 }
@@ -274,6 +287,7 @@ func (c *ControllerClientMock) GetVirtualMachine(namespace, name string) (*kubev
 				},
 			},
 		},
+		Status: c.virtualMachineStatus,
 	}, nil
 }
 

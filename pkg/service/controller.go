@@ -33,7 +33,7 @@ var (
 	unallowedStorageClass = status.Error(codes.InvalidArgument, "infraStorageclass is not in the allowed list")
 )
 
-//ControllerService implements the controller interface. See README for details.
+// ControllerService implements the controller interface. See README for details.
 type ControllerService struct {
 	virtClient              client.Client
 	infraClusterNamespace   string
@@ -322,17 +322,29 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 		return nil, err
 	}
 
-	// Detach DataVolume from VM
-	err = c.virtClient.RemoveVolumeFromVM(c.infraClusterNamespace, vmName, &kubevirtv1.RemoveVolumeOptions{Name: dvName})
+	vm, err := c.virtClient.GetVirtualMachine(c.infraClusterNamespace, vmName)
 	if err != nil {
-		klog.Error("failed removing volume " + dvName + " from VM " + vmName)
+		klog.Error("failed getting virtual machine " + vmName)
 		return nil, err
 	}
-
+	removePossible := false
+	for _, volumeStatus := range vm.Status.VolumeStatus {
+		if volumeStatus.HotplugVolume != nil && volumeStatus.Name == dvName {
+			removePossible = true
+		}
+	}
+	if removePossible {
+		// Detach DataVolume from VM
+		err = c.virtClient.RemoveVolumeFromVM(c.infraClusterNamespace, vmName, &kubevirtv1.RemoveVolumeOptions{Name: dvName})
+		if err != nil {
+			klog.Error("failed removing volume " + dvName + " from VM " + vmName)
+			return nil, err
+		}
+	}
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
 
-//ValidateVolumeCapabilities unimplemented
+// ValidateVolumeCapabilities unimplemented
 func (c *ControllerService) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 	// Check arguments
 	if len(req.GetVolumeId()) == 0 {
@@ -364,37 +376,37 @@ func (c *ControllerService) ValidateVolumeCapabilities(ctx context.Context, req 
 
 }
 
-//ListVolumes unimplemented
+// ListVolumes unimplemented
 func (c *ControllerService) ListVolumes(context.Context, *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-//GetCapacity unimplemented
+// GetCapacity unimplemented
 func (c *ControllerService) GetCapacity(context.Context, *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-//CreateSnapshot unimplemented
+// CreateSnapshot unimplemented
 func (c *ControllerService) CreateSnapshot(context.Context, *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-//DeleteSnapshot unimplemented
+// DeleteSnapshot unimplemented
 func (c *ControllerService) DeleteSnapshot(context.Context, *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-//ListSnapshots unimplemented
+// ListSnapshots unimplemented
 func (c *ControllerService) ListSnapshots(context.Context, *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-//ControllerExpandVolume unimplemented
+// ControllerExpandVolume unimplemented
 func (c *ControllerService) ControllerExpandVolume(context.Context, *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-//ControllerGetCapabilities returns the driver's controller capabilities
+// ControllerGetCapabilities returns the driver's controller capabilities
 func (c *ControllerService) ControllerGetCapabilities(context.Context, *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
 	caps := make([]*csi.ControllerServiceCapability, 0, len(controllerCaps))
 	for _, capability := range controllerCaps {
