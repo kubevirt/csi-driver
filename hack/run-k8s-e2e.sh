@@ -16,7 +16,7 @@ set -e
 export TENANT_CLUSTER_NAME=${TENANT_CLUSTER_NAME:-kvcluster}
 export TENANT_CLUSTER_NAMESPACE=${TENANT_CLUSTER_NAMESPACE:-kvcluster}
 export KUBEVIRTCI_TAG=${KUBEVIRTCI_TAG:-2301240001-e641e98}
-export KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-k8s-1.25}
+export KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-k8s-1.26}
 
 test_pod=${TENANT_CLUSTER_NAME}-k8s-e2e-suite-runnner
 test_driver_cm=${TENANT_CLUSTER_NAME}-test-driver
@@ -72,7 +72,7 @@ spec:
   restartPolicy: Never
   containers:
   - name: test-suite
-    image: registry.access.redhat.com/ubi8/ubi:8.0
+    image: quay.io/centos/centos:stream8
     securityContext:
       allowPrivilegeEscalation: false
       runAsNonRoot: true

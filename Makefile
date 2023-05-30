@@ -21,7 +21,7 @@ TAG ?= latest
 IMAGE_REF=$(REGISTRY)/$(TARGET_NAME):$(TAG)
 GO_TEST_PACKAGES :=./pkg/... ./cmd/...
 IMAGE_REGISTRY?=registry.svc.ci.openshift.org
-KUBEVIRT_PROVIDER?=k8s-1.25
+KUBEVIRT_PROVIDER?=k8s-1.26
 SHA := $(shell git describe --no-match  --always --abbrev=40 --dirty)
 BIN_DIR := bin
 
