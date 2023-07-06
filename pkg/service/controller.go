@@ -341,6 +341,12 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 			return nil, err
 		}
 	}
+	err = c.virtClient.EnsureVolumeRemoved(c.infraClusterNamespace, vmName, dvName, time.Minute*2)
+	if err != nil {
+		klog.Errorf("volume %s failed to be removed in time from VM %s, %v", dvName, vmName, err)
+		return nil, err
+	}
+
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
 

@@ -363,3 +363,7 @@ func (c *ControllerClientMock) RemoveVolumeFromVM(namespace string, vmName strin
 func (c *ControllerClientMock) EnsureVolumeAvailable(namespace, vmName, volumeName string, timeout time.Duration) error {
 	return nil
 }
+
+func (c *ControllerClientMock) EnsureVolumeRemoved(namespace, vmName, volumeName string, timeout time.Duration) error {
+	return nil
+}
