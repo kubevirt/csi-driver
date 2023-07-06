@@ -1,4 +1,4 @@
-apiVersion: kubevirt.io/v1alpha3
+apiVersion: kubevirt.io/v1
 kind: KubeVirt
 metadata:
   name: kubevirt

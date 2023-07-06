@@ -3,13 +3,14 @@ package e2e_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -38,16 +39,19 @@ var _ = Describe("CreatePVC", func() {
 
 	BeforeEach(func() {
 		var err error
+		clientConfig := kubecli.DefaultClientConfig(&pflag.FlagSet{})
+		virtClient, err = kubecli.GetKubevirtClientFromClientConfig(clientConfig)
+		Expect(err).ToNot(HaveOccurred())
 
 		if len(TenantKubeConfig) == 0 {
-			tmpDir, err = os.MkdirTemp(WorkingDir, "pvc-creation-tests")
+			tmpDir, err := os.MkdirTemp(WorkingDir, "pvc-creation-tests")
 			Expect(err).ToNot(HaveOccurred())
-
-			tenantKubeconfigFile = filepath.Join(tmpDir, "tenant-kubeconfig.yaml")
-
-			clientConfig := kubecli.DefaultClientConfig(&pflag.FlagSet{})
-			virtClient, err = kubecli.GetKubevirtClientFromClientConfig(clientConfig)
-			Expect(err).ToNot(HaveOccurred())
+			if _, err := os.Stat(tmpDir); errors.Is(err, os.ErrNotExist) {
+				fmt.Fprintf(GinkgoWriter, "Tmpdir %s does NOT exist", tmpDir)
+				err = os.MkdirAll(tmpDir, 0777)
+				Expect(err).ToNot(HaveOccurred())
+			}
+			tenantKubeconfigFile = filepath.Join(tmpDir, fmt.Sprintf("tenant-kubeconfig_%d.yaml", GinkgoParallelProcess()))
 
 			tenantAccessor = newTenantClusterAccess("kvcluster", tenantKubeconfigFile)
 
@@ -75,9 +79,6 @@ var _ = Describe("CreatePVC", func() {
 
 	AfterEach(func() {
 		_ = tenantClient.CoreV1().Namespaces().Delete(context.Background(), namespace, metav1.DeleteOptions{})
-		if len(TenantKubeConfig) == 0 {
-			_ = tenantAccessor.stopForwardingTenantAPI()
-		}
 		_ = os.RemoveAll(tmpDir)
 	})
 
@@ -271,12 +272,12 @@ var _ = Describe("CreatePVC", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Eventually(func() bool {
 			_, err := tenantClient.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), pvc.Name, metav1.GetOptions{})
-			return errors.IsNotFound(err)
+			return k8serrors.IsNotFound(err)
 		}, 1*time.Minute, 2*time.Second).Should(BeTrue(), "tenant pvc should disappear")
 
 		Eventually(func() bool {
 			_, err := infraClient.CoreV1().PersistentVolumeClaims(InfraClusterNamespace).Get(context.Background(), infraPvc.Name, metav1.GetOptions{})
-			return errors.IsNotFound(err)
+			return k8serrors.IsNotFound(err)
 		}, 1*time.Minute, 2*time.Second).Should(BeTrue(), "infra pvc should disappear")
 	},
 		Entry("Filesystem volume mode", k8sv1.PersistentVolumeFilesystem, attacherPodFs),
@@ -363,9 +364,12 @@ func podWithoutPVCSpec(podName string, cmd, args []string) *k8sv1.Pod {
 		},
 	}
 }
-
 func podWithBlockPvcSpec(podName, pvcName string, cmd, args []string) *k8sv1.Pod {
 	podSpec := podWithoutPVCSpec(podName, cmd, args)
+	return addBlockPvcSpecToPod(podSpec, pvcName)
+}
+
+func addBlockPvcSpecToPod(podSpec *k8sv1.Pod, pvcName string) *k8sv1.Pod {
 	volumeName := "blockpv"
 	podSpec.Spec.Volumes = append(podSpec.Spec.Volumes, k8sv1.Volume{
 		Name: volumeName,
@@ -386,6 +390,10 @@ func podWithBlockPvcSpec(podName, pvcName string, cmd, args []string) *k8sv1.Pod
 
 func podWithFilesystemPvcSpec(podName, pvcName string, cmd, args []string) *k8sv1.Pod {
 	podSpec := podWithoutPVCSpec(podName, cmd, args)
+	return addFilesystemPvcSpecToPod(podSpec, pvcName)
+}
+
+func addFilesystemPvcSpecToPod(podSpec *k8sv1.Pod, pvcName string) *k8sv1.Pod {
 	volumeName := "fspv"
 	podSpec.Spec.Volumes = append(podSpec.Spec.Volumes, k8sv1.Volume{
 		Name: volumeName,
@@ -488,7 +496,7 @@ func runPod(client v1.CoreV1Interface, namespace string, pod *k8sv1.Pod) *k8sv1.
 	for _, event := range events.Items {
 		Expect(event.Message).ToNot(ContainSubstring("find device by serial id"))
 	}
-	// Return updated pod
+	//Return updated pod
 	return pod
 }
 
@@ -504,7 +512,7 @@ func deletePod(client v1.CoreV1Interface, ns, podName string) {
 	By("verify deleted")
 	Eventually(func() bool {
 		_, err := client.Pods(ns).Get(context.Background(), podName, metav1.GetOptions{})
-		return errors.IsNotFound(err)
+		return k8serrors.IsNotFound(err)
 	}, 3*time.Minute, 5*time.Second).Should(BeTrue(), "pod should disappear")
 }
 

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
@@ -58,7 +59,9 @@ func (t *tenantClusterAccess) generateClient() (*kubernetes.Clientset, error) {
 		cmd := exec.Command(ClusterctlPath, "get", "kubeconfig", "kvcluster",
 			"--namespace", t.namespace)
 		stdout, _ := RunCmd(cmd)
+		fmt.Fprintf(GinkgoWriter, "kubeconfig [%s]\n", string(stdout))
 		if err := os.WriteFile(t.tenantKubeconfigFile, stdout, 0644); err != nil {
+			fmt.Fprintf(GinkgoWriter, "Unable to create tenant kubeconfig %v\n", err)
 			return nil, err
 		}
 		overrides = &clientcmd.ConfigOverrides{
@@ -67,6 +70,8 @@ func (t *tenantClusterAccess) generateClient() (*kubernetes.Clientset, error) {
 				InsecureSkipTLSVerify: true,
 			},
 		}
+	} else if err != nil {
+		fmt.Fprintf(GinkgoWriter, "Unable to get tenant kubeconfig file %v\n", err)
 	}
 	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		&clientcmd.ClientConfigLoadingRules{ExplicitPath: t.tenantKubeconfigFile}, overrides)
@@ -102,7 +107,7 @@ func (t *tenantClusterAccess) startForwardingTenantAPI() error {
 	}
 
 	t.isForwarding = true
-	go t.waitForConnection(vmiName, t.namespace)
+	go t.waitForConnection(vmiName, t.namespace, 6443)
 
 	return nil
 }
@@ -126,22 +131,14 @@ func (t *tenantClusterAccess) findControlPlaneVMIName() (string, error) {
 	return chosenVMI.Name, nil
 }
 
-func (t *tenantClusterAccess) stopForwardingTenantAPI() error {
-	if !t.isForwarding {
-		return nil
-	}
-	t.isForwarding = false
-	return t.listener.Close()
-}
-
-func (t *tenantClusterAccess) waitForConnection(name, namespace string) {
+func (t *tenantClusterAccess) waitForConnection(name, namespace string, port int) {
 	for {
 		conn, err := t.listener.Accept()
 		if err != nil {
 			glog.Errorln("error accepting connection:", err)
 			return
 		}
-		stream, err := virtClient.VirtualMachineInstance(namespace).PortForward(name, 6443, "tcp")
+		stream, err := virtClient.VirtualMachineInstance(namespace).PortForward(name, port, "tcp")
 		if err != nil {
 			glog.Errorf("can't access vmi %s/%s: %v", namespace, name, err)
 			return

@@ -60,7 +60,7 @@ func init() {
 
 func main() {
 	flag.Parse()
-	rand.Seed(time.Now().UnixNano())
+	rand.New(rand.NewSource(time.Now().UnixNano()))
 	handle()
 	os.Exit(0)
 }

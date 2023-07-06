@@ -17,6 +17,9 @@ export TENANT_CLUSTER_NAME=${TENANT_CLUSTER_NAME:-kvcluster}
 export TENANT_CLUSTER_NAMESPACE=${TENANT_CLUSTER_NAMESPACE:-kvcluster}
 export KUBEVIRTCI_TAG=${KUBEVIRTCI_TAG:-2301240001-e641e98}
 export KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-k8s-1.26}
+export KUBEVIRT_NUM_NODES=2
+export KUBEVIRT_STORAGE=rook-ceph-default
+export INFRA_STORAGE_CLASS=${INFRA_STORAGE_CLASS:-rook-ceph-block}
 
 test_pod=${TENANT_CLUSTER_NAME}-k8s-e2e-suite-runnner
 test_driver_cm=${TENANT_CLUSTER_NAME}-test-driver
@@ -72,11 +75,9 @@ spec:
   restartPolicy: Never
   containers:
   - name: test-suite
-    image: quay.io/centos/centos:stream8
+    image: quay.io/kubevirtci/golang:v20230801-94954c0
     securityContext:
       allowPrivilegeEscalation: false
-      runAsNonRoot: true
-      runAsUser: 1000
       capabilities:
         drop: ["ALL"]
       seccompProfile:
@@ -90,17 +91,18 @@ spec:
       value: capk
     - name: KUBE_SSH_KEY_PATH
       value: /capk/capk.pem
+    - name: GIMME_GO_VERSION
+      value: "1.20"
     command:
     - /bin/bash
     - -c
     - |
-      cd /tmp
       curl --location https://dl.k8s.io/v1.22.0/kubernetes-test-linux-amd64.tar.gz |   tar --strip-components=3 -zxf - kubernetes/test/bin/e2e.test kubernetes/test/bin/ginkgo
       chmod +x e2e.test
       curl -LO "https://dl.k8s.io/release/v1.22.0/bin/linux/amd64/kubectl"
       chmod +x kubectl
       echo \$TEST_DRIVER_PATH
-      ./e2e.test -kubeconfig \${KUBECONFIG} -kubectl-path ./kubectl -ginkgo.v -ginkgo.focus='External.Storage.*csi.kubevirt.io.*' -ginkgo.skip='CSI Ephemeral-volume*' -storage.testdriver=\${TEST_DRIVER_PATH}/test-driver.yaml -provider=local -report-dir=/tmp
+      ginkgo -p --nodes 4 ./e2e.test -- -kubeconfig \${KUBECONFIG} -kubectl-path ./kubectl -ginkgo.v -ginkgo.focus='External.Storage.*csi.kubevirt.io.*' -ginkgo.skip='CSI Ephemeral-volume*' -storage.testdriver=\${TEST_DRIVER_PATH}/test-driver.yaml -provider=local -report-dir=/tmp
       ret=\$?
       while [ ! -f /tmp/exit.txt ]; do
         sleep 2
@@ -147,6 +149,7 @@ start_test_pod
 ./kubevirtci kubectl logs -fn $TENANT_CLUSTER_NAMESPACE ${test_pod} >&1 &
 
 while [[ ! $(./kubevirtci kubectl exec -n $TENANT_CLUSTER_NAMESPACE ${test_pod} -- ls /tmp/junit_01.xml 2>/dev/null) ]]; do
+  ./kubevirtci kubectl logs -n $TENANT_CLUSTER_NAMESPACE ${test_pod}
   sleep 30
 done
 
