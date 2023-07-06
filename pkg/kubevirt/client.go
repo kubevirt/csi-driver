@@ -29,6 +29,7 @@ type Client interface {
 	AddVolumeToVM(namespace string, vmName string, hotPlugRequest *kubevirtv1.AddVolumeOptions) error
 	RemoveVolumeFromVM(namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error
 	EnsureVolumeAvailable(namespace, vmName, volumeName string, timeout time.Duration) error
+	EnsureVolumeRemoved(namespace, vmName, volumeName string, timeout time.Duration) error
 }
 
 type client struct {
@@ -78,6 +79,23 @@ func (c *client) EnsureVolumeAvailable(namespace, vmName, volumeName string, tim
 		}
 		// Have not found the ready hotplugged volume
 		return false, nil
+	})
+}
+
+// EnsureVolumeAvailable checks to make sure the volume is available in the node before returning, checks for 2 minutes
+func (c *client) EnsureVolumeRemoved(namespace, vmName, volumeName string, timeout time.Duration) error {
+	return wait.PollImmediate(time.Second, timeout, func() (done bool, err error) {
+		vmi, err := c.virtClient.VirtualMachineInstance(namespace).Get(context.TODO(), vmName, &metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		for _, volume := range vmi.Status.VolumeStatus {
+			if volume.Name == volumeName {
+				return false, nil
+			}
+		}
+		// Have not found the hotplugged volume
+		return true, nil
 	})
 }
 
