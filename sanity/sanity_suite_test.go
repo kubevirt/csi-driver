@@ -1,7 +1,6 @@
 package sanity
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,7 +21,7 @@ var (
 )
 
 var _ = ginkgo.BeforeSuite(func() {
-	tempDir, err = ioutil.TempDir(os.TempDir(), "csi-sanity")
+	tempDir, err = os.MkdirTemp(os.TempDir(), "csi-sanity")
 	gomega.Expect(err).ToNot(gomega.HaveOccurred())
 	// Test labels
 	infraClusterLabelsMap := map[string]string{}

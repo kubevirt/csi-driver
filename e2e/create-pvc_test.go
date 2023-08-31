@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,7 +40,7 @@ var _ = Describe("CreatePVC", func() {
 		var err error
 
 		if len(TenantKubeConfig) == 0 {
-			tmpDir, err = ioutil.TempDir(WorkingDir, "pvc-creation-tests")
+			tmpDir, err = os.MkdirTemp(WorkingDir, "pvc-creation-tests")
 			Expect(err).ToNot(HaveOccurred())
 
 			tenantKubeconfigFile = filepath.Join(tmpDir, "tenant-kubeconfig.yaml")
