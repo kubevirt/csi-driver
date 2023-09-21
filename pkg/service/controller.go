@@ -195,7 +195,7 @@ func (c *ControllerService) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 		return nil, err
 	}
 	dvName := req.VolumeId
-	klog.Infof("Removing data volume with %s", dvName)
+	klog.V(3).Infof("Removing data volume with %s", dvName)
 
 	err := c.virtClient.DeleteDataVolume(c.infraClusterNamespace, dvName)
 	if err != nil {
@@ -231,7 +231,7 @@ func (c *ControllerService) ControllerPublishVolume(
 	}
 	dvName := req.GetVolumeId()
 
-	klog.Infof("Attaching DataVolume %s to Node ID %s", dvName, req.NodeId)
+	klog.V(3).Infof("Attaching DataVolume %s to Node ID %s", dvName, req.NodeId)
 
 	// Get VM name
 	vmName, err := c.getVMNameByCSINodeID(req.NodeId)
@@ -246,52 +246,80 @@ func (c *ControllerService) ControllerPublishVolume(
 	// Determine BUS type
 	bus := req.VolumeContext[busParameter]
 
-	// hotplug DataVolume to VM
-	klog.Infof("Start attaching DataVolume %s to VM %s. Volume name: %s. Serial: %s. Bus: %s", dvName, vmName, dvName, serial, bus)
+	if attached, err := c.isVolumeAttached(dvName, vmName); err != nil {
+		return nil, err
+	} else if !attached {
+		// hotplug DataVolume to VM
+		klog.V(3).Infof("Start attaching DataVolume %s to VM %s. Volume name: %s. Serial: %s. Bus: %s", dvName, vmName, dvName, serial, bus)
 
-	addVolumeOptions := &kubevirtv1.AddVolumeOptions{
-		Name: dvName,
-		Disk: &kubevirtv1.Disk{
-			Serial: serial,
-			DiskDevice: kubevirtv1.DiskDevice{
-				Disk: &kubevirtv1.DiskTarget{
-					Bus: kubevirtv1.DiskBus(bus),
+		addVolumeOptions := &kubevirtv1.AddVolumeOptions{
+			Name: dvName,
+			Disk: &kubevirtv1.Disk{
+				Serial: serial,
+				DiskDevice: kubevirtv1.DiskDevice{
+					Disk: &kubevirtv1.DiskTarget{
+						Bus: kubevirtv1.DiskBus(bus),
+					},
 				},
 			},
-		},
-		VolumeSource: &kubevirtv1.HotplugVolumeSource{
-			DataVolume: &kubevirtv1.DataVolumeSource{
-				Name: dvName,
+			VolumeSource: &kubevirtv1.HotplugVolumeSource{
+				DataVolume: &kubevirtv1.DataVolumeSource{
+					Name: dvName,
+				},
 			},
-		},
+		}
+
+		retryCount := 6
+		for retryCount > 0 {
+			retryCount--
+			if err := c.addVolumeToVm(dvName, vmName, addVolumeOptions); err != nil {
+				if retryCount == 0 {
+					return nil, err
+				}
+				klog.Infof("failed adding volume %s to VM %s, retrying %d attempts left, err: %v", dvName, vmName, retryCount, err)
+			} else {
+				retryCount = 0
+			}
+		}
 	}
 
-	volumeFound := false
+	// Ensure that the csi-attacher and csi-provisioner --timeout values are > the timeout specified here so we don't get
+	// odd failures with detaching volumes.
+	err = c.virtClient.EnsureVolumeAvailable(c.infraClusterNamespace, vmName, dvName, time.Minute*2)
+	if err != nil {
+		klog.Errorf("volume %s failed to be ready in time (2m) in VM %s, %v", dvName, vmName, err)
+		return nil, err
+	}
+
+	klog.V(3).Infof("Successfully attached volume %s to VM %s", dvName, vmName)
+	return &csi.ControllerPublishVolumeResponse{}, nil
+}
+
+func (c *ControllerService) isVolumeAttached(dvName, vmName string) (bool, error) {
 	vm, err := c.virtClient.GetVirtualMachine(c.infraClusterNamespace, vmName)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 	for _, volumeStatus := range vm.Status.VolumeStatus {
 		if volumeStatus.Name == dvName {
-			volumeFound = true
-			break
+			return true, nil
 		}
+	}
+	return false, nil
+}
+
+func (c *ControllerService) addVolumeToVm(dvName, vmName string, addVolumeOptions *kubevirtv1.AddVolumeOptions) error {
+	volumeFound, err := c.isVolumeAttached(dvName, vmName)
+	if err != nil {
+		return err
 	}
 	if !volumeFound {
 		err = c.virtClient.AddVolumeToVM(c.infraClusterNamespace, vmName, addVolumeOptions)
 		if err != nil {
-			klog.Errorf("failed adding volume %s to VM %s, %v", dvName, vmName, err)
-			return nil, err
+			return err
 		}
 	}
-
-	err = c.virtClient.EnsureVolumeAvailable(c.infraClusterNamespace, vmName, dvName, time.Minute*2)
-	if err != nil {
-		klog.Errorf("volume %s failed to be ready in time in VM %s, %v", dvName, vmName, err)
-		return nil, err
-	}
-
-	return &csi.ControllerPublishVolumeResponse{}, nil
+	return nil
 }
 
 func (c *ControllerService) validateControllerUnpublishVolumeRequest(req *csi.ControllerUnpublishVolumeRequest) error {
@@ -314,7 +342,7 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 		return nil, err
 	}
 	dvName := req.VolumeId
-	klog.Infof("Detaching DataVolume %s from Node ID %s", dvName, req.NodeId)
+	klog.V(3).Infof("Detaching DataVolume %s from Node ID %s", dvName, req.NodeId)
 
 	// Get VM name
 	vmName, err := c.getVMNameByCSINodeID(req.NodeId)
@@ -322,10 +350,36 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 		return nil, err
 	}
 
+	if attached, err := c.isVolumeAttached(dvName, vmName); err != nil {
+		return nil, err
+	} else if attached {
+		retryCount := 6
+		for retryCount > 0 {
+			retryCount--
+			if err := c.removeVolumeFromVm(dvName, vmName); err != nil {
+				if retryCount == 0 {
+					return nil, err
+				}
+				klog.V(3).Infof("failed removing volume %s from VM %s, retrying %d attempts left, err: %v", dvName, vmName, retryCount, err)
+			} else {
+				retryCount = 0
+			}
+		}
+	}
+	err = c.virtClient.EnsureVolumeRemoved(c.infraClusterNamespace, vmName, dvName, time.Minute*2)
+	if err != nil {
+		klog.Errorf("volume %s failed to be removed in time (2m) from VM %s, %v", dvName, vmName, err)
+		return nil, err
+	}
+
+	klog.V(3).Infof("Successfully unpublished volume %s from VM %s", dvName, vmName)
+	return &csi.ControllerUnpublishVolumeResponse{}, nil
+}
+
+func (c *ControllerService) removeVolumeFromVm(dvName, vmName string) error {
 	vm, err := c.virtClient.GetVirtualMachine(c.infraClusterNamespace, vmName)
 	if err != nil {
-		klog.Error("failed getting virtual machine " + vmName)
-		return nil, err
+		return err
 	}
 	removePossible := false
 	for _, volumeStatus := range vm.Status.VolumeStatus {
@@ -337,17 +391,10 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 		// Detach DataVolume from VM
 		err = c.virtClient.RemoveVolumeFromVM(c.infraClusterNamespace, vmName, &kubevirtv1.RemoveVolumeOptions{Name: dvName})
 		if err != nil {
-			klog.Error("failed removing volume " + dvName + " from VM " + vmName)
-			return nil, err
+			return err
 		}
 	}
-	err = c.virtClient.EnsureVolumeRemoved(c.infraClusterNamespace, vmName, dvName, time.Minute*2)
-	if err != nil {
-		klog.Errorf("volume %s failed to be removed in time from VM %s, %v", dvName, vmName, err)
-		return nil, err
-	}
-
-	return &csi.ControllerUnpublishVolumeResponse{}, nil
+	return nil
 }
 
 // ValidateVolumeCapabilities unimplemented
@@ -359,19 +406,27 @@ func (c *ControllerService) ValidateVolumeCapabilities(ctx context.Context, req 
 	if len(req.VolumeCapabilities) == 0 {
 		return nil, status.Errorf(codes.InvalidArgument, "volumeCapabilities not provided for %s", req.VolumeId)
 	}
-
+	klog.V(3).Info("Calling volume capabilities")
 	for _, cap := range req.GetVolumeCapabilities() {
 		if cap.GetMount() == nil {
 			return nil, status.Error(codes.InvalidArgument, "mount type is undefined")
 		}
 	}
 	dvName := req.GetVolumeId()
+	klog.V(3).Infof("DataVolume name %s", dvName)
 	if _, err := c.virtClient.GetDataVolume(c.infraClusterNamespace, dvName); errors.IsNotFound(err) {
 		return nil, status.Errorf(codes.NotFound, "volume %s not found", req.GetVolumeId())
 	} else if err != nil {
 		return nil, err
 	}
 
+	klog.V(5).Info("Returning capabilities %v", &csi.ValidateVolumeCapabilitiesResponse{
+		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
+			VolumeContext:      req.GetVolumeContext(),
+			VolumeCapabilities: req.GetVolumeCapabilities(),
+			Parameters:         req.GetParameters(),
+		},
+	})
 	return &csi.ValidateVolumeCapabilitiesResponse{
 		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
 			VolumeContext:      req.GetVolumeContext(),
