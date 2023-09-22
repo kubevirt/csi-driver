@@ -111,7 +111,7 @@ func (n *NodeService) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 	if err := n.validateNodeStageVolumeRequest(req); err != nil {
 		return nil, err
 	}
-	klog.Infof("Staging volume %s", req.VolumeId)
+	klog.V(3).Infof("Staging volume %s", req.VolumeId)
 
 	if req.VolumeCapability.GetMount() != nil {
 		// Filesystem volume mode, create FS if needed
@@ -125,13 +125,13 @@ func (n *NodeService) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 
 		// is there a filesystem on this device?
 		if device.Fstype != "" {
-			klog.Infof("Detected fs %s", device.Fstype)
+			klog.V(3).Infof("Detected fs %s", device.Fstype)
 			return &csi.NodeStageVolumeResponse{}, nil
 		}
 
 		fsType := req.VolumeCapability.GetMount().FsType
 		// no filesystem - create it
-		klog.Infof("Creating FS %s on device %s", fsType, device)
+		klog.V(3).Infof("Creating FS %s on device %s", fsType, device)
 		err = n.fsMaker.Make(device.Path, fsType)
 		if err != nil {
 			klog.Errorf("Could not create filesystem %s on %s", fsType, device)
@@ -158,8 +158,10 @@ func (n *NodeService) validateNodeUnstageVolumeRequest(req *csi.NodeUnstageVolum
 // NodeUnstageVolume unstages a volume from the node
 func (n *NodeService) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	if err := n.validateNodeUnstageVolumeRequest(req); err != nil {
+		klog.Errorf("Validate Node unstage failed %v", err)
 		return nil, err
 	}
+	klog.V(3).Info("Validate Node unstage completed")
 	// nothing to do here, we don't erase the filesystem of a device.
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
@@ -197,7 +199,7 @@ func (n *NodeService) validateNodePublishRequest(req *csi.NodePublishVolumeReque
 	return nil
 }
 
-//NodePublishVolume mounts the volume to the target path (req.GetTargetPath)
+// NodePublishVolume mounts the volume to the target path (req.GetTargetPath)
 func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	if req != nil {
 		klog.V(3).Infof("Node Publish Request: %+v", *req)
@@ -226,7 +228,7 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	if !notMnt {
-		klog.Infof("Volume %s already mounted on %s", req.GetVolumeId(), targetPath)
+		klog.V(3).Infof("Volume %s already mounted on %s", req.GetVolumeId(), targetPath)
 		return &csi.NodePublishVolumeResponse{}, nil
 	}
 
@@ -242,9 +244,9 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		if err != nil {
 			return nil, err
 		}
-		klog.Infof("GetMount() %v", req.VolumeCapability.GetMount())
+		klog.V(3).Infof("GetMount() %v", req.VolumeCapability.GetMount())
 		fsType = req.VolumeCapability.GetMount().FsType
-		klog.Infof("Mounting devicePath %s, on targetPath: %s with FS type: %s",
+		klog.V(3).Infof("Mounting devicePath %s, on targetPath: %s with FS type: %s",
 			device, targetPath, fsType)
 	}
 
@@ -285,26 +287,29 @@ func (n *NodeService) validateNodeUnpublishRequest(req *csi.NodeUnpublishVolumeR
 	return nil
 }
 
-//NodeUnpublishVolume unmount the volume from the worker node
+// NodeUnpublishVolume unmount the volume from the worker node
 func (n *NodeService) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	if req != nil {
 		klog.V(3).Infof("Node Unpublish Request: %+v", *req)
 	}
 	if err := n.validateNodeUnpublishRequest(req); err != nil {
+		klog.Errorf("Validate node unpublish failed %v", err)
 		return nil, err
 	}
 
 	targetPath := req.GetTargetPath()
-	klog.Infof("Unmounting %s", targetPath)
+	klog.V(5).Infof("Unmounting %s", targetPath)
 	err := n.mounter.Unmount(targetPath)
 	if err != nil {
-		klog.Infof("failed to unmount")
+		klog.Errorf("failed to unmount %v", err)
 		return nil, err
 	}
 
 	if err = os.RemoveAll(targetPath); err != nil {
+		klog.Errorf("failed to remove %s, %v", targetPath, err)
 		return nil, fmt.Errorf("remove target path: %w", err)
 	}
+	klog.V(3).Info("Validate Node unpublish completed")
 
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
@@ -325,7 +330,7 @@ func (n *NodeService) NodeGetInfo(context.Context, *csi.NodeGetInfoRequest) (*cs
 	return &csi.NodeGetInfoResponse{NodeId: n.nodeID}, nil
 }
 
-//NodeGetCapabilities returns the supported capabilities of the node service
+// NodeGetCapabilities returns the supported capabilities of the node service
 func (n *NodeService) NodeGetCapabilities(context.Context, *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
 	caps := make([]*csi.NodeServiceCapability, 0, len(nodeCaps))
 	for _, c := range nodeCaps {

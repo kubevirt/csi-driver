@@ -22,11 +22,11 @@ import (
 )
 
 var (
-	endpoint                     = flag.String("endpoint", "unix:/csi/csi.sock", "CSI endpoint")
-	nodeName                     = flag.String("node-name", "", "The node name - the node this pods runs on")
-	infraClusterNamespace        = flag.String("infra-cluster-namespace", "", "The infra-cluster namespace")
-	infraClusterKubeconfig       = flag.String("infra-cluster-kubeconfig", "", "the infra-cluster kubeconfig file. If not set, defaults to in cluster config.")
-	infraClusterLabels           = flag.String("infra-cluster-labels", "", "The infra-cluster labels to use when creating resources in infra cluster. 'name=value' fields separated by a comma")
+	endpoint               = flag.String("endpoint", "unix:/csi/csi.sock", "CSI endpoint")
+	nodeName               = flag.String("node-name", "", "The node name - the node this pods runs on")
+	infraClusterNamespace  = flag.String("infra-cluster-namespace", "", "The infra-cluster namespace")
+	infraClusterKubeconfig = flag.String("infra-cluster-kubeconfig", "", "the infra-cluster kubeconfig file. If not set, defaults to in cluster config.")
+	infraClusterLabels     = flag.String("infra-cluster-labels", "", "The infra-cluster labels to use when creating resources in infra cluster. 'name=value' fields separated by a comma")
 	// infraStorageClassEnforcement = flag.String("infra-storage-class-enforcement", "", "A string encoded yaml that represents the policy of enforcing which infra storage classes are allowed in persistentVolume of type kubevirt")
 	infraStorageClassEnforcement = os.Getenv("INFRA_STORAGE_CLASS_ENFORCEMENT")
 

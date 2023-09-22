@@ -68,7 +68,7 @@ func (c *client) RemoveVolumeFromVM(namespace string, vmName string, hotPlugRequ
 // EnsureVolumeAvailable checks to make sure the volume is available in the node before returning, checks for 2 minutes
 func (c *client) EnsureVolumeAvailable(namespace, vmName, volumeName string, timeout time.Duration) error {
 	return wait.PollImmediate(time.Second, timeout, func() (done bool, err error) {
-		vmi, err := c.virtClient.VirtualMachineInstance(namespace).Get(context.TODO(), vmName, &metav1.GetOptions{})
+		vmi, err := c.GetVirtualMachine(namespace, vmName)
 		if err != nil {
 			return false, err
 		}
@@ -85,7 +85,7 @@ func (c *client) EnsureVolumeAvailable(namespace, vmName, volumeName string, tim
 // EnsureVolumeAvailable checks to make sure the volume is available in the node before returning, checks for 2 minutes
 func (c *client) EnsureVolumeRemoved(namespace, vmName, volumeName string, timeout time.Duration) error {
 	return wait.PollImmediate(time.Second, timeout, func() (done bool, err error) {
-		vmi, err := c.virtClient.VirtualMachineInstance(namespace).Get(context.TODO(), vmName, &metav1.GetOptions{})
+		vmi, err := c.GetVirtualMachine(namespace, vmName)
 		if err != nil {
 			return false, err
 		}
