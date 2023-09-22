@@ -81,6 +81,7 @@ spec:
             - "--kubeconfig=/var/run/secrets/tenantcluster/value"
             - "--v=5"
             - "--timeout=3m"
+            - "--retry-interval-max=1m"
           env:
             - name: ADDRESS
               value: /var/lib/csi/sockets/pluginproxy/csi.sock

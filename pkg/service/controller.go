@@ -7,6 +7,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/util/wait"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -246,41 +247,34 @@ func (c *ControllerService) ControllerPublishVolume(
 	// Determine BUS type
 	bus := req.VolumeContext[busParameter]
 
-	if attached, err := c.isVolumeAttached(dvName, vmName); err != nil {
+	// hotplug DataVolume to VM
+	klog.V(3).Infof("Start attaching DataVolume %s to VM %s. Volume name: %s. Serial: %s. Bus: %s", dvName, vmName, dvName, serial, bus)
+
+	addVolumeOptions := &kubevirtv1.AddVolumeOptions{
+		Name: dvName,
+		Disk: &kubevirtv1.Disk{
+			Serial: serial,
+			DiskDevice: kubevirtv1.DiskDevice{
+				Disk: &kubevirtv1.DiskTarget{
+					Bus: kubevirtv1.DiskBus(bus),
+				},
+			},
+		},
+		VolumeSource: &kubevirtv1.HotplugVolumeSource{
+			DataVolume: &kubevirtv1.DataVolumeSource{
+				Name: dvName,
+			},
+		},
+	}
+
+	if err := wait.PollImmediate(time.Millisecond, time.Millisecond*6, func() (bool, error) {
+		if err := c.addVolumeToVm(dvName, vmName, addVolumeOptions); err != nil {
+			klog.Infof("failed adding volume %s to VM %s, retrying, err: %v", dvName, vmName, err)
+			return false, nil
+		}
+		return true, nil
+	}); err != nil {
 		return nil, err
-	} else if !attached {
-		// hotplug DataVolume to VM
-		klog.V(3).Infof("Start attaching DataVolume %s to VM %s. Volume name: %s. Serial: %s. Bus: %s", dvName, vmName, dvName, serial, bus)
-
-		addVolumeOptions := &kubevirtv1.AddVolumeOptions{
-			Name: dvName,
-			Disk: &kubevirtv1.Disk{
-				Serial: serial,
-				DiskDevice: kubevirtv1.DiskDevice{
-					Disk: &kubevirtv1.DiskTarget{
-						Bus: kubevirtv1.DiskBus(bus),
-					},
-				},
-			},
-			VolumeSource: &kubevirtv1.HotplugVolumeSource{
-				DataVolume: &kubevirtv1.DataVolumeSource{
-					Name: dvName,
-				},
-			},
-		}
-
-		retryCount := 6
-		for retryCount > 0 {
-			retryCount--
-			if err := c.addVolumeToVm(dvName, vmName, addVolumeOptions); err != nil {
-				if retryCount == 0 {
-					return nil, err
-				}
-				klog.Infof("failed adding volume %s to VM %s, retrying %d attempts left, err: %v", dvName, vmName, retryCount, err)
-			} else {
-				retryCount = 0
-			}
-		}
 	}
 
 	// Ensure that the csi-attacher and csi-provisioner --timeout values are > the timeout specified here so we don't get
@@ -350,22 +344,16 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 		return nil, err
 	}
 
-	if attached, err := c.isVolumeAttached(dvName, vmName); err != nil {
-		return nil, err
-	} else if attached {
-		retryCount := 6
-		for retryCount > 0 {
-			retryCount--
-			if err := c.removeVolumeFromVm(dvName, vmName); err != nil {
-				if retryCount == 0 {
-					return nil, err
-				}
-				klog.V(3).Infof("failed removing volume %s from VM %s, retrying %d attempts left, err: %v", dvName, vmName, retryCount, err)
-			} else {
-				retryCount = 0
-			}
+	if err := wait.PollImmediate(time.Millisecond, time.Millisecond*6, func() (bool, error) {
+		if err := c.removeVolumeFromVm(dvName, vmName); err != nil {
+			klog.Infof("failed removing volume %s from VM %s, err: %v", dvName, vmName, err)
+			return false, nil
 		}
+		return true, nil
+	}); err != nil {
+		return nil, err
 	}
+
 	err = c.virtClient.EnsureVolumeRemoved(c.infraClusterNamespace, vmName, dvName, time.Minute*2)
 	if err != nil {
 		klog.Errorf("volume %s failed to be removed in time (2m) from VM %s, %v", dvName, vmName, err)
