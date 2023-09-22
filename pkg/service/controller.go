@@ -267,7 +267,12 @@ func (c *ControllerService) ControllerPublishVolume(
 		},
 	}
 
-	if err := wait.PollImmediate(time.Millisecond, time.Millisecond*6, func() (bool, error) {
+	if err := wait.ExponentialBackoff(wait.Backoff{
+		Duration: time.Second,
+		Steps:    5,
+		Factor:   2,
+		Cap:      time.Second * 30,
+	}, func() (bool, error) {
 		if err := c.addVolumeToVm(dvName, vmName, addVolumeOptions); err != nil {
 			klog.Infof("failed adding volume %s to VM %s, retrying, err: %v", dvName, vmName, err)
 			return false, nil
@@ -344,7 +349,12 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 		return nil, err
 	}
 
-	if err := wait.PollImmediate(time.Millisecond, time.Millisecond*6, func() (bool, error) {
+	if err := wait.ExponentialBackoff(wait.Backoff{
+		Duration: time.Second,
+		Steps:    5,
+		Factor:   2,
+		Cap:      time.Second * 30,
+	}, func() (bool, error) {
 		if err := c.removeVolumeFromVm(dvName, vmName); err != nil {
 			klog.Infof("failed removing volume %s from VM %s, err: %v", dvName, vmName, err)
 			return false, nil
