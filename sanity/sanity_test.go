@@ -102,7 +102,7 @@ type fakeKubeVirtClient struct {
 func (k *fakeKubeVirtClient) Ping(ctx context.Context) error {
 	return nil
 }
-func (k *fakeKubeVirtClient) ListVirtualMachines(namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
+func (k *fakeKubeVirtClient) ListVirtualMachines(_ context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
 	var res []kubevirtv1.VirtualMachineInstance
 	for _, v := range k.vmiMap {
 		if v != nil {
@@ -112,18 +112,18 @@ func (k *fakeKubeVirtClient) ListVirtualMachines(namespace string) ([]kubevirtv1
 	return res, nil
 }
 
-func (k *fakeKubeVirtClient) GetVirtualMachine(namespace, vmName string) (*kubevirtv1.VirtualMachineInstance, error) {
+func (k *fakeKubeVirtClient) GetVirtualMachine(_ context.Context, namespace, vmName string) (*kubevirtv1.VirtualMachineInstance, error) {
 	vmKey := getKey(namespace, vmName)
 	return k.vmiMap[vmKey], nil
 }
 
-func (k *fakeKubeVirtClient) DeleteDataVolume(namespace string, name string) error {
+func (k *fakeKubeVirtClient) DeleteDataVolume(_ context.Context, namespace string, name string) error {
 	key := getKey(namespace, name)
 	delete(k.dvMap, key)
 	return nil
 }
 
-func (k *fakeKubeVirtClient) GetDataVolume(namespace string, name string) (*cdiv1.DataVolume, error) {
+func (k *fakeKubeVirtClient) GetDataVolume(_ context.Context, namespace string, name string) (*cdiv1.DataVolume, error) {
 	key := getKey(namespace, name)
 	if k.dvMap[key] == nil {
 		return nil, errors.NewNotFound(cdiv1.Resource("DataVolume"), name)
@@ -131,7 +131,7 @@ func (k *fakeKubeVirtClient) GetDataVolume(namespace string, name string) (*cdiv
 	return k.dvMap[key], nil
 }
 
-func (k *fakeKubeVirtClient) CreateDataVolume(namespace string, dataVolume *cdiv1.DataVolume) (*cdiv1.DataVolume, error) {
+func (k *fakeKubeVirtClient) CreateDataVolume(_ context.Context, namespace string, dataVolume *cdiv1.DataVolume) (*cdiv1.DataVolume, error) {
 	if dataVolume == nil {
 		return nil, fmt.Errorf("Nil datavolume passed")
 	}
@@ -140,7 +140,7 @@ func (k *fakeKubeVirtClient) CreateDataVolume(namespace string, dataVolume *cdiv
 	k.dvMap[key] = dataVolume
 	return dataVolume, nil
 }
-func (k *fakeKubeVirtClient) AddVolumeToVM(namespace string, vmName string, hotPlugRequest *kubevirtv1.AddVolumeOptions) error {
+func (k *fakeKubeVirtClient) AddVolumeToVM(_ context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.AddVolumeOptions) error {
 	vmKey := getKey(namespace, vmName)
 	if k.vmiMap[vmKey] == nil {
 		return fmt.Errorf("VM %s/%s not found", namespace, vmName)
@@ -153,7 +153,7 @@ func (k *fakeKubeVirtClient) AddVolumeToVM(namespace string, vmName string, hotP
 	return nil
 }
 
-func (k *fakeKubeVirtClient) RemoveVolumeFromVM(namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error {
+func (k *fakeKubeVirtClient) RemoveVolumeFromVM(_ context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error {
 	vmKey := getKey(namespace, vmName)
 	if k.vmiMap[vmKey] == nil {
 		return fmt.Errorf("VM %s/%s not found", namespace, vmName)
@@ -162,11 +162,11 @@ func (k *fakeKubeVirtClient) RemoveVolumeFromVM(namespace string, vmName string,
 	return nil
 }
 
-func (k *fakeKubeVirtClient) EnsureVolumeAvailable(namespace, vmName, volumeName string, timeout time.Duration) error {
+func (k *fakeKubeVirtClient) EnsureVolumeAvailable(_ context.Context, namespace, vmName, volumeName string, timeout time.Duration) error {
 	return nil
 }
 
-func (k *fakeKubeVirtClient) EnsureVolumeRemoved(namespace, vmName, volumeName string, timeout time.Duration) error {
+func (k *fakeKubeVirtClient) EnsureVolumeRemoved(_ context.Context, namespace, vmName, volumeName string, timeout time.Duration) error {
 	return nil
 }
 

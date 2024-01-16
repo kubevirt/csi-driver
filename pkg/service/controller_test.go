@@ -248,7 +248,7 @@ func (c *ControllerClientMock) ListNamespace(ctx context.Context) (*corev1.Names
 func (c *ControllerClientMock) GetStorageClass(ctx context.Context, name string) (*storagev1.StorageClass, error) {
 	return nil, errors.New("Not implemented")
 }
-func (c *ControllerClientMock) ListVirtualMachines(namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
+func (c *ControllerClientMock) ListVirtualMachines(_ context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
 	if c.FailListVirtualMachines {
 		return nil, errors.New("ListVirtualMachines failed")
 	}
@@ -270,7 +270,7 @@ func (c *ControllerClientMock) ListVirtualMachines(namespace string) ([]kubevirt
 	}, nil
 }
 
-func (c *ControllerClientMock) GetVirtualMachine(namespace, name string) (*kubevirtv1.VirtualMachineInstance, error) {
+func (c *ControllerClientMock) GetVirtualMachine(_ context.Context, namespace, name string) (*kubevirtv1.VirtualMachineInstance, error) {
 	if c.FailListVirtualMachines {
 		return nil, errors.New("ListVirtualMachines failed")
 	}
@@ -291,7 +291,7 @@ func (c *ControllerClientMock) GetVirtualMachine(namespace, name string) (*kubev
 	}, nil
 }
 
-func (c *ControllerClientMock) DeleteDataVolume(namespace string, name string) error {
+func (c *ControllerClientMock) DeleteDataVolume(_ context.Context, namespace string, name string) error {
 	if c.FailDeleteDataVolume {
 		return errors.New("DeleteDataVolume failed")
 	}
@@ -301,7 +301,7 @@ func (c *ControllerClientMock) DeleteDataVolume(namespace string, name string) e
 
 	return nil
 }
-func (c *ControllerClientMock) CreateDataVolume(namespace string, dataVolume *cdiv1.DataVolume) (*cdiv1.DataVolume, error) {
+func (c *ControllerClientMock) CreateDataVolume(_ context.Context, namespace string, dataVolume *cdiv1.DataVolume) (*cdiv1.DataVolume, error) {
 	if c.FailCreateDataVolume {
 		return nil, errors.New("CreateDataVolume failed")
 	}
@@ -319,22 +319,22 @@ func (c *ControllerClientMock) CreateDataVolume(namespace string, dataVolume *cd
 	assert.Equal(c.t, testInfraLabels, dataVolume.Labels)
 
 	// Input OK. Now prepare result
-	result := &cdiv1.DataVolume{}
+	result := dataVolume.DeepCopy()
 
 	result.SetUID(types.UID(testDataVolumeUID))
 
 	return result, nil
 }
-func (c *ControllerClientMock) GetDataVolume(namespace string, name string) (*cdiv1.DataVolume, error) {
+func (c *ControllerClientMock) GetDataVolume(_ context.Context, namespace string, name string) (*cdiv1.DataVolume, error) {
 	return nil, k8serrors.NewNotFound(cdiv1.Resource("DataVolume"), name)
 }
-func (c *ControllerClientMock) ListDataVolumes(namespace string) ([]cdiv1.DataVolume, error) {
+func (c *ControllerClientMock) ListDataVolumes(_ context.Context, namespace string) ([]cdiv1.DataVolume, error) {
 	return nil, errors.New("Not implemented")
 }
 func (c *ControllerClientMock) GetVMI(ctx context.Context, namespace string, name string) (*kubevirtv1.VirtualMachineInstance, error) {
 	return nil, errors.New("Not implemented")
 }
-func (c *ControllerClientMock) AddVolumeToVM(namespace string, vmName string, addVolumeOptions *kubevirtv1.AddVolumeOptions) error {
+func (c *ControllerClientMock) AddVolumeToVM(_ context.Context, namespace string, vmName string, addVolumeOptions *kubevirtv1.AddVolumeOptions) error {
 	if c.FailAddVolumeToVM {
 		return errors.New("AddVolumeToVM failed")
 	}
@@ -348,7 +348,7 @@ func (c *ControllerClientMock) AddVolumeToVM(namespace string, vmName string, ad
 
 	return nil
 }
-func (c *ControllerClientMock) RemoveVolumeFromVM(namespace string, vmName string, removeVolumeOptions *kubevirtv1.RemoveVolumeOptions) error {
+func (c *ControllerClientMock) RemoveVolumeFromVM(_ context.Context, namespace string, vmName string, removeVolumeOptions *kubevirtv1.RemoveVolumeOptions) error {
 	if c.FailRemoveVolumeFromVM {
 		return errors.New("RemoveVolumeFromVM failed")
 	}
@@ -360,10 +360,10 @@ func (c *ControllerClientMock) RemoveVolumeFromVM(namespace string, vmName strin
 	return nil
 }
 
-func (c *ControllerClientMock) EnsureVolumeAvailable(namespace, vmName, volumeName string, timeout time.Duration) error {
+func (c *ControllerClientMock) EnsureVolumeAvailable(_ context.Context, namespace, vmName, volumeName string, timeout time.Duration) error {
 	return nil
 }
 
-func (c *ControllerClientMock) EnsureVolumeRemoved(namespace, vmName, volumeName string, timeout time.Duration) error {
+func (c *ControllerClientMock) EnsureVolumeRemoved(_ context.Context, namespace, vmName, volumeName string, timeout time.Duration) error {
 	return nil
 }
