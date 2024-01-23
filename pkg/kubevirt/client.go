@@ -21,15 +21,15 @@ type ClientBuilderFuncType func(kubeconfig string) (Client, error)
 // Client is a wrapper object for actual infra-cluster clients: kubernetes and the kubevirt
 type Client interface {
 	Ping(ctx context.Context) error
-	ListVirtualMachines(namespace string) ([]kubevirtv1.VirtualMachineInstance, error)
-	GetVirtualMachine(namespace, name string) (*kubevirtv1.VirtualMachineInstance, error)
-	DeleteDataVolume(namespace string, name string) error
-	CreateDataVolume(namespace string, dataVolume *cdiv1.DataVolume) (*cdiv1.DataVolume, error)
-	GetDataVolume(namespace string, name string) (*cdiv1.DataVolume, error)
-	AddVolumeToVM(namespace string, vmName string, hotPlugRequest *kubevirtv1.AddVolumeOptions) error
-	RemoveVolumeFromVM(namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error
-	EnsureVolumeAvailable(namespace, vmName, volumeName string, timeout time.Duration) error
-	EnsureVolumeRemoved(namespace, vmName, volumeName string, timeout time.Duration) error
+	ListVirtualMachines(ctx context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error)
+	GetVirtualMachine(ctx context.Context, namespace, name string) (*kubevirtv1.VirtualMachineInstance, error)
+	DeleteDataVolume(ctx context.Context, namespace string, name string) error
+	CreateDataVolume(ctx context.Context, namespace string, dataVolume *cdiv1.DataVolume) (*cdiv1.DataVolume, error)
+	GetDataVolume(ctx context.Context, namespace string, name string) (*cdiv1.DataVolume, error)
+	AddVolumeToVM(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.AddVolumeOptions) error
+	RemoveVolumeFromVM(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error
+	EnsureVolumeAvailable(ctx context.Context, namespace, vmName, volumeName string, timeout time.Duration) error
+	EnsureVolumeRemoved(ctx context.Context, namespace, vmName, volumeName string, timeout time.Duration) error
 }
 
 type client struct {
@@ -56,19 +56,19 @@ func NewClient(config *rest.Config) (Client, error) {
 }
 
 // AddVolumeToVM performs a hotplug of a DataVolume to a VM
-func (c *client) AddVolumeToVM(namespace string, vmName string, hotPlugRequest *kubevirtv1.AddVolumeOptions) error {
-	return c.virtClient.VirtualMachineInstance(namespace).AddVolume(context.TODO(), vmName, hotPlugRequest)
+func (c *client) AddVolumeToVM(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.AddVolumeOptions) error {
+	return c.virtClient.VirtualMachineInstance(namespace).AddVolume(ctx, vmName, hotPlugRequest)
 }
 
 // RemoveVolumeFromVM perform hotunplug of a DataVolume from a VM
-func (c *client) RemoveVolumeFromVM(namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error {
-	return c.virtClient.VirtualMachineInstance(namespace).RemoveVolume(context.TODO(), vmName, hotPlugRequest)
+func (c *client) RemoveVolumeFromVM(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error {
+	return c.virtClient.VirtualMachineInstance(namespace).RemoveVolume(ctx, vmName, hotPlugRequest)
 }
 
 // EnsureVolumeAvailable checks to make sure the volume is available in the node before returning, checks for 2 minutes
-func (c *client) EnsureVolumeAvailable(namespace, vmName, volumeName string, timeout time.Duration) error {
+func (c *client) EnsureVolumeAvailable(ctx context.Context, namespace, vmName, volumeName string, timeout time.Duration) error {
 	return wait.PollImmediate(time.Second, timeout, func() (done bool, err error) {
-		vmi, err := c.GetVirtualMachine(namespace, vmName)
+		vmi, err := c.GetVirtualMachine(ctx, namespace, vmName)
 		if err != nil {
 			return false, err
 		}
@@ -82,10 +82,10 @@ func (c *client) EnsureVolumeAvailable(namespace, vmName, volumeName string, tim
 	})
 }
 
-// EnsureVolumeAvailable checks to make sure the volume is available in the node before returning, checks for 2 minutes
-func (c *client) EnsureVolumeRemoved(namespace, vmName, volumeName string, timeout time.Duration) error {
+// EnsureVolumeRemoved checks to make sure the volume is removed from the node before returning, checks for 2 minutes
+func (c *client) EnsureVolumeRemoved(ctx context.Context, namespace, vmName, volumeName string, timeout time.Duration) error {
 	return wait.PollImmediate(time.Second, timeout, func() (done bool, err error) {
-		vmi, err := c.GetVirtualMachine(namespace, vmName)
+		vmi, err := c.GetVirtualMachine(ctx, namespace, vmName)
 		if err != nil {
 			return false, err
 		}
@@ -100,8 +100,8 @@ func (c *client) EnsureVolumeRemoved(namespace, vmName, volumeName string, timeo
 }
 
 // ListVirtualMachines fetches a list of VMIs from the passed in namespace
-func (c *client) ListVirtualMachines(namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
-	list, err := c.virtClient.VirtualMachineInstance(namespace).List(context.TODO(), &metav1.ListOptions{})
+func (c *client) ListVirtualMachines(ctx context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
+	list, err := c.virtClient.VirtualMachineInstance(namespace).List(ctx, &metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -109,13 +109,13 @@ func (c *client) ListVirtualMachines(namespace string) ([]kubevirtv1.VirtualMach
 }
 
 // GetVirtualMachine gets a VMIs from the passed in namespace
-func (c *client) GetVirtualMachine(namespace, name string) (*kubevirtv1.VirtualMachineInstance, error) {
-	return c.virtClient.VirtualMachineInstance(namespace).Get(context.TODO(), name, &metav1.GetOptions{})
+func (c *client) GetVirtualMachine(ctx context.Context, namespace, name string) (*kubevirtv1.VirtualMachineInstance, error) {
+	return c.virtClient.VirtualMachineInstance(namespace).Get(ctx, name, &metav1.GetOptions{})
 }
 
 // CreateDataVolume creates a new DataVolume under a namespace
-func (c *client) CreateDataVolume(namespace string, dataVolume *cdiv1.DataVolume) (*cdiv1.DataVolume, error) {
-	return c.virtClient.CdiClient().CdiV1beta1().DataVolumes(namespace).Create(context.TODO(), dataVolume, metav1.CreateOptions{})
+func (c *client) CreateDataVolume(ctx context.Context, namespace string, dataVolume *cdiv1.DataVolume) (*cdiv1.DataVolume, error) {
+	return c.virtClient.CdiClient().CdiV1beta1().DataVolumes(namespace).Create(ctx, dataVolume, metav1.CreateOptions{})
 }
 
 // Ping performs a minimal request to the infra-cluster k8s api
@@ -125,10 +125,10 @@ func (c *client) Ping(ctx context.Context) error {
 }
 
 // DeleteDataVolume deletes a DataVolume from a namespace by name
-func (c *client) DeleteDataVolume(namespace string, name string) error {
-	return c.virtClient.CdiClient().CdiV1beta1().DataVolumes(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+func (c *client) DeleteDataVolume(ctx context.Context, namespace string, name string) error {
+	return c.virtClient.CdiClient().CdiV1beta1().DataVolumes(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 }
 
-func (c *client) GetDataVolume(namespace string, name string) (*cdiv1.DataVolume, error) {
-	return c.virtClient.CdiClient().CdiV1beta1().DataVolumes(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+func (c *client) GetDataVolume(ctx context.Context, namespace string, name string) (*cdiv1.DataVolume, error) {
+	return c.virtClient.CdiClient().CdiV1beta1().DataVolumes(namespace).Get(ctx, name, metav1.GetOptions{})
 }

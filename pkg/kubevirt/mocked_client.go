@@ -7,6 +7,7 @@ package kubevirt
 import (
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	gomock "github.com/golang/mock/gomock"
 	v1 "kubevirt.io/api/core/v1"
@@ -37,61 +38,119 @@ func (m *MockClient) EXPECT() *MockClientMockRecorder {
 }
 
 // AddVolumeToVM mocks base method.
-func (m *MockClient) AddVolumeToVM(namespace, vmName string, hotPlugRequest *v1.AddVolumeOptions) error {
+func (m *MockClient) AddVolumeToVM(ctx context.Context, namespace, vmName string, hotPlugRequest *v1.AddVolumeOptions) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddVolumeToVM", namespace, vmName, hotPlugRequest)
+	ret := m.ctrl.Call(m, "AddVolumeToVM", ctx, namespace, vmName, hotPlugRequest)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // AddVolumeToVM indicates an expected call of AddVolumeToVM.
-func (mr *MockClientMockRecorder) AddVolumeToVM(namespace, vmName, hotPlugRequest interface{}) *gomock.Call {
+func (mr *MockClientMockRecorder) AddVolumeToVM(ctx, namespace, vmName, hotPlugRequest interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddVolumeToVM", reflect.TypeOf((*MockClient)(nil).AddVolumeToVM), namespace, vmName, hotPlugRequest)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddVolumeToVM", reflect.TypeOf((*MockClient)(nil).AddVolumeToVM), ctx, namespace, vmName, hotPlugRequest)
 }
 
 // CreateDataVolume mocks base method.
-func (m *MockClient) CreateDataVolume(namespace string, dataVolume *v1beta1.DataVolume) (*v1beta1.DataVolume, error) {
+func (m *MockClient) CreateDataVolume(ctx context.Context, namespace string, dataVolume *v1beta1.DataVolume) (*v1beta1.DataVolume, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateDataVolume", namespace, dataVolume)
+	ret := m.ctrl.Call(m, "CreateDataVolume", ctx, namespace, dataVolume)
 	ret0, _ := ret[0].(*v1beta1.DataVolume)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateDataVolume indicates an expected call of CreateDataVolume.
-func (mr *MockClientMockRecorder) CreateDataVolume(namespace, dataVolume interface{}) *gomock.Call {
+func (mr *MockClientMockRecorder) CreateDataVolume(ctx, namespace, dataVolume interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateDataVolume", reflect.TypeOf((*MockClient)(nil).CreateDataVolume), namespace, dataVolume)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateDataVolume", reflect.TypeOf((*MockClient)(nil).CreateDataVolume), ctx, namespace, dataVolume)
 }
 
 // DeleteDataVolume mocks base method.
-func (m *MockClient) DeleteDataVolume(namespace, name string) error {
+func (m *MockClient) DeleteDataVolume(ctx context.Context, namespace, name string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteDataVolume", namespace, name)
+	ret := m.ctrl.Call(m, "DeleteDataVolume", ctx, namespace, name)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteDataVolume indicates an expected call of DeleteDataVolume.
-func (mr *MockClientMockRecorder) DeleteDataVolume(namespace, name interface{}) *gomock.Call {
+func (mr *MockClientMockRecorder) DeleteDataVolume(ctx, namespace, name interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDataVolume", reflect.TypeOf((*MockClient)(nil).DeleteDataVolume), namespace, name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDataVolume", reflect.TypeOf((*MockClient)(nil).DeleteDataVolume), ctx, namespace, name)
+}
+
+// EnsureVolumeAvailable mocks base method.
+func (m *MockClient) EnsureVolumeAvailable(ctx context.Context, namespace, vmName, volumeName string, timeout time.Duration) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnsureVolumeAvailable", ctx, namespace, vmName, volumeName, timeout)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EnsureVolumeAvailable indicates an expected call of EnsureVolumeAvailable.
+func (mr *MockClientMockRecorder) EnsureVolumeAvailable(ctx, namespace, vmName, volumeName, timeout interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureVolumeAvailable", reflect.TypeOf((*MockClient)(nil).EnsureVolumeAvailable), ctx, namespace, vmName, volumeName, timeout)
+}
+
+// EnsureVolumeRemoved mocks base method.
+func (m *MockClient) EnsureVolumeRemoved(ctx context.Context, namespace, vmName, volumeName string, timeout time.Duration) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnsureVolumeRemoved", ctx, namespace, vmName, volumeName, timeout)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EnsureVolumeRemoved indicates an expected call of EnsureVolumeRemoved.
+func (mr *MockClientMockRecorder) EnsureVolumeRemoved(ctx, namespace, vmName, volumeName, timeout interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureVolumeRemoved", reflect.TypeOf((*MockClient)(nil).EnsureVolumeRemoved), ctx, namespace, vmName, volumeName, timeout)
+}
+
+// GetDataVolume mocks base method.
+func (m *MockClient) GetDataVolume(ctx context.Context, namespace, name string) (*v1beta1.DataVolume, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDataVolume", ctx, namespace, name)
+	ret0, _ := ret[0].(*v1beta1.DataVolume)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDataVolume indicates an expected call of GetDataVolume.
+func (mr *MockClientMockRecorder) GetDataVolume(ctx, namespace, name interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDataVolume", reflect.TypeOf((*MockClient)(nil).GetDataVolume), ctx, namespace, name)
+}
+
+// GetVirtualMachine mocks base method.
+func (m *MockClient) GetVirtualMachine(ctx context.Context, namespace, name string) (*v1.VirtualMachineInstance, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetVirtualMachine", ctx, namespace, name)
+	ret0, _ := ret[0].(*v1.VirtualMachineInstance)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetVirtualMachine indicates an expected call of GetVirtualMachine.
+func (mr *MockClientMockRecorder) GetVirtualMachine(ctx, namespace, name interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVirtualMachine", reflect.TypeOf((*MockClient)(nil).GetVirtualMachine), ctx, namespace, name)
 }
 
 // ListVirtualMachines mocks base method.
-func (m *MockClient) ListVirtualMachines(namespace string) ([]v1.VirtualMachineInstance, error) {
+func (m *MockClient) ListVirtualMachines(ctx context.Context, namespace string) ([]v1.VirtualMachineInstance, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListVirtualMachines", namespace)
+	ret := m.ctrl.Call(m, "ListVirtualMachines", ctx, namespace)
 	ret0, _ := ret[0].([]v1.VirtualMachineInstance)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListVirtualMachines indicates an expected call of ListVirtualMachines.
-func (mr *MockClientMockRecorder) ListVirtualMachines(namespace interface{}) *gomock.Call {
+func (mr *MockClientMockRecorder) ListVirtualMachines(ctx, namespace interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListVirtualMachines", reflect.TypeOf((*MockClient)(nil).ListVirtualMachines), namespace)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListVirtualMachines", reflect.TypeOf((*MockClient)(nil).ListVirtualMachines), ctx, namespace)
 }
 
 // Ping mocks base method.
@@ -109,15 +168,15 @@ func (mr *MockClientMockRecorder) Ping(ctx interface{}) *gomock.Call {
 }
 
 // RemoveVolumeFromVM mocks base method.
-func (m *MockClient) RemoveVolumeFromVM(namespace, vmName string, hotPlugRequest *v1.RemoveVolumeOptions) error {
+func (m *MockClient) RemoveVolumeFromVM(ctx context.Context, namespace, vmName string, hotPlugRequest *v1.RemoveVolumeOptions) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RemoveVolumeFromVM", namespace, vmName, hotPlugRequest)
+	ret := m.ctrl.Call(m, "RemoveVolumeFromVM", ctx, namespace, vmName, hotPlugRequest)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // RemoveVolumeFromVM indicates an expected call of RemoveVolumeFromVM.
-func (mr *MockClientMockRecorder) RemoveVolumeFromVM(namespace, vmName, hotPlugRequest interface{}) *gomock.Call {
+func (mr *MockClientMockRecorder) RemoveVolumeFromVM(ctx, namespace, vmName, hotPlugRequest interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveVolumeFromVM", reflect.TypeOf((*MockClient)(nil).RemoveVolumeFromVM), namespace, vmName, hotPlugRequest)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveVolumeFromVM", reflect.TypeOf((*MockClient)(nil).RemoveVolumeFromVM), ctx, namespace, vmName, hotPlugRequest)
 }

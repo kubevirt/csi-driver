@@ -5,18 +5,16 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/util/wait"
-	kubevirtv1 "kubevirt.io/api/core/v1"
-
 	"github.com/container-storage-interface/spec/lib/go/csi"
-
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	corev1 "k8s.io/api/core/v1"
-	klog "k8s.io/klog/v2"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/klog/v2"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
 	client "kubevirt.io/csi-driver/pkg/kubevirt"
@@ -139,9 +137,9 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	dv.Spec.Source = &cdiv1.DataVolumeSource{}
 	dv.Spec.Source.Blank = &cdiv1.DataVolumeBlankImage{}
 
-	if existingDv, err := c.virtClient.GetDataVolume(c.infraClusterNamespace, dvName); errors.IsNotFound(err) {
+	if existingDv, err := c.virtClient.GetDataVolume(ctx, c.infraClusterNamespace, dvName); errors.IsNotFound(err) {
 		// Create DataVolume
-		dv, err = c.virtClient.CreateDataVolume(c.infraClusterNamespace, dv)
+		dv, err = c.virtClient.CreateDataVolume(ctx, c.infraClusterNamespace, dv)
 		if err != nil {
 			klog.Error("failed creating DataVolume " + dvName)
 			return nil, err
@@ -198,7 +196,7 @@ func (c *ControllerService) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	dvName := req.VolumeId
 	klog.V(3).Infof("Removing data volume with %s", dvName)
 
-	err := c.virtClient.DeleteDataVolume(c.infraClusterNamespace, dvName)
+	err := c.virtClient.DeleteDataVolume(ctx, c.infraClusterNamespace, dvName)
 	if err != nil {
 		klog.Error("failed deleting DataVolume " + dvName)
 		return nil, err
@@ -235,7 +233,7 @@ func (c *ControllerService) ControllerPublishVolume(
 	klog.V(3).Infof("Attaching DataVolume %s to Node ID %s", dvName, req.NodeId)
 
 	// Get VM name
-	vmName, err := c.getVMNameByCSINodeID(req.NodeId)
+	vmName, err := c.getVMNameByCSINodeID(ctx, req.NodeId)
 	if err != nil {
 		klog.Error("failed getting VM Name for node ID " + req.NodeId)
 		return nil, err
@@ -273,7 +271,7 @@ func (c *ControllerService) ControllerPublishVolume(
 		Factor:   2,
 		Cap:      time.Second * 30,
 	}, func() (bool, error) {
-		if err := c.addVolumeToVm(dvName, vmName, addVolumeOptions); err != nil {
+		if err := c.addVolumeToVm(ctx, dvName, vmName, addVolumeOptions); err != nil {
 			klog.Infof("failed adding volume %s to VM %s, retrying, err: %v", dvName, vmName, err)
 			return false, nil
 		}
@@ -284,7 +282,7 @@ func (c *ControllerService) ControllerPublishVolume(
 
 	// Ensure that the csi-attacher and csi-provisioner --timeout values are > the timeout specified here so we don't get
 	// odd failures with detaching volumes.
-	err = c.virtClient.EnsureVolumeAvailable(c.infraClusterNamespace, vmName, dvName, time.Minute*2)
+	err = c.virtClient.EnsureVolumeAvailable(ctx, c.infraClusterNamespace, vmName, dvName, time.Minute*2)
 	if err != nil {
 		klog.Errorf("volume %s failed to be ready in time (2m) in VM %s, %v", dvName, vmName, err)
 		return nil, err
@@ -294,8 +292,8 @@ func (c *ControllerService) ControllerPublishVolume(
 	return &csi.ControllerPublishVolumeResponse{}, nil
 }
 
-func (c *ControllerService) isVolumeAttached(dvName, vmName string) (bool, error) {
-	vm, err := c.virtClient.GetVirtualMachine(c.infraClusterNamespace, vmName)
+func (c *ControllerService) isVolumeAttached(ctx context.Context, dvName, vmName string) (bool, error) {
+	vm, err := c.virtClient.GetVirtualMachine(ctx, c.infraClusterNamespace, vmName)
 	if err != nil {
 		return false, err
 	}
@@ -307,13 +305,13 @@ func (c *ControllerService) isVolumeAttached(dvName, vmName string) (bool, error
 	return false, nil
 }
 
-func (c *ControllerService) addVolumeToVm(dvName, vmName string, addVolumeOptions *kubevirtv1.AddVolumeOptions) error {
-	volumeFound, err := c.isVolumeAttached(dvName, vmName)
+func (c *ControllerService) addVolumeToVm(ctx context.Context, dvName, vmName string, addVolumeOptions *kubevirtv1.AddVolumeOptions) error {
+	volumeFound, err := c.isVolumeAttached(ctx, dvName, vmName)
 	if err != nil {
 		return err
 	}
 	if !volumeFound {
-		err = c.virtClient.AddVolumeToVM(c.infraClusterNamespace, vmName, addVolumeOptions)
+		err = c.virtClient.AddVolumeToVM(ctx, c.infraClusterNamespace, vmName, addVolumeOptions)
 		if err != nil {
 			return err
 		}
@@ -344,7 +342,7 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 	klog.V(3).Infof("Detaching DataVolume %s from Node ID %s", dvName, req.NodeId)
 
 	// Get VM name
-	vmName, err := c.getVMNameByCSINodeID(req.NodeId)
+	vmName, err := c.getVMNameByCSINodeID(ctx, req.NodeId)
 	if err != nil {
 		return nil, err
 	}
@@ -355,7 +353,7 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 		Factor:   2,
 		Cap:      time.Second * 30,
 	}, func() (bool, error) {
-		if err := c.removeVolumeFromVm(dvName, vmName); err != nil {
+		if err := c.removeVolumeFromVm(ctx, dvName, vmName); err != nil {
 			klog.Infof("failed removing volume %s from VM %s, err: %v", dvName, vmName, err)
 			return false, nil
 		}
@@ -364,7 +362,7 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 		return nil, err
 	}
 
-	err = c.virtClient.EnsureVolumeRemoved(c.infraClusterNamespace, vmName, dvName, time.Minute*2)
+	err = c.virtClient.EnsureVolumeRemoved(ctx, c.infraClusterNamespace, vmName, dvName, time.Minute*2)
 	if err != nil {
 		klog.Errorf("volume %s failed to be removed in time (2m) from VM %s, %v", dvName, vmName, err)
 		return nil, err
@@ -374,8 +372,8 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
 
-func (c *ControllerService) removeVolumeFromVm(dvName, vmName string) error {
-	vm, err := c.virtClient.GetVirtualMachine(c.infraClusterNamespace, vmName)
+func (c *ControllerService) removeVolumeFromVm(ctx context.Context, dvName, vmName string) error {
+	vm, err := c.virtClient.GetVirtualMachine(ctx, c.infraClusterNamespace, vmName)
 	if err != nil {
 		return err
 	}
@@ -387,7 +385,7 @@ func (c *ControllerService) removeVolumeFromVm(dvName, vmName string) error {
 	}
 	if removePossible {
 		// Detach DataVolume from VM
-		err = c.virtClient.RemoveVolumeFromVM(c.infraClusterNamespace, vmName, &kubevirtv1.RemoveVolumeOptions{Name: dvName})
+		err = c.virtClient.RemoveVolumeFromVM(ctx, c.infraClusterNamespace, vmName, &kubevirtv1.RemoveVolumeOptions{Name: dvName})
 		if err != nil {
 			return err
 		}
@@ -405,14 +403,14 @@ func (c *ControllerService) ValidateVolumeCapabilities(ctx context.Context, req 
 		return nil, status.Errorf(codes.InvalidArgument, "volumeCapabilities not provided for %s", req.VolumeId)
 	}
 	klog.V(3).Info("Calling volume capabilities")
-	for _, cap := range req.GetVolumeCapabilities() {
-		if cap.GetMount() == nil {
+	for _, capability := range req.GetVolumeCapabilities() {
+		if capability.GetMount() == nil {
 			return nil, status.Error(codes.InvalidArgument, "mount type is undefined")
 		}
 	}
 	dvName := req.GetVolumeId()
 	klog.V(3).Infof("DataVolume name %s", dvName)
-	if _, err := c.virtClient.GetDataVolume(c.infraClusterNamespace, dvName); errors.IsNotFound(err) {
+	if _, err := c.virtClient.GetDataVolume(ctx, c.infraClusterNamespace, dvName); errors.IsNotFound(err) {
 		return nil, status.Errorf(codes.NotFound, "volume %s not found", req.GetVolumeId())
 	} else if err != nil {
 		return nil, err
@@ -490,8 +488,8 @@ func (c *ControllerService) ControllerGetVolume(_ context.Context, _ *csi.Contro
 
 // getVMNameByCSINodeID finds a VM in infra cluster by its firmware uuid. The uid is the ID that the CSI
 // node publishes in NodeGetInfo and then used by CSINode.spec.drivers[].nodeID
-func (c *ControllerService) getVMNameByCSINodeID(nodeID string) (string, error) {
-	list, err := c.virtClient.ListVirtualMachines(c.infraClusterNamespace)
+func (c *ControllerService) getVMNameByCSINodeID(ctx context.Context, nodeID string) (string, error) {
+	list, err := c.virtClient.ListVirtualMachines(ctx, c.infraClusterNamespace)
 	if err != nil {
 		klog.Error("failed listing VMIs in infra cluster")
 		return "", status.Error(codes.NotFound, fmt.Sprintf("failed listing VMIs in infra cluster %v", err))
