@@ -2,21 +2,20 @@
 
 set -e
 
-export KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-k8s-1.26}
-export CAPK_GUEST_K8S_VERSION=${CAPK_GUEST_K8S_VERSION:-v1.22.0}
-export KUBEVIRTCI_TAG=${KUBEVIRTCI_TAG:-2301240001-e641e98}
+export KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-k8s-1.28}
+export CAPK_GUEST_K8S_VERSION=${CAPK_GUEST_K8S_VERSION:-v1.26.0}
+export KUBEVIRTCI_TAG=${KUBEVIRTCI_TAG:-2309141019-029e67a}
 export KUBECONFIG=$(cluster-up/cluster-up/kubeconfig.sh)
 export KUBEVIRT_DEPLOY_PROMETHEUS=false
-export KUBEVIRT_DEPLOY_CDI=false
 export KUBEVIRT_NUM_NODES=${KUBEVIRT_NUM_NODES:-1}
 export KUBEVIRT_MEMORY_SIZE=${KUBEVIRT_MEMORY_SIZE:-15360M}
 export KUBEVIRT_DEPLOY_CDI="true"
-export METALLB_VERSION="v0.12.1"
-export CAPK_RELEASE_VERSION="v0.1.6"
-export CLUSTERCTL_VERSION="v1.4.2"
-export CALICO_VERSION="v3.21"
-export KUBEVIRT_VERSION="v0.58.0"
-export NODE_VM_IMAGE_TEMPLATE=${NODE_VM_IMAGE_TEMPLATE:-quay.io/capk/ubuntu-2004-container-disk:v1.22.0}
+export METALLB_VERSION="v0.14.3"
+export CAPK_RELEASE_VERSION="v0.1.8"
+export CLUSTERCTL_VERSION="v1.6.1"
+export CALICO_VERSION="v3.27.0"
+export KUBEVIRT_VERSION="v1.1.1"
+export NODE_VM_IMAGE_TEMPLATE=${NODE_VM_IMAGE_TEMPLATE:-quay.io/capk/ubuntu-2004-container-disk:v1.26.0}
 
 _default_bin_path=./hack/tools/bin
 _default_tmp_path=./hack/tools/bin/tmp
@@ -96,11 +95,11 @@ function kubevirtci::up() {
 	${_kubectl} apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-operator.yaml
 	${_kubectl} apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml
 	echo "installing capi..."
-
+#The version of the url needs to match what clusterctl is expecting.
 	cat << EOF > ${_default_bin_path}/clusterctl_config.yaml
 ---
 cert-manager:
-  url: "https://github.com/cert-manager/cert-manager/releases/latest/cert-manager.yaml"
+  url: "https://github.com/cert-manager/cert-manager/releases/1.13.2/cert-manager.yaml"
 EOF
 	$CLUSTERCTL_PATH init -v 4 --config=${_default_bin_path}/clusterctl_config.yaml
 	echo "waiting for kubevirt to become ready, this can take a few minutes. You can safely abort this step, the cluster is ready ..."
@@ -224,7 +223,7 @@ function kubevirtci::install_capk_release {
 
 
 function kubevirtci::install_calico {
-	kubevirtci::kubectl_tenant apply -f https://docs.projectcalico.org/${CALICO_VERSION}/manifests/calico.yaml
+	kubevirtci::kubectl_tenant apply -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/calico.yaml
 	echo "Waiting for calico pods rollout"
 	kubevirtci::kubectl_tenant rollout status ds/calico-node -n kube-system --timeout=5m
 
