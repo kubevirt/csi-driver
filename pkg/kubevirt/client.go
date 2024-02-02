@@ -115,7 +115,7 @@ func (c *client) RemoveVolumeFromVM(ctx context.Context, namespace string, vmNam
 
 // EnsureVolumeAvailable checks to make sure the volume is available in the node before returning, checks for 2 minutes
 func (c *client) EnsureVolumeAvailable(ctx context.Context, namespace, vmName, volumeName string, timeout time.Duration) error {
-	return wait.PollImmediate(time.Second, timeout, func() (done bool, err error) {
+	return wait.PollUntilContextTimeout(ctx, time.Second, timeout, true, func(ctx context.Context) (done bool, err error) {
 		vmi, err := c.GetVirtualMachine(ctx, namespace, vmName)
 		if err != nil {
 			return false, err
@@ -132,7 +132,7 @@ func (c *client) EnsureVolumeAvailable(ctx context.Context, namespace, vmName, v
 
 // EnsureVolumeRemoved checks to make sure the volume is removed from the node before returning, checks for 2 minutes
 func (c *client) EnsureVolumeRemoved(ctx context.Context, namespace, vmName, volumeName string, timeout time.Duration) error {
-	return wait.PollImmediate(time.Second, timeout, func() (done bool, err error) {
+	return wait.PollUntilContextTimeout(ctx, time.Second, timeout, true, func(ctx context.Context) (done bool, err error) {
 		vmi, err := c.GetVirtualMachine(ctx, namespace, vmName)
 		if err != nil {
 			return false, err

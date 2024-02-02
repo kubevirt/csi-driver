@@ -4,10 +4,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"math/rand"
 	"os"
 	"strings"
-	"time"
 
 	"gopkg.in/yaml.v2"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,7 +40,6 @@ func init() {
 
 func main() {
 	flag.Parse()
-	rand.Seed(time.Now().UnixNano())
 	handle()
 	os.Exit(0)
 }
