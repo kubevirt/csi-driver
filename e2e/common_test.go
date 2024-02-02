@@ -11,14 +11,16 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/golang/glog"
 	. "github.com/onsi/gomega"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+	kubecvirtcli "kubevirt.io/csi-driver/pkg/kubevirt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/klog/v2"
 )
 
 // RunCmd function executes a command, and returns STDOUT and STDERR bytes
@@ -51,7 +53,7 @@ func newTenantClusterAccess(namespace string, tenantKubeconfigFile string) tenan
 	}
 }
 
-func (t *tenantClusterAccess) generateClient() (*kubernetes.Clientset, error) {
+func (t *tenantClusterAccess) generateTenantClient() (*kubernetes.Clientset, error) {
 	overrides := &clientcmd.ConfigOverrides{}
 	if _, err := os.Stat(t.tenantKubeconfigFile); errors.Is(err, os.ErrNotExist) {
 		localPort := t.listener.Addr().(*net.TCPAddr).Port
@@ -74,7 +76,6 @@ func (t *tenantClusterAccess) generateClient() (*kubernetes.Clientset, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return kubernetes.NewForConfig(restConfig)
 }
 
@@ -108,7 +109,7 @@ func (t *tenantClusterAccess) startForwardingTenantAPI() error {
 }
 
 func (t *tenantClusterAccess) findControlPlaneVMIName() (string, error) {
-	vmiList, err := virtClient.VirtualMachineInstance(t.namespace).List(context.TODO(), &metav1.ListOptions{})
+	vmiList, err := virtClient.KubevirtV1().VirtualMachineInstances(t.namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -138,12 +139,18 @@ func (t *tenantClusterAccess) waitForConnection(name, namespace string) {
 	for {
 		conn, err := t.listener.Accept()
 		if err != nil {
-			glog.Errorln("error accepting connection:", err)
+			klog.Errorln("error accepting connection:", err)
 			return
 		}
-		stream, err := virtClient.VirtualMachineInstance(namespace).PortForward(name, 6443, "tcp")
+		infraRestConfig, err := generateInfraRestConfig()
 		if err != nil {
-			glog.Errorf("can't access vmi %s/%s: %v", namespace, name, err)
+			klog.Errorln("unable to generate infra rest config:", err)
+			return
+		}
+
+		stream, err := kubecvirtcli.PortForward(name, namespace, "virtualmachineinstances", infraRestConfig, 6443, "tcp")
+		if err != nil {
+			klog.Errorf("can't access vmi %s/%s: %v", namespace, name, err)
 			return
 		}
 		go t.handleConnection(conn, stream.AsConn())
@@ -170,14 +177,22 @@ func (t *tenantClusterAccess) handleConnection(local, remote net.Conn) {
 
 func (t *tenantClusterAccess) handleConnectionError(err error) {
 	if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
-		glog.Errorf("error handling portForward connection: %v", err)
+		klog.Errorf("error handling portForward connection: %v", err)
 	}
 }
 
-func generateInfraClient() (*kubernetes.Clientset, error) {
+func generateInfraRestConfig() (*rest.Config, error) {
 	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		&clientcmd.ClientConfigLoadingRules{ExplicitPath: InfraKubeConfig}, &clientcmd.ConfigOverrides{})
 	restConfig, err := clientConfig.ClientConfig()
+	if err != nil {
+		return nil, err
+	}
+	return restConfig, nil
+}
+
+func generateInfraClient() (*kubernetes.Clientset, error) {
+	restConfig, err := generateInfraRestConfig()
 	if err != nil {
 		return nil, err
 	}

@@ -46,7 +46,7 @@ include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
 # You can list all codegen related variables by:
 #   $ make -n --print-data-base | grep ^CODEGEN
 .PHONY: image-build
-image-build:
+image-build: generate
 	source ./hack/cri-bin.sh && \
 	$$CRI_BIN build -t $(IMAGE_REF) --build-arg git_sha=$(SHA) .
 
@@ -113,3 +113,7 @@ e2e-test: build-e2e-test ## run e2e tests
 .PHONY: sanity-test
 sanity-test:
 	./hack/run-sanity.sh
+
+.PHONY: generate
+generate:
+	./hack/generate_clients.sh
