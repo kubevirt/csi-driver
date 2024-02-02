@@ -73,6 +73,9 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
+            limits:
+              memory: 500Mi
+              cpu: 250m
         - name: csi-provisioner
           image: quay.io/openshift/origin-csi-external-provisioner:latest
           args:
@@ -85,6 +88,13 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /var/lib/csi/sockets/pluginproxy/
+          resources:
+            requests:
+              memory: 50Mi
+              cpu: 10m
+            limits:
+              memory: 500Mi
+              cpu: 250m
         - name: csi-attacher
           image: quay.io/openshift/origin-csi-external-attacher:latest
           args:
@@ -100,6 +110,9 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
+            limits:
+              memory: 500Mi
+              cpu: 250m
         - name: csi-liveness-probe
           image: quay.io/openshift/origin-csi-livenessprobe:latest
           args:
@@ -113,9 +126,45 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
+            limits:
+              memory: 500Mi
+              cpu: 250m
+        - name: csi-snapshotter
+          args:
+          - --v=3
+          - --csi-address=/csi/csi.sock
+          image: k8s.gcr.io/sig-storage/csi-snapshotter:v4.2.1
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /csi
+            name: socket-dir
+          resources:
+            requests:
+              memory: 20Mi
+              cpu: 10m
+            limits:
+              memory: 500Mi
+              cpu: 250m
       volumes:
         - name: socket-dir
           emptyDir: {}
         - name: infracluster
           secret:
             secretName: infra-cluster-credentials
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-snapshotter-role
+subjects:
+  - kind: ServiceAccount
+    name: kubevirt-csi-controller-sa
+    namespace: kubevirt-csi-driver
+roleRef:
+  kind: ClusterRole
+  name: external-snapshotter-runner
+  apiGroup: rbac.authorization.k8s.io

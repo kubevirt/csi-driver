@@ -31,6 +31,7 @@ var (
 	TenantKubeConfig      string
 	InfraClusterNamespace string
 	InfraKubeConfig       string
+	VolumeSnapshotClass   string
 	cancelFunc            func() error
 	tenantApiPort         int
 )
@@ -45,6 +46,7 @@ func init() {
 	flag.StringVar(&TenantKubeConfig, "tenant-kubeconfig", "", "Path to tenant kubeconfig")
 	flag.StringVar(&InfraKubeConfig, "infra-kubeconfig", "", "Path to infra kubeconfig")
 	flag.StringVar(&InfraClusterNamespace, "infra-cluster-namespace", "kv-guest-cluster", "Namespace of the guest cluster in the infra cluster")
+	flag.StringVar(&VolumeSnapshotClass, "volume-snapshot-class", "kubevirt-csi-snapclass", "Name of the volume snapshot class")
 }
 
 func TestE2E(t *testing.T) {

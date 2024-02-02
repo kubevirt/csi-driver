@@ -8,10 +8,14 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	. "github.com/onsi/gomega"
+	"github.com/spf13/pflag"
+	snapcli "kubevirt.io/csi-driver/pkg/generated/external-snapshotter/client-go/clientset/versioned"
+	kubecli "kubevirt.io/csi-driver/pkg/generated/kubevirt/client-go/clientset/versioned"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -42,6 +46,7 @@ type tenantClusterAccess struct {
 	tenantKubeconfigFile string
 	isForwarding         bool
 	tenantApiport        int
+	tenantRestConfig     *rest.Config
 }
 
 func newTenantClusterAccess(namespace, tenantKubeconfigFile string, apiPort int) tenantClusterAccess {
@@ -52,30 +57,49 @@ func newTenantClusterAccess(namespace, tenantKubeconfigFile string, apiPort int)
 	}
 }
 
-func (t *tenantClusterAccess) generateTenantClient() (*kubernetes.Clientset, error) {
-	overrides := &clientcmd.ConfigOverrides{}
-	if _, err := os.Stat(t.tenantKubeconfigFile); errors.Is(err, os.ErrNotExist) {
-		localPort := t.listener.Addr().(*net.TCPAddr).Port
-		cmd := exec.Command(ClusterctlPath, "get", "kubeconfig", "kvcluster",
-			"--namespace", t.namespace)
-		stdout, _ := RunCmd(cmd)
-		if err := os.WriteFile(t.tenantKubeconfigFile, stdout, 0644); err != nil {
+func (t *tenantClusterAccess) GetTenantRestConfig() (*rest.Config, error) {
+	if t.tenantRestConfig == nil {
+		overrides := &clientcmd.ConfigOverrides{}
+		if _, err := os.Stat(t.tenantKubeconfigFile); errors.Is(err, os.ErrNotExist) {
+			localPort := t.listener.Addr().(*net.TCPAddr).Port
+			cmd := exec.Command(ClusterctlPath, "get", "kubeconfig", "kvcluster",
+				"--namespace", t.namespace)
+			stdout, _ := RunCmd(cmd)
+			if err := os.WriteFile(t.tenantKubeconfigFile, stdout, 0644); err != nil {
+				return nil, err
+			}
+			overrides = &clientcmd.ConfigOverrides{
+				ClusterInfo: clientcmdapi.Cluster{
+					Server:                fmt.Sprintf("https://127.0.0.1:%d", localPort),
+					InsecureSkipTLSVerify: true,
+				},
+			}
+		}
+		clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+			&clientcmd.ClientConfigLoadingRules{ExplicitPath: t.tenantKubeconfigFile}, overrides)
+		var err error
+		t.tenantRestConfig, err = clientConfig.ClientConfig()
+		if err != nil {
 			return nil, err
 		}
-		overrides = &clientcmd.ConfigOverrides{
-			ClusterInfo: clientcmdapi.Cluster{
-				Server:                fmt.Sprintf("https://127.0.0.1:%d", localPort),
-				InsecureSkipTLSVerify: true,
-			},
-		}
 	}
-	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		&clientcmd.ClientConfigLoadingRules{ExplicitPath: t.tenantKubeconfigFile}, overrides)
-	restConfig, err := clientConfig.ClientConfig()
+	return t.tenantRestConfig, nil
+}
+
+func (t *tenantClusterAccess) generateTenantClient() (*kubernetes.Clientset, error) {
+	restConfig, err := t.GetTenantRestConfig()
 	if err != nil {
 		return nil, err
 	}
 	return kubernetes.NewForConfig(restConfig)
+}
+
+func (t *tenantClusterAccess) generateTenantSnapshotClient() (*snapcli.Clientset, error) {
+	restConfig, err := t.GetTenantRestConfig()
+	if err != nil {
+		return nil, err
+	}
+	return snapcli.NewForConfig(restConfig)
 }
 
 func (t *tenantClusterAccess) startForwardingTenantAPI() error {
@@ -166,4 +190,35 @@ func generateInfraClient() (*kubernetes.Clientset, error) {
 	}
 
 	return kubernetes.NewForConfig(restConfig)
+}
+
+func generateInfraSnapClient() (*snapcli.Clientset, error) {
+	restConfig, err := generateInfraRestConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	return snapcli.NewForConfig(restConfig)
+}
+
+func createTenantAccessor(namespace, tmpDir string) *tenantClusterAccess {
+	var tenantAccessor tenantClusterAccess
+	if len(TenantKubeConfig) == 0 {
+		infraKubeconfigFile := filepath.Join(tmpDir, "infra-kubeconfig.yaml")
+
+		clientConfig := defaultInfraClientConfig(&pflag.FlagSet{})
+		cfg, err := clientConfig.ClientConfig()
+		Expect(err).ToNot(HaveOccurred())
+		virtClient = kubecli.NewForConfigOrDie(cfg)
+		Expect(err).ToNot(HaveOccurred())
+
+		tenantAccessor = newTenantClusterAccess("kvcluster", infraKubeconfigFile, tenantApiPort)
+
+		err = tenantAccessor.startForwardingTenantAPI()
+		Expect(err).ToNot(HaveOccurred())
+	} else {
+		tenantAccessor = newTenantClusterAccess(InfraClusterNamespace, TenantKubeConfig, tenantApiPort)
+	}
+
+	return &tenantAccessor
 }

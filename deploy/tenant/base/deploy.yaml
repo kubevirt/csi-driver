@@ -87,6 +87,12 @@ metadata:
   name: kubevirt-csi-node-sa
   namespace: kubevirt-csi-driver
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubevirt-csi-snapshot-sa
+  namespace: kubevirt-csi-driver
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -124,6 +130,24 @@ rules:
     verbs: ["use"]
     resourceNames: ["privileged"]
 ---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: external-snapshotter-runner
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list", "watch", "create", "update", "patch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotcontents"]
+    verbs: ["create", "get", "list", "watch", "update", "delete", "patch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotcontents/status"]
+    verbs: ["update", "patch"]
+---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
@@ -135,6 +159,20 @@ subjects:
 roleRef:
   kind: ClusterRole
   name: kubevirt-csi-node-cr
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-snapshotter-role
+subjects:
+  - kind: ServiceAccount
+    name: kubevirt-csi-snapshot-sa
+    namespace: kubevirt-csi-driver
+roleRef:
+  kind: ClusterRole
+  # change the name also here if the ClusterRole gets renamed
+  name: external-snapshotter-runner
   apiGroup: rbac.authorization.k8s.io
 ---
 kind: DaemonSet
@@ -201,6 +239,9 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
+            limits:
+              memory: 500Mi
+              cpu: 250m
         - name: csi-node-driver-registrar
           image: quay.io/openshift/origin-csi-node-driver-registrar:latest
           args:
@@ -225,6 +266,9 @@ spec:
             requests:
               memory: 20Mi
               cpu: 5m
+            limits:
+              memory: 500Mi
+              cpu: 100m
         - name: csi-liveness-probe
           image: quay.io/openshift/origin-csi-livenessprobe:latest
           args:
@@ -238,6 +282,9 @@ spec:
             requests:
               memory: 20Mi
               cpu: 5m
+            limits:
+              memory: 500Mi
+              cpu: 100m
       volumes:
         - name: kubelet-dir
           hostPath:
@@ -278,3 +325,10 @@ provisioner: csi.kubevirt.io
 parameters:
   infraStorageClassName: standard
   bus: scsi
+---
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: kubevirt-csi-snapclass
+driver: csi.kubevirt.io
+deletionPolicy: Delete

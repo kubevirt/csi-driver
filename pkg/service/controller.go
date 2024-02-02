@@ -2,13 +2,16 @@ package service
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -22,10 +25,11 @@ import (
 )
 
 const (
-	infraStorageClassNameParameter = "infraStorageClassName"
-	busParameter                   = "bus"
-	busDefaultValue                = kubevirtv1.DiskBus("scsi")
-	serialParameter                = "serial"
+	infraStorageClassNameParameter  = "infraStorageClassName"
+	infraSnapshotClassNameParameter = "infraSnapshotClassName"
+	busParameter                    = "bus"
+	busDefaultValue                 = kubevirtv1.DiskBus("scsi")
+	serialParameter                 = "serial"
 )
 
 var (
@@ -43,6 +47,8 @@ type ControllerService struct {
 var controllerCaps = []csi.ControllerServiceCapability_RPC_Type{
 	csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 	csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME, // attach/detach
+	csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
+	csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
 }
 
 // Contains tells whether a contains x.
@@ -134,8 +140,11 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 		dv.Spec.Storage.StorageClassName = &storageClassName
 	}
 
-	dv.Spec.Source = &cdiv1.DataVolumeSource{}
-	dv.Spec.Source.Blank = &cdiv1.DataVolumeBlankImage{}
+	var err error
+	dv.Spec.Source, err = c.determineDvSource(ctx, req)
+	if err != nil {
+		return nil, err
+	}
 
 	if existingDv, err := c.virtClient.GetDataVolume(ctx, c.infraClusterNamespace, dvName); errors.IsNotFound(err) {
 		// Create DataVolume
@@ -170,8 +179,36 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 				busParameter:    string(bus),
 				serialParameter: serial,
 			},
+			ContentSource: req.GetVolumeContentSource(),
 		},
 	}, nil
+}
+
+func (c *ControllerService) determineDvSource(ctx context.Context, req *csi.CreateVolumeRequest) (*cdiv1.DataVolumeSource, error) {
+	res := &cdiv1.DataVolumeSource{}
+	if req.GetVolumeContentSource() != nil {
+		source := req.GetVolumeContentSource()
+		switch source.Type.(type) {
+		case *csi.VolumeContentSource_Snapshot:
+			if snapshot, err := c.virtClient.GetVolumeSnapshot(ctx, c.infraClusterNamespace, source.GetSnapshot().GetSnapshotId()); errors.IsNotFound(err) {
+				return nil, status.Errorf(codes.NotFound, "source snapshot content %s not found", source.GetSnapshot().GetSnapshotId())
+			} else if err != nil {
+				return nil, err
+			} else if snapshot != nil {
+				if snapshotSource := source.GetSnapshot(); snapshotSource != nil {
+					res.Snapshot = &cdiv1.DataVolumeSourceSnapshot{
+						Name:      snapshot.Name,
+						Namespace: c.infraClusterNamespace,
+					}
+				}
+			}
+		default:
+			return nil, status.Error(codes.InvalidArgument, "unknown content type")
+		}
+	} else {
+		res.Blank = &cdiv1.DataVolumeBlankImage{}
+	}
+	return res, nil
 }
 
 func (c *ControllerService) validateDeleteVolumeRequest(req *csi.DeleteVolumeRequest) error {
@@ -393,7 +430,6 @@ func (c *ControllerService) removeVolumeFromVm(ctx context.Context, dvName, vmNa
 	return nil
 }
 
-// ValidateVolumeCapabilities unimplemented
 func (c *ControllerService) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 	// Check arguments
 	if len(req.GetVolumeId()) == 0 {
@@ -443,19 +479,178 @@ func (c *ControllerService) GetCapacity(context.Context, *csi.GetCapacityRequest
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-// CreateSnapshot unimplemented
-func (c *ControllerService) CreateSnapshot(context.Context, *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+func (c *ControllerService) validateCreateSnapshotRequest(req *csi.CreateSnapshotRequest) error {
+	if req == nil {
+		return status.Error(codes.InvalidArgument, "missing request")
+	}
+	if len(req.GetName()) == 0 {
+		return status.Error(codes.InvalidArgument, "name missing in request")
+	}
+	if len(req.GetSourceVolumeId()) == 0 {
+		return status.Error(codes.InvalidArgument, "source volume id missing in request")
+	}
+	return nil
 }
 
-// DeleteSnapshot unimplemented
-func (c *ControllerService) DeleteSnapshot(context.Context, *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+func (c *ControllerService) verifySourceVolumeExists(ctx context.Context, volumeID string) (bool, error) {
+	dv, err := c.virtClient.GetDataVolume(ctx, c.infraClusterNamespace, volumeID)
+	if errors.IsNotFound(err) {
+		return false, nil
+	}
+	return dv != nil, err
 }
 
-// ListSnapshots unimplemented
-func (c *ControllerService) ListSnapshots(context.Context, *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+func (c *ControllerService) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
+	if err := c.validateCreateSnapshotRequest(req); err != nil {
+		return nil, err
+	}
+
+	var response *csi.CreateSnapshotResponse
+	if existingSnapshot, err := c.virtClient.GetVolumeSnapshot(ctx, c.infraClusterNamespace, req.GetName()); errors.IsNotFound(err) {
+		if exists, err := c.verifySourceVolumeExists(ctx, req.GetSourceVolumeId()); err != nil {
+			return nil, err
+		} else if !exists {
+			return nil, status.Errorf(codes.NotFound, "source volume %s not found", req.GetSourceVolumeId())
+		}
+		// Prepare parameters for the DataVolume
+		snapshotClassName := req.Parameters[infraSnapshotClassNameParameter]
+		volumeSnapshot, err := c.virtClient.CreateVolumeSnapshot(ctx, c.infraClusterNamespace, req.GetName(), req.GetSourceVolumeId(), snapshotClassName)
+		if err != nil {
+			return nil, err
+		}
+		// Need to wait for the snapshot to be ready in the infra cluster so we can properly report the size
+		// to the volume snapshot in the tenant cluster. Otherwise the restore size will be 0.
+		if err := c.virtClient.EnsureSnapshotReady(ctx, c.infraClusterNamespace, volumeSnapshot.Name, time.Minute*2); err != nil {
+			return nil, err
+		}
+		volumeSnapshot, err = c.virtClient.GetVolumeSnapshot(ctx, c.infraClusterNamespace, volumeSnapshot.Name)
+		if err != nil {
+			return nil, err
+		}
+		response = createSnapshotResponse(volumeSnapshot)
+	} else if err != nil {
+		return nil, err
+	} else {
+		if !snapshotSourceMatchesVolume(existingSnapshot, req.GetSourceVolumeId()) {
+			return nil, status.Errorf(codes.AlreadyExists, "snapshot with the same name: %s but with different SourceVolumeId already exist", req.GetName())
+		}
+		response = createSnapshotResponse(existingSnapshot)
+	}
+	return response, nil
+}
+
+func snapshotSourceMatchesVolume(snapshot *snapshotv1.VolumeSnapshot, volumeID string) bool {
+	return snapshot.Spec.Source.PersistentVolumeClaimName != nil && *snapshot.Spec.Source.PersistentVolumeClaimName == volumeID
+}
+
+func createCsiSnapshot(snapshot *snapshotv1.VolumeSnapshot) *csi.Snapshot {
+	res := &csi.Snapshot{
+		SnapshotId:     snapshot.Name,
+		SourceVolumeId: *snapshot.Spec.Source.PersistentVolumeClaimName,
+		CreationTime:   timestamppb.New(snapshot.GetCreationTimestamp().Time),
+		ReadyToUse:     false,
+	}
+	if snapshot.Status != nil {
+		if snapshot.Status.ReadyToUse != nil {
+			res.ReadyToUse = *snapshot.Status.ReadyToUse
+		}
+		if snapshot.Status.RestoreSize != nil {
+			res.SizeBytes = snapshot.Status.RestoreSize.Value()
+		}
+	}
+	return res
+}
+
+func createSnapshotResponse(snapshot *snapshotv1.VolumeSnapshot) *csi.CreateSnapshotResponse {
+	return &csi.CreateSnapshotResponse{
+		Snapshot: createCsiSnapshot(snapshot),
+	}
+}
+
+func (c *ControllerService) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "missing request")
+	}
+	if len(req.GetSnapshotId()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "snapshot id missing in request")
+	}
+	if err := c.virtClient.DeleteVolumeSnapshot(ctx, c.infraClusterNamespace, req.GetSnapshotId()); err != nil {
+		return nil, err
+	}
+	return &csi.DeleteSnapshotResponse{}, nil
+}
+
+func (c *ControllerService) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "missing request")
+	}
+
+	var items []snapshotv1.VolumeSnapshot
+
+	if req.GetSnapshotId() != "" {
+		if snapshot, err := c.virtClient.GetVolumeSnapshot(ctx, c.infraClusterNamespace, req.GetSnapshotId()); err != nil && !errors.IsNotFound(err) {
+			return nil, err
+		} else if snapshot != nil {
+			items = append(items, *snapshot)
+		}
+	} else {
+		snapshots, err := c.virtClient.ListVolumeSnapshots(ctx, c.infraClusterNamespace)
+		if err != nil {
+			return nil, err
+		}
+		if len(req.GetSourceVolumeId()) > 0 {
+			// Search for the snapshot that matches the source volume id
+			for _, snapshot := range snapshots.Items {
+				if snapshotSourceMatchesVolume(&snapshot, req.GetSourceVolumeId()) {
+					items = append(items, snapshot)
+				}
+			}
+		} else {
+			items = snapshots.Items
+		}
+	}
+
+	if snapshotRes, err := createSnapshotResponseFromItems(req, items); err != nil {
+		return nil, err
+	} else {
+		return snapshotRes, nil
+	}
+}
+
+func createSnapshotResponseFromItems(req *csi.ListSnapshotsRequest, items []snapshotv1.VolumeSnapshot) (*csi.ListSnapshotsResponse, error) {
+	snapshotRes := &csi.ListSnapshotsResponse{}
+	if len(items) > 0 {
+		snapshotRes.Entries = []*csi.ListSnapshotsResponse_Entry{}
+		if req.StartingToken == "" || req.StartingToken == "0" {
+			req.StartingToken = "1"
+		}
+
+		snapshotLength := int64(len(items))
+		maxLength := int64(req.MaxEntries)
+		if maxLength == 0 {
+			maxLength = snapshotLength
+		}
+		start, err := strconv.ParseUint(req.StartingToken, 10, 32)
+		if err != nil {
+			return nil, err
+		}
+		start = start - 1
+		end := int64(start) + maxLength
+
+		if end > snapshotLength {
+			end = snapshotLength
+		}
+
+		for _, val := range items[start:end] {
+			snapshotRes.Entries = append(snapshotRes.Entries, &csi.ListSnapshotsResponse_Entry{
+				Snapshot: createCsiSnapshot(&val),
+			})
+		}
+		if end < snapshotLength-1 {
+			snapshotRes.NextToken = strconv.FormatInt(end+1, 10)
+		}
+	}
+	return snapshotRes, nil
 }
 
 // ControllerExpandVolume unimplemented

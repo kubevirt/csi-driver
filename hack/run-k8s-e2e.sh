@@ -100,7 +100,7 @@ spec:
       curl -LO "https://dl.k8s.io/release/v1.26.0/bin/linux/amd64/kubectl"
       chmod +x kubectl
       echo \$TEST_DRIVER_PATH
-      ./e2e.test -kubeconfig \${KUBECONFIG} -kubectl-path ./kubectl -ginkgo.v -ginkgo.focus='External.Storage.*csi.kubevirt.io.*' -ginkgo.skip='CSI Ephemeral-volume*' -ginkgo.skip='SELinuxMountReadWriteOncePod.*' -storage.testdriver=\${TEST_DRIVER_PATH}/test-driver.yaml -provider=local -report-dir=/tmp
+      ./e2e.test -kubeconfig \${KUBECONFIG} -kubectl-path ./kubectl -ginkgo.v -ginkgo.timeout=2h -ginkgo.focus='External.Storage.*csi.kubevirt.io.*' -ginkgo.skip='CSI Ephemeral-volume*' -ginkgo.skip='SELinuxMountReadWriteOncePod.*' -storage.testdriver=\${TEST_DRIVER_PATH}/test-driver.yaml -provider=local -report-dir=/tmp
       ret=\$?
       while [ ! -f /tmp/exit.txt ]; do
         sleep 2
