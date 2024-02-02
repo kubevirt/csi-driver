@@ -355,11 +355,18 @@ func podWithoutPVCSpec(podName string, cmd, args []string) *k8sv1.Pod {
 				},
 			},
 			// add toleration so we can use control node for tests
-			Tolerations: []k8sv1.Toleration{{
-				Key:      "node-role.kubernetes.io/master",
-				Operator: k8sv1.TolerationOpExists,
-				Effect:   k8sv1.TaintEffectNoSchedule,
-			}},
+			Tolerations: []k8sv1.Toleration{
+				{
+					Key:      "node-role.kubernetes.io/master",
+					Operator: k8sv1.TolerationOpExists,
+					Effect:   k8sv1.TaintEffectNoSchedule,
+				},
+				{
+					Key:      "node-role.kubernetes.io/control-plane",
+					Operator: k8sv1.TolerationOpExists,
+					Effect:   k8sv1.TaintEffectNoSchedule,
+				},
+			},
 		},
 	}
 }
