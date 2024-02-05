@@ -2,20 +2,17 @@ package e2e_test
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	. "github.com/onsi/gomega"
-	kubevirtv1 "kubevirt.io/api/core/v1"
-	kubecvirtcli "kubevirt.io/csi-driver/pkg/kubevirt"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -44,12 +41,14 @@ type tenantClusterAccess struct {
 	namespace            string
 	tenantKubeconfigFile string
 	isForwarding         bool
+	tenantApiport        int
 }
 
-func newTenantClusterAccess(namespace string, tenantKubeconfigFile string) tenantClusterAccess {
+func newTenantClusterAccess(namespace, tenantKubeconfigFile string, apiPort int) tenantClusterAccess {
 	return tenantClusterAccess{
 		namespace:            namespace,
 		tenantKubeconfigFile: tenantKubeconfigFile,
+		tenantApiport:        apiPort,
 	}
 }
 
@@ -97,34 +96,10 @@ func (t *tenantClusterAccess) startForwardingTenantAPI() error {
 		return err
 	}
 
-	vmiName, err := t.findControlPlaneVMIName()
-	if err != nil {
-		return err
-	}
-
 	t.isForwarding = true
-	go t.waitForConnection(vmiName, t.namespace)
+	go t.waitForConnection()
 
 	return nil
-}
-
-func (t *tenantClusterAccess) findControlPlaneVMIName() (string, error) {
-	vmiList, err := virtClient.KubevirtV1().VirtualMachineInstances(t.namespace).List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		return "", err
-	}
-
-	var chosenVMI *kubevirtv1.VirtualMachineInstance
-	for _, vmi := range vmiList.Items {
-		if strings.Contains(vmi.Name, "-control-plane") {
-			chosenVMI = &vmi
-			break
-		}
-	}
-	if chosenVMI == nil {
-		return "", fmt.Errorf("Couldn't find controlplane vmi in namespace %s", t.namespace)
-	}
-	return chosenVMI.Name, nil
 }
 
 func (t *tenantClusterAccess) stopForwardingTenantAPI() error {
@@ -135,31 +110,24 @@ func (t *tenantClusterAccess) stopForwardingTenantAPI() error {
 	return t.listener.Close()
 }
 
-func (t *tenantClusterAccess) waitForConnection(name, namespace string) {
-	for {
-		conn, err := t.listener.Accept()
-		if err != nil {
-			klog.Errorln("error accepting connection:", err)
-			return
-		}
-		infraRestConfig, err := generateInfraRestConfig()
-		if err != nil {
-			klog.Errorln("unable to generate infra rest config:", err)
-			return
-		}
-
-		stream, err := kubecvirtcli.PortForward(name, namespace, "virtualmachineinstances", infraRestConfig, 6443, "tcp")
-		if err != nil {
-			klog.Errorf("can't access vmi %s/%s: %v", namespace, name, err)
-			return
-		}
-		go t.handleConnection(conn, stream.AsConn())
+func (t *tenantClusterAccess) waitForConnection() {
+	conn, err := t.listener.Accept()
+	if err != nil {
+		klog.Errorln("error accepting connection:", err)
+		return
 	}
+
+	proxy, err := net.Dial("tcp", net.JoinHostPort("localhost", strconv.Itoa(t.tenantApiport)))
+	if err != nil {
+		klog.Errorf("unable to connect to local port-forward: %v", err)
+		return
+	}
+	go t.handleConnection(conn, proxy)
 }
 
 // handleConnection copies data between the local connection and the stream to
-// the remote server.
-func (t *tenantClusterAccess) handleConnection(local, remote net.Conn) {
+// the remote server. It closes the local and remote connections when done.
+func (t *tenantClusterAccess) handleConnection(local, remote io.ReadWriteCloser) {
 	defer local.Close()
 	defer remote.Close()
 	errs := make(chan error, 2)

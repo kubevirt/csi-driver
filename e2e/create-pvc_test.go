@@ -70,12 +70,12 @@ var _ = Describe("CreatePVC", func() {
 			virtClient = kubecli.NewForConfigOrDie(cfg)
 			Expect(err).ToNot(HaveOccurred())
 
-			tenantAccessor = newTenantClusterAccess("kvcluster", infraKubeconfigFile)
+			tenantAccessor = newTenantClusterAccess("kvcluster", infraKubeconfigFile, tenantApiPort)
 
 			err = tenantAccessor.startForwardingTenantAPI()
 			Expect(err).ToNot(HaveOccurred())
 		} else {
-			tenantAccessor = newTenantClusterAccess(InfraClusterNamespace, TenantKubeConfig)
+			tenantAccessor = newTenantClusterAccess(InfraClusterNamespace, TenantKubeConfig, tenantApiPort)
 		}
 		tenantClient, err = tenantAccessor.generateTenantClient()
 		Expect(err).ToNot(HaveOccurred())
@@ -96,9 +96,7 @@ var _ = Describe("CreatePVC", func() {
 
 	AfterEach(func() {
 		_ = tenantClient.CoreV1().Namespaces().Delete(context.Background(), namespace, metav1.DeleteOptions{})
-		if len(TenantKubeConfig) == 0 {
-			_ = tenantAccessor.stopForwardingTenantAPI()
-		}
+		_ = tenantAccessor.stopForwardingTenantAPI()
 		_ = os.RemoveAll(tmpDir)
 	})
 

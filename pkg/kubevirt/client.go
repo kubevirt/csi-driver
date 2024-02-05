@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
-	"net/url"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,6 +18,8 @@ import (
 	cdicli "kubevirt.io/csi-driver/pkg/generated/containerized-data-importer/client-go/clientset/versioned"
 	kubecli "kubevirt.io/csi-driver/pkg/generated/kubevirt/client-go/clientset/versioned"
 )
+
+const vmiSubresourceURL = "/apis/subresources.kubevirt.io/%s/namespaces/%s/virtualmachineinstances/%s/%s"
 
 //go:generate mockgen -source=./client.go -destination=./mock/client_generated.go -package=mock
 
@@ -179,13 +179,4 @@ func (c *client) DeleteDataVolume(ctx context.Context, namespace string, name st
 
 func (c *client) GetDataVolume(ctx context.Context, namespace string, name string) (*cdiv1.DataVolume, error) {
 	return c.cdiClient.CdiV1beta1().DataVolumes(namespace).Get(ctx, name, metav1.GetOptions{})
-}
-
-func PortForward(name, namespace, resource string, config *rest.Config, port int, protocol string) (StreamInterface, error) {
-	return asyncSubresourceHelper(config, resource, namespace, name, buildPortForwardResourcePath(port, protocol), url.Values{})
-}
-
-type StreamInterface interface {
-	Stream(options StreamOptions) error
-	AsConn() net.Conn
 }

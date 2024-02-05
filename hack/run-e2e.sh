@@ -5,6 +5,7 @@ set -e -o pipefail
 TOOLS_DIR=${TOOLS_DIR:-hack/tools}                                                                 
 CLUSTERCTL_PATH=${TOOLS_DIR}/bin/clusterctl
 KUBECTL_PATH=${TOOLS_DIR}/bin/kubectl
+VIRTCTL_PATH=${TOOLS_DIR}/bin/virtctl
 DUMP_VERSION=$(curl -L https://storage.googleapis.com/kubevirt-prow/devel/nightly/release/kubevirt/kubevirt/latest)
 DUMP_PATH=${TOOLS_DIR}/bin/kubevirt-${DUMP_VERSION}-dump     
 TEST_WORKING_DIR=${TOOLS_DIR}/e2e-test-workingdir
@@ -33,4 +34,4 @@ fi
 rm -rf $TEST_WORKING_DIR
 mkdir -p $TEST_WORKING_DIR
 
-$BIN_DIR/e2e.test -ginkgo.v -test.v -ginkgo.no-color --kubectl-path $KUBECTL_PATH --clusterctl-path $CLUSTERCTL_PATH  --working-dir $TEST_WORKING_DIR --dump-path $DUMP_PATH --infra-kubeconfig=$KUBECONFIG --infra-cluster-namespace=${INFRA_CLUSTER_NAMESPACE}
+$BIN_DIR/e2e.test -ginkgo.v -test.v -ginkgo.no-color --kubectl-path $KUBECTL_PATH --clusterctl-path $CLUSTERCTL_PATH  --virtctl-path $VIRTCTL_PATH --working-dir $TEST_WORKING_DIR --dump-path $DUMP_PATH --infra-kubeconfig=$KUBECONFIG --infra-cluster-namespace=${INFRA_CLUSTER_NAMESPACE}
