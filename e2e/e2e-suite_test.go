@@ -181,13 +181,6 @@ func getFreePort() (port int, err error) {
 	return
 }
 
-func RunVirtctlCommand(ctx context.Context, args ...string) (string, error) {
-	cmd := CreateVirtctlCommand(ctx, args...)
-	outBytes, err := cmd.CombinedOutput()
-
-	return string(outBytes), err
-}
-
 func CreateVirtctlCommand(ctx context.Context, args ...string) *exec.Cmd {
 	kubeconfig := InfraKubeConfig
 	path := VirtctlPath
