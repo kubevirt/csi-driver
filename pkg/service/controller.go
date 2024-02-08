@@ -416,7 +416,7 @@ func (c *ControllerService) ValidateVolumeCapabilities(ctx context.Context, req 
 		return nil, err
 	}
 
-	klog.V(5).Info("Returning capabilities %v", &csi.ValidateVolumeCapabilitiesResponse{
+	klog.V(5).Infof("Returning capabilities %v", &csi.ValidateVolumeCapabilitiesResponse{
 		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
 			VolumeContext:      req.GetVolumeContext(),
 			VolumeCapabilities: req.GetVolumeCapabilities(),

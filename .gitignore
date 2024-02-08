@@ -5,7 +5,7 @@
 *.so
 *.dylib
 kubevirt-csi-driver
-
+*.code-workspace
 #k8s e2e suite
 .kvcluster-kubeconfig-e2e
 capk.pem
