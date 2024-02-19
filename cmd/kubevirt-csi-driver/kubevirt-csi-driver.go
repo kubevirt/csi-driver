@@ -83,7 +83,8 @@ func handle() {
 		klog.Fatalf("Failed to build tenant client set: %v", err)
 	}
 
-	virtClient, err := kubevirt.NewClient(infraRestConfig)
+	infraClusterLabelsMap := parseLabels()
+	virtClient, err := kubevirt.NewClient(infraRestConfig, infraClusterLabelsMap)
 	if err != nil {
 		klog.Fatal(err)
 	}
@@ -107,7 +108,6 @@ func handle() {
 		}
 	}
 
-	infraClusterLabelsMap := parseLabels()
 	var storageClassEnforcement util.StorageClassEnforcement
 	//parse yaml
 	if infraStorageClassEnforcement == "" {

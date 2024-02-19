@@ -9,6 +9,7 @@ import (
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -16,7 +17,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	kubevirtv1 "kubevirt.io/api/core/v1"
-	v1 "kubevirt.io/api/core/v1"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	cdicli "kubevirt.io/csi-driver/pkg/generated/containerized-data-importer/client-go/clientset/versioned"
 	snapcli "kubevirt.io/csi-driver/pkg/generated/external-snapshotter/client-go/clientset/versioned"
@@ -53,22 +53,23 @@ type Client interface {
 }
 
 type client struct {
-	kubernetesClient *kubernetes.Clientset
-	virtClient       *kubecli.Clientset
-	cdiClient        *cdicli.Clientset
-	snapClient       *snapcli.Clientset
+	kubernetesClient kubernetes.Interface
+	virtClient       kubecli.Interface
+	cdiClient        cdicli.Interface
+	snapClient       snapcli.Interface
 	restClient       *rest.RESTClient
+	infraLabelMap    map[string]string
 }
 
 // NewClient New creates our client wrapper object for the actual kubeVirt and kubernetes clients we use.
-func NewClient(config *rest.Config) (Client, error) {
+func NewClient(config *rest.Config, infraClusterLabelMap map[string]string) (Client, error) {
 	result := &client{}
 
 	Scheme := runtime.NewScheme()
 	Codecs := serializer.NewCodecFactory(Scheme)
 
 	shallowCopy := *config
-	shallowCopy.GroupVersion = &v1.StorageGroupVersion
+	shallowCopy.GroupVersion = &kubevirtv1.StorageGroupVersion
 	shallowCopy.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: Codecs}
 	shallowCopy.APIPath = "/apis"
 	shallowCopy.ContentType = runtime.ContentTypeJSON
@@ -103,12 +104,22 @@ func NewClient(config *rest.Config) (Client, error) {
 	result.cdiClient = cdiClient
 	result.restClient = restClient
 	result.snapClient = snapClient
+	result.infraLabelMap = infraClusterLabelMap
 	return result, nil
+}
+
+func containsLabels(a, b map[string]string) bool {
+	for k, v := range b {
+		if a[k] != v {
+			return false
+		}
+	}
+	return true
 }
 
 // AddVolumeToVM performs a hotplug of a DataVolume to a VM
 func (c *client) AddVolumeToVM(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.AddVolumeOptions) error {
-	uri := fmt.Sprintf(vmiSubresourceURL, v1.ApiStorageVersion, namespace, vmName, "addvolume")
+	uri := fmt.Sprintf(vmiSubresourceURL, kubevirtv1.ApiStorageVersion, namespace, vmName, "addvolume")
 
 	JSON, err := json.Marshal(hotPlugRequest)
 
@@ -121,7 +132,7 @@ func (c *client) AddVolumeToVM(ctx context.Context, namespace string, vmName str
 
 // RemoveVolumeFromVM perform hotunplug of a DataVolume from a VM
 func (c *client) RemoveVolumeFromVM(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error {
-	uri := fmt.Sprintf(vmiSubresourceURL, v1.ApiStorageVersion, namespace, vmName, "removevolume")
+	uri := fmt.Sprintf(vmiSubresourceURL, kubevirtv1.ApiStorageVersion, namespace, vmName, "removevolume")
 
 	JSON, err := json.Marshal(hotPlugRequest)
 
@@ -201,7 +212,7 @@ func (c *client) CreateDataVolume(ctx context.Context, namespace string, dataVol
 
 // Ping performs a minimal request to the infra-cluster k8s api
 func (c *client) Ping(ctx context.Context) error {
-	_, err := c.kubernetesClient.ServerVersion()
+	_, err := c.kubernetesClient.Discovery().ServerVersion()
 	return err
 }
 
@@ -215,36 +226,41 @@ func (c *client) GetDataVolume(ctx context.Context, namespace string, name strin
 }
 
 func (c *client) CreateVolumeSnapshot(ctx context.Context, namespace, name, claimName, snapshotClassName string) (*snapshotv1.VolumeSnapshot, error) {
-	snapshotClassName, err := c.getSnapshotClassNameFromVolumeName(ctx, namespace, claimName, snapshotClassName)
-	if err != nil {
+	if dv, err := c.GetDataVolume(ctx, namespace, claimName); err != nil {
 		return nil, err
-	}
-	snapshot := &snapshotv1.VolumeSnapshot{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Spec: snapshotv1.VolumeSnapshotSpec{
-			Source: snapshotv1.VolumeSnapshotSource{
-				PersistentVolumeClaimName: &claimName,
+	} else if dv != nil {
+		snapshotClassName, err := c.getSnapshotClassNameFromVolumeClaimName(ctx, namespace, dv.GetName(), snapshotClassName)
+		if err != nil {
+			return nil, err
+		}
+		snapshot := &snapshotv1.VolumeSnapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+				Labels:    c.infraLabelMap,
 			},
-		},
+			Spec: snapshotv1.VolumeSnapshotSpec{
+				Source: snapshotv1.VolumeSnapshotSource{
+					PersistentVolumeClaimName: &claimName,
+				},
+			},
+		}
+		if snapshotClassName != "" {
+			snapshot.Spec.VolumeSnapshotClassName = &snapshotClassName
+		} else {
+			return nil, fmt.Errorf("no snapshot class found for infra source volume")
+		}
+		klog.V(5).Infof("Creating snapshot %s with snapshot class %s, %#v", name, snapshotClassName, snapshot)
+		return c.snapClient.SnapshotV1().VolumeSnapshots(namespace).Create(ctx, snapshot, metav1.CreateOptions{})
 	}
-	if snapshotClassName != "" {
-		snapshot.Spec.VolumeSnapshotClassName = &snapshotClassName
-	} else {
-		return nil, fmt.Errorf("no snapshot class name found for snapshot %s, %#v", name, snapshot)
-	}
-	klog.V(5).Infof("Creating snapshot %s with snapshot class %s, %#v", name, snapshotClassName, snapshot)
-	return c.snapClient.SnapshotV1().VolumeSnapshots(namespace).Create(ctx, snapshot, metav1.CreateOptions{})
+	return nil, nil
 }
 
-func (c *client) getSnapshotClassNameFromVolumeName(ctx context.Context, namespace, claimName, snapshotClassName string) (string, error) {
+func (c *client) getSnapshotClassNameFromVolumeClaimName(ctx context.Context, namespace, claimName, snapshotClassName string) (string, error) {
 	volumeName, err := c.getVolumeNameFromClaimName(ctx, namespace, claimName)
-	if err != nil {
-		return "", err
-	} else if volumeName == "" {
-		return "", fmt.Errorf("persistent volume claim :%s not bound", claimName)
+	if err != nil || volumeName == "" {
+		klog.V(2).Infof("Error getting volume name for claim %s in namespace %s: %v", claimName, namespace, err)
+		return "", fmt.Errorf("unable to determine snapshot class name for infra source volume")
 	}
 	storageClassName, err := c.getStorageClassFromVolume(ctx, volumeName)
 	if err != nil {
@@ -272,7 +288,7 @@ func (c *client) getVolumeNameFromClaimName(ctx context.Context, namespace, clai
 func (c *client) getStorageClassFromVolume(ctx context.Context, volumeName string) (string, error) {
 	volume, err := c.kubernetesClient.CoreV1().PersistentVolumes().Get(ctx, volumeName, metav1.GetOptions{})
 	if err != nil {
-		klog.Errorf("Error getting volume %s: %v", volumeName, err)
+		klog.V(2).Infof("Error getting volume %s: %v", volumeName, err)
 		return "", err
 	}
 	return volume.Spec.StorageClassName, nil
@@ -286,7 +302,7 @@ func (c *client) getStorageClassFromVolume(ctx context.Context, volumeName strin
 func (c *client) getSnapshotClassFromStorageClass(ctx context.Context, storageClassName, volumeSnapshotClassName string) (*snapshotv1.VolumeSnapshotClass, error) {
 	storageClass, err := c.kubernetesClient.StorageV1().StorageClasses().Get(ctx, storageClassName, metav1.GetOptions{})
 	if err != nil {
-		klog.Errorf("Error getting storage class %s: %v", storageClassName, err)
+		klog.V(2).Infof("Error getting storage class %s: %v", storageClassName, err)
 		return nil, err
 	}
 	provisioner := storageClass.Provisioner
@@ -295,7 +311,7 @@ func (c *client) getSnapshotClassFromStorageClass(ctx context.Context, storageCl
 		klog.V(5).Info("No snapshot classes found")
 		return nil, nil
 	} else if err != nil {
-		klog.Errorf("Error getting snapshot classes: %v", err)
+		klog.V(2).Infof("Error getting snapshot classes: %v", err)
 		return nil, err
 	}
 	var storageClassSnapshotClasses []snapshotv1.VolumeSnapshotClass
@@ -307,6 +323,7 @@ func (c *client) getSnapshotClassFromStorageClass(ctx context.Context, storageCl
 
 	var bestMatch *snapshotv1.VolumeSnapshotClass
 	for i, snapshotClass := range storageClassSnapshotClasses {
+		klog.V(5).Infof("Checking snapshot class %#v", snapshotClass)
 		if i == 0 {
 			bestMatch = &storageClassSnapshotClasses[i]
 		}
@@ -318,19 +335,42 @@ func (c *client) getSnapshotClassFromStorageClass(ctx context.Context, storageCl
 			bestMatch = &storageClassSnapshotClasses[i]
 		}
 	}
+	if volumeSnapshotClassName != "" {
+		klog.V(2).Infof("provided volume snapshot class %s cannot be matched with storage class", volumeSnapshotClassName)
+		return nil, fmt.Errorf("provided volume snapshot class cannot be matched with storage class")
+	}
 	return bestMatch, nil
 }
 
 func (c *client) GetVolumeSnapshot(ctx context.Context, namespace, name string) (*snapshotv1.VolumeSnapshot, error) {
-	return c.snapClient.SnapshotV1().VolumeSnapshots(namespace).Get(ctx, name, metav1.GetOptions{})
+	s, err := c.snapClient.SnapshotV1().VolumeSnapshots(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if s != nil {
+		if !containsLabels(s.Labels, c.infraLabelMap) {
+			return nil, errors.NewNotFound(snapshotv1.Resource("volumesnapshot"), name)
+		}
+	}
+	return s, nil
 }
 
 func (c *client) DeleteVolumeSnapshot(ctx context.Context, namespace, name string) error {
-	return c.snapClient.SnapshotV1().VolumeSnapshots(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	s, err := c.GetVolumeSnapshot(ctx, namespace, name)
+	if err != nil {
+		return err
+	}
+	return c.snapClient.SnapshotV1().VolumeSnapshots(s.GetNamespace()).Delete(ctx, s.GetName(), metav1.DeleteOptions{})
 }
 
 func (c *client) ListVolumeSnapshots(ctx context.Context, namespace string) (*snapshotv1.VolumeSnapshotList, error) {
-	return c.snapClient.SnapshotV1().VolumeSnapshots(namespace).List(ctx, metav1.ListOptions{})
+	sl, err := labels.ValidatedSelectorFromSet(c.infraLabelMap)
+	if err != nil {
+		return nil, err
+	}
+	return c.snapClient.SnapshotV1().VolumeSnapshots(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: sl.String(),
+	})
 }
 
 func (c *client) GetVolumeSnapshotContent(ctx context.Context, name string) (*snapshotv1.VolumeSnapshotContent, error) {
