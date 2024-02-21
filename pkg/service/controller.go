@@ -51,16 +51,6 @@ var controllerCaps = []csi.ControllerServiceCapability_RPC_Type{
 	csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
 }
 
-// Contains tells whether a contains x.
-func contains(arr []string, val string) bool {
-	for _, itrVal := range arr {
-		if val == itrVal {
-			return true
-		}
-	}
-	return false
-}
-
 func (c *ControllerService) validateCreateVolumeRequest(req *csi.CreateVolumeRequest) error {
 	if req == nil {
 		return status.Error(codes.InvalidArgument, "missing request")
@@ -86,7 +76,7 @@ func (c *ControllerService) validateCreateVolumeRequest(req *csi.CreateVolumeReq
 			return unallowedStorageClass
 		}
 	}
-	if !contains(c.storageClassEnforcement.AllowList, storageClassName) {
+	if !util.Contains(c.storageClassEnforcement.AllowList, storageClassName) {
 		return unallowedStorageClass
 	}
 
