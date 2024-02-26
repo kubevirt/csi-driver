@@ -26,15 +26,17 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/kubernetes-csi/csi-test/v5/pkg/sanity"
-
 	"github.com/google/uuid"
+	"github.com/kubernetes-csi/csi-test/v5/pkg/sanity"
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	fakeclient "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/mount"
+	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/csi-driver/pkg/kubevirt"
 	"kubevirt.io/csi-driver/pkg/service"
@@ -64,6 +66,7 @@ func createVirtClient() (kubevirt.Client, service.DeviceLister) {
 		dvMap:         make(map[string]*cdiv1.DataVolume),
 		vmiMap:        make(map[string]*kubevirtv1.VirtualMachineInstance),
 		hotpluggedMap: make(map[string]device),
+		snapshotMap:   make(map[string]*snapshotv1.VolumeSnapshot),
 	}
 	key := getKey(infraClusterNamespace, nodeID)
 	client.vmiMap[key] = &kubevirtv1.VirtualMachineInstance{
@@ -97,6 +100,7 @@ type fakeKubeVirtClient struct {
 	dvMap         map[string]*cdiv1.DataVolume
 	vmiMap        map[string]*kubevirtv1.VirtualMachineInstance
 	hotpluggedMap map[string]device
+	snapshotMap   map[string]*snapshotv1.VolumeSnapshot
 }
 
 func (k *fakeKubeVirtClient) Ping(ctx context.Context) error {
@@ -168,6 +172,58 @@ func (k *fakeKubeVirtClient) EnsureVolumeAvailable(_ context.Context, namespace,
 
 func (k *fakeKubeVirtClient) EnsureVolumeRemoved(_ context.Context, namespace, vmName, volumeName string, timeout time.Duration) error {
 	return nil
+}
+
+func (k *fakeKubeVirtClient) EnsureSnapshotReady(_ context.Context, namespace, name string, timeout time.Duration) error {
+	return nil
+}
+
+func (k *fakeKubeVirtClient) CreateVolumeSnapshot(_ context.Context, namespace, name, volumeName, snapclassName string) (*snapshotv1.VolumeSnapshot, error) {
+	snapshot := &snapshotv1.VolumeSnapshot{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: snapshotv1.VolumeSnapshotSpec{
+			Source: snapshotv1.VolumeSnapshotSource{
+				PersistentVolumeClaimName: &volumeName,
+			},
+			VolumeSnapshotClassName: &snapclassName,
+		},
+		Status: &snapshotv1.VolumeSnapshotStatus{
+			ReadyToUse:                     ptr.To[bool](true),
+			RestoreSize:                    ptr.To[resource.Quantity](resource.MustParse("1Gi")),
+			BoundVolumeSnapshotContentName: ptr.To[string]("snapcontent"),
+		},
+	}
+	key := getKey(namespace, name)
+	snapshot.SetUID(types.UID(uuid.NewString()))
+	k.snapshotMap[key] = snapshot
+	return snapshot, nil
+}
+
+func (k *fakeKubeVirtClient) GetVolumeSnapshot(_ context.Context, namespace, name string) (*snapshotv1.VolumeSnapshot, error) {
+	snapKey := getKey(namespace, name)
+	if k.snapshotMap[snapKey] == nil {
+		return nil, errors.NewNotFound(snapshotv1.Resource("VolumeSnapshot"), name)
+	}
+	return k.snapshotMap[snapKey], nil
+}
+
+func (k *fakeKubeVirtClient) DeleteVolumeSnapshot(_ context.Context, namespace, name string) error {
+	snapKey := getKey(namespace, name)
+	delete(k.snapshotMap, snapKey)
+	return nil
+}
+
+func (k *fakeKubeVirtClient) ListVolumeSnapshots(_ context.Context, namespace string) (*snapshotv1.VolumeSnapshotList, error) {
+	res := snapshotv1.VolumeSnapshotList{}
+	for _, s := range k.snapshotMap {
+		if s != nil {
+			res.Items = append(res.Items, *s)
+		}
+	}
+	return &res, nil
 }
 
 func (k *fakeKubeVirtClient) List() ([]byte, error) {

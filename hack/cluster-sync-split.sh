@@ -4,7 +4,7 @@ set -euo pipefail
 
 TENANT_CLUSTER_NAMESPACE=${TENANT_CLUSTER_NAMESPACE:-kvcluster}
 CSI_DRIVER_NAMESPACE=${CSI_DRIVER_NAMESPACE:-kubevirt-csi-driver}
-INFRA_STORAGE_CLASS=${INFRA_STORAGE_CLASS:-local}
+INFRA_STORAGE_CLASS=${INFRA_STORAGE_CLASS:-rook-ceph-block}
 
 INFRA_REGISTRY=${REGISTRY:-registry:5000}
 REGISTRY=${REGISTRY:-192.168.66.2:5000}
@@ -47,13 +47,12 @@ END
 
 function cluster::generate_controller_dev_kustomization() {
   cat <<- END > ./deploy/$1/dev-overlay/kustomization.yaml
-bases:
-- ../base
-namespace: $2
-patchesStrategicMerge:
-- controller.yaml
 resources:
+- ../base
 - infra-namespace-configmap.yaml
+namespace: $2
+patches:
+- path: controller.yaml
 END
 }
 
@@ -68,6 +67,7 @@ END
 mkdir -p ./deploy/controller-infra/dev-overlay
 mkdir -p ./deploy/tenant/dev-overlay
 
+cluster::generate_controller_rbac $TENANT_CLUSTER_NAMESPACE
 cluster::generate_tenant_dev_kustomization
 cluster::generate_controller_dev_kustomization "controller-infra" $TENANT_CLUSTER_NAMESPACE
 tenant::deploy_csidriver_namespace $CSI_DRIVER_NAMESPACE
@@ -82,6 +82,11 @@ cluster::generate_infra_controller_overlay
 cluster::generate_node_overlay
 cluster::generate_storageclass_overlay "tenant" $INFRA_STORAGE_CLASS
 cluster::patch_local_storage_profile
+
+# ******************************************************
+# Deploy the snapshot resources
+# ******************************************************
+tenant::deploy_snapshotresources
 
 # ******************************************************
 # Deploy the tenant yaml

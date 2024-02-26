@@ -4,7 +4,7 @@ set -euo pipefail
 
 TENANT_CLUSTER_NAMESPACE=${TENANT_CLUSTER_NAMESPACE:-kvcluster}
 CSI_DRIVER_NAMESPACE=${CSI_DRIVER_NAMESPACE:-kubevirt-csi-driver}
-INFRA_STORAGE_CLASS=${INFRA_STORAGE_CLASS:-local}
+INFRA_STORAGE_CLASS=${INFRA_STORAGE_CLASS:-rook-ceph-block}
 REGISTRY=${REGISTRY:-192.168.66.2:5000}
 TARGET_NAME=${TARGET_NAME:-kubevirt-csi-driver}
 TAG=${TAG:-latest}
@@ -91,6 +91,8 @@ END
 # ******************************************************
 mkdir -p ./deploy/controller-tenant/dev-overlay
 mkdir -p ./deploy/tenant/dev-overlay
+
+cluster::generate_controller_rbac $TENANT_CLUSTER_NAMESPACE
 cluster::generate_tenant_dev_kustomization
 cluster::generate_controller_dev_kustomization "controller-tenant" $CSI_DRIVER_NAMESPACE
 tenant::deploy_csidriver_namespace $CSI_DRIVER_NAMESPACE
@@ -105,6 +107,11 @@ cluster::generate_tenant_controller_overlay
 cluster::generate_node_overlay
 cluster::generate_storageclass_overlay "tenant" $INFRA_STORAGE_CLASS
 cluster::patch_local_storage_profile
+
+# ******************************************************
+# Deploy the snapshot resources
+# ******************************************************
+tenant::deploy_snapshotresources
 
 # ******************************************************
 # Deploy the tenant yaml

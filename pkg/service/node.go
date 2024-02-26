@@ -207,11 +207,19 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if err := n.validateNodePublishRequest(req); err != nil {
 		return nil, err
 	}
+	fsType := ""
+	if req.VolumeCapability.GetMount() != nil {
+		fsType = req.VolumeCapability.GetMount().FsType
+	}
 
 	mountOptions := []string{}
 	block := req.GetVolumeCapability().GetBlock() != nil
 	if block {
 		mountOptions = append(mountOptions, "bind")
+	} else if fsType == "xfs" {
+		// Add nouuid to fix duplicate XFS uuid when restoring from snapshot.
+		// Alternatively we could run xfs_admin -U generate <device> to generate a new UUID
+		mountOptions = append(mountOptions, "nouuid")
 	}
 
 	// volumeID = serialID = kubevirt's DataVolume.metadata.uid
@@ -232,7 +240,6 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return &csi.NodePublishVolumeResponse{}, nil
 	}
 
-	fsType := ""
 	if block {
 		err = n.ensureMountFileExists(targetPath)
 		if err != nil {
@@ -245,7 +252,6 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 			return nil, err
 		}
 		klog.V(3).Infof("GetMount() %v", req.VolumeCapability.GetMount())
-		fsType = req.VolumeCapability.GetMount().FsType
 		klog.V(3).Infof("Mounting devicePath %s, on targetPath: %s with FS type: %s",
 			device, targetPath, fsType)
 	}

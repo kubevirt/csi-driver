@@ -2,6 +2,8 @@
 
 set -euo pipefail
 export TENANT_CLUSTER_NAMESPACE=${TENANT_CLUSTER_NAMESPACE:-kvcluster}
+# ensure we use rook ceph for the infra storage so we can test snapshots
+export KUBEVIRT_STORAGE=rook-ceph-default
 
 # ******************************************************
 # Start infra cluster with tenant cluster

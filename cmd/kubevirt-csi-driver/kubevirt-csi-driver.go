@@ -83,7 +83,10 @@ func handle() {
 		klog.Fatalf("Failed to build tenant client set: %v", err)
 	}
 
-	virtClient, err := kubevirt.NewClient(infraRestConfig)
+	infraClusterLabelsMap := parseLabels()
+	storageClassEnforcement := configureStorageClassEnforcement(infraStorageClassEnforcement)
+
+	virtClient, err := kubevirt.NewClient(infraRestConfig, infraClusterLabelsMap, storageClassEnforcement)
 	if err != nil {
 		klog.Fatal(err)
 	}
@@ -107,21 +110,6 @@ func handle() {
 		}
 	}
 
-	infraClusterLabelsMap := parseLabels()
-	var storageClassEnforcement util.StorageClassEnforcement
-	//parse yaml
-	if infraStorageClassEnforcement == "" {
-		storageClassEnforcement = util.StorageClassEnforcement{
-			AllowAll:     true,
-			AllowDefault: true,
-		}
-	} else {
-		err := yaml.Unmarshal([]byte(infraStorageClassEnforcement), &storageClassEnforcement)
-		if err != nil {
-			klog.Fatalf("Failed to parse infra-storage-class-enforcement %v", err)
-		}
-	}
-
 	driver := service.NewKubevirtCSIDriver(virtClient,
 		identityClientset,
 		*infraClusterNamespace,
@@ -132,6 +120,24 @@ func handle() {
 		*runControllerService)
 
 	driver.Run(*endpoint)
+}
+
+func configureStorageClassEnforcement(infraStorageClassEnforcement string) util.StorageClassEnforcement {
+	var storageClassEnforcement util.StorageClassEnforcement
+
+	if infraStorageClassEnforcement == "" {
+		storageClassEnforcement = util.StorageClassEnforcement{
+			AllowAll:     true,
+			AllowDefault: true,
+		}
+	} else {
+		//parse yaml
+		err := yaml.Unmarshal([]byte(infraStorageClassEnforcement), &storageClassEnforcement)
+		if err != nil {
+			klog.Fatalf("Failed to parse infra-storage-class-enforcement %v", err)
+		}
+	}
+	return storageClassEnforcement
 }
 
 func parseLabels() map[string]string {

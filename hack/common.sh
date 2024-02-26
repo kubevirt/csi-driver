@@ -88,23 +88,23 @@ END
 
 function cluster::generate_tenant_dev_kustomization() {
   cat <<- END > ./deploy/tenant/dev-overlay/kustomization.yaml
-bases:
+resources:
 - ../base
 namespace: $CSI_DRIVER_NAMESPACE
-patchesStrategicMerge:
-- infra-namespace-configmap.yaml
-- node.yaml
-- storageclass.yaml
+patches:
+- path: infra-namespace-configmap.yaml
+- path: node.yaml
+- path: storageclass.yaml
 END
 }
 
 function cluster::generate_controller_dev_kustomization() {
   cat <<- END > ./deploy/$1/dev-overlay/kustomization.yaml
-bases:
+resources:
 - ../base
 namespace: $2
-patchesStrategicMerge:
-- controller.yaml
+patches:
+- path: controller.yaml
 END
 }
 
@@ -123,4 +123,45 @@ function cluster::patch_local_storage_profile() {
 if ./kubevirtci kubectl get storageprofile local; then
   ./kubevirtci kubectl patch storageprofile local --type='merge' -p '{"spec":{"claimPropertySets":[{"accessModes":["ReadWriteOnce"], "volumeMode": "Filesystem"}]}}'
 fi
+}
+
+function tenant::deploy_snapshotresources() {
+  ./kubevirtci kubectl-tenant apply -f ./deploy/tenant/base/rbac-snapshot-controller.yaml
+  ./kubevirtci kubectl-tenant apply -f ./deploy/tenant/base/setup-snapshot-controller.yaml
+  ./kubevirtci kubectl-tenant apply -f ./deploy/tenant/base/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+  ./kubevirtci kubectl-tenant apply -f ./deploy/tenant/base/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+  ./kubevirtci kubectl-tenant apply -f ./deploy/tenant/base/snapshot.storage.k8s.io_volumesnapshots.yaml
+}
+
+function cluster::generate_controller_rbac() {
+  cat <<- END | ./kubevirtci kubectl apply -f -
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubevirt-csi-snapshot
+rules:
+- apiGroups: [""]
+  resources: ["persistentvolumes"]
+  verbs: ["get"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get"]
+- apiGroups: ["snapshot.storage.k8s.io"]
+  resources: ["volumesnapshotclasses"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubevirt-csi-snapshot
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubevirt-csi-snapshot
+subjects:
+- kind: ServiceAccount
+  name: kubevirt-csi
+  namespace: $1
+END
 }

@@ -110,6 +110,9 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
+            limits:
+              memory: 500Mi
+              cpu: 250m
         - name: csi-liveness-probe
           image: quay.io/openshift/origin-csi-livenessprobe:latest
           args:
@@ -125,6 +128,32 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
+            limits:
+              memory: 500Mi
+              cpu: 250m
+        - name: csi-snapshotter
+          args:
+          - "--v=5"
+          - "--csi-address=/csi/csi.sock"
+          - "--kubeconfig=/var/run/secrets/tenantcluster/value"
+          image: k8s.gcr.io/sig-storage/csi-snapshotter:v4.2.1
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /csi
+            name: socket-dir
+          - name: tenantcluster
+            mountPath: "/var/run/secrets/tenantcluster"
+          resources:
+            requests:
+              memory: 20Mi
+              cpu: 10m
+            limits:
+              memory: 500Mi
+              cpu: 250m
       volumes:
         - name: socket-dir
           emptyDir: {}

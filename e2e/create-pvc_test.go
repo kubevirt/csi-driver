@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -51,41 +50,23 @@ var _ = Describe("CreatePVC", func() {
 	var tmpDir string
 	var tenantClient *kubernetes.Clientset
 	var infraClient *kubernetes.Clientset
-	var infraKubeconfigFile string
-	var tenantAccessor tenantClusterAccess
+	var tenantAccessor *tenantClusterAccess
 	var namespace string
 
 	BeforeEach(func() {
-		var err error
-
-		if len(TenantKubeConfig) == 0 {
-			tmpDir, err = os.MkdirTemp(WorkingDir, "pvc-creation-tests")
-			Expect(err).ToNot(HaveOccurred())
-
-			infraKubeconfigFile = filepath.Join(tmpDir, "infra-kubeconfig.yaml")
-
-			clientConfig := defaultInfraClientConfig(&pflag.FlagSet{})
-			cfg, err := clientConfig.ClientConfig()
-			Expect(err).ToNot(HaveOccurred())
-			virtClient = kubecli.NewForConfigOrDie(cfg)
-			Expect(err).ToNot(HaveOccurred())
-
-			tenantAccessor = newTenantClusterAccess("kvcluster", infraKubeconfigFile, tenantApiPort)
-
-			err = tenantAccessor.startForwardingTenantAPI()
-			Expect(err).ToNot(HaveOccurred())
-		} else {
-			tenantAccessor = newTenantClusterAccess(InfraClusterNamespace, TenantKubeConfig, tenantApiPort)
-		}
-		tenantClient, err = tenantAccessor.generateTenantClient()
+		tmpDir, err := os.MkdirTemp(WorkingDir, "pvc-creation-tests")
 		Expect(err).ToNot(HaveOccurred())
-
 		namespace = "e2e-test-create-pvc-" + rand.String(6)
+
+		tenantAccessor = createTenantAccessor(namespace, tmpDir)
 		ns := &k8sv1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: namespace,
 			},
 		}
+
+		tenantClient, err = tenantAccessor.generateTenantClient()
+		Expect(err).ToNot(HaveOccurred())
 
 		infraClient, err = generateInfraClient()
 		Expect(err).ToNot(HaveOccurred())
