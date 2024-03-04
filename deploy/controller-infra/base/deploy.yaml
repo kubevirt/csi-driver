@@ -110,9 +110,6 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
-            limits:
-              memory: 500Mi
-              cpu: 250m
         - name: csi-liveness-probe
           image: quay.io/openshift/origin-csi-livenessprobe:latest
           args:
@@ -128,9 +125,6 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
-            limits:
-              memory: 500Mi
-              cpu: 250m
         - name: csi-snapshotter
           args:
           - "--v=5"
@@ -151,9 +145,6 @@ spec:
             requests:
               memory: 20Mi
               cpu: 10m
-            limits:
-              memory: 500Mi
-              cpu: 250m
       volumes:
         - name: socket-dir
           emptyDir: {}
