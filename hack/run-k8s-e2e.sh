@@ -100,7 +100,15 @@ spec:
       curl -LO "https://dl.k8s.io/release/v1.26.0/bin/linux/amd64/kubectl"
       chmod +x kubectl
       echo \$TEST_DRIVER_PATH
-      ./e2e.test -kubeconfig \${KUBECONFIG} -kubectl-path ./kubectl -ginkgo.v -ginkgo.timeout=2h -ginkgo.focus='External.Storage.*csi.kubevirt.io.*' -ginkgo.skip='CSI Ephemeral-volume*' -ginkgo.skip='SELinuxMountReadWriteOncePod.*' -storage.testdriver=\${TEST_DRIVER_PATH}/test-driver.yaml -provider=local -report-dir=/tmp
+      ./e2e.test -kubeconfig \${KUBECONFIG} \
+            -kubectl-path ./kubectl \
+            -ginkgo.v \
+            -ginkgo.timeout=2h \
+            -ginkgo.focus='External.Storage.*csi.kubevirt.io.*' \
+            -ginkgo.skip='CSI Ephemeral-volume*' \
+            -ginkgo.skip='SELinuxMountReadWriteOncePod.*' \
+            -storage.testdriver=\${TEST_DRIVER_PATH}/test-driver.yaml \
+            -provider=local -report-dir=/tmp
       ret=\$?
       while [ ! -f /tmp/exit.txt ]; do
         sleep 2
@@ -135,9 +143,16 @@ if ./kubevirtci kubectl get storageprofile local; then
 fi
 }
 
+function make_control_plane_schedulable() {
+  for node in $(./kubevirtci kubectl-tenant get nodes -l node-role.kubernetes.io/control-plane -o custom-columns=:.metadata.name --no-headers 2>/dev/null | tail -n +2); do
+    ./kubevirtci kubectl-tenant patch node --type=json -p '[{"op": "remove", "path": "/spec/taints"}]' "${node}" | tail -n +2 || true
+  done
+}
+
 trap cleanup EXIT SIGSTOP SIGKILL SIGTERM
 ensure_cluster_up
 ensure_synced
+make_control_plane_schedulable
 create_test_driver_cm
 create_capk_secret
 patch_local_storage_profile

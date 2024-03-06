@@ -30,8 +30,24 @@ if [ ! -f "${KUBECTL_PATH}" ]; then
         curl -L "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" -o ${KUBECTL_PATH}
         chmod u+x ${KUBECTL_PATH}
 fi
-        
+
+GINKGO_LABELS=""
+if [[ -n ${LABELS} ]]; then
+  GINKGO_LABELS="--ginkgo.label-filter=${LABELS}"
+fi
+
 rm -rf $TEST_WORKING_DIR
 mkdir -p $TEST_WORKING_DIR
 
-$BIN_DIR/e2e.test -ginkgo.v -test.v -ginkgo.no-color --kubectl-path $KUBECTL_PATH --clusterctl-path $CLUSTERCTL_PATH  --virtctl-path $VIRTCTL_PATH --working-dir $TEST_WORKING_DIR --dump-path $DUMP_PATH --infra-kubeconfig=$KUBECONFIG --infra-cluster-namespace=${INFRA_CLUSTER_NAMESPACE}
+$BIN_DIR/e2e.test \
+  -ginkgo.v \
+  -test.v \
+  -ginkgo.no-color \
+  --kubectl-path "${KUBECTL_PATH}" \
+  --clusterctl-path "${CLUSTERCTL_PATH}"  \
+  --virtctl-path "${VIRTCTL_PATH}" \
+  --working-dir "${TEST_WORKING_DIR}" \
+  --dump-path "${DUMP_PATH}" \
+  --infra-kubeconfig="${KUBECONFIG}" \
+  --infra-cluster-namespace="${INFRA_CLUSTER_NAMESPACE}" \
+  ${GINKGO_LABELS}
