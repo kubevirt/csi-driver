@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	goerrors "errors"
 	"fmt"
+	"strings"
 	"time"
 
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
@@ -62,10 +63,11 @@ type client struct {
 	restClient              *rest.RESTClient
 	storageClassEnforcement util.StorageClassEnforcement
 	infraLabelMap           map[string]string
+	volumePrefix            string
 }
 
 // NewClient New creates our client wrapper object for the actual kubeVirt and kubernetes clients we use.
-func NewClient(config *rest.Config, infraClusterLabelMap map[string]string, storageClassEnforcement util.StorageClassEnforcement) (Client, error) {
+func NewClient(config *rest.Config, infraClusterLabelMap map[string]string, storageClassEnforcement util.StorageClassEnforcement, prefix string) (Client, error) {
 	result := &client{}
 
 	Scheme := runtime.NewScheme()
@@ -108,6 +110,7 @@ func NewClient(config *rest.Config, infraClusterLabelMap map[string]string, stor
 	result.restClient = restClient
 	result.snapClient = snapClient
 	result.infraLabelMap = infraClusterLabelMap
+	result.volumePrefix = fmt.Sprintf("%s-", prefix)
 	result.storageClassEnforcement = storageClassEnforcement
 	return result, nil
 }
@@ -211,7 +214,11 @@ func (c *client) GetVirtualMachine(ctx context.Context, namespace, name string) 
 
 // CreateDataVolume creates a new DataVolume under a namespace
 func (c *client) CreateDataVolume(ctx context.Context, namespace string, dataVolume *cdiv1.DataVolume) (*cdiv1.DataVolume, error) {
-	return c.cdiClient.CdiV1beta1().DataVolumes(namespace).Create(ctx, dataVolume, metav1.CreateOptions{})
+	if !strings.HasPrefix(dataVolume.GetName(), c.volumePrefix) {
+		return nil, ErrInvalidVolume
+	} else {
+		return c.cdiClient.CdiV1beta1().DataVolumes(namespace).Create(ctx, dataVolume, metav1.CreateOptions{})
+	}
 }
 
 // Ping performs a minimal request to the infra-cluster k8s api
@@ -222,11 +229,27 @@ func (c *client) Ping(ctx context.Context) error {
 
 // DeleteDataVolume deletes a DataVolume from a namespace by name
 func (c *client) DeleteDataVolume(ctx context.Context, namespace string, name string) error {
-	return c.cdiClient.CdiV1beta1().DataVolumes(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	if dv, err := c.GetDataVolume(ctx, namespace, name); errors.IsNotFound(err) {
+		return nil
+	} else if err != nil {
+		return err
+	} else if dv != nil {
+		return c.cdiClient.CdiV1beta1().DataVolumes(namespace).Delete(ctx, dv.Name, metav1.DeleteOptions{})
+	}
+	return nil
 }
 
 func (c *client) GetDataVolume(ctx context.Context, namespace string, name string) (*cdiv1.DataVolume, error) {
-	return c.cdiClient.CdiV1beta1().DataVolumes(namespace).Get(ctx, name, metav1.GetOptions{})
+	dv, err := c.cdiClient.CdiV1beta1().DataVolumes(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if dv != nil {
+		if !containsLabels(dv.Labels, c.infraLabelMap) || !strings.HasPrefix(dv.GetName(), c.volumePrefix) {
+			return nil, ErrInvalidVolume
+		}
+	}
+	return dv, nil
 }
 
 func (c *client) CreateVolumeSnapshot(ctx context.Context, namespace, name, claimName, snapshotClassName string) (*snapshotv1.VolumeSnapshot, error) {
@@ -407,3 +430,4 @@ func (c *client) ListVolumeSnapshots(ctx context.Context, namespace string) (*sn
 }
 
 var ErrInvalidSnapshot = goerrors.New("invalid snapshot name")
+var ErrInvalidVolume = goerrors.New("invalid volume name")
