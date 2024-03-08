@@ -8,6 +8,7 @@ INFRA_STORAGE_CLASS=${INFRA_STORAGE_CLASS:-rook-ceph-block}
 REGISTRY=${REGISTRY:-192.168.66.2:5000}
 TARGET_NAME=${TARGET_NAME:-kubevirt-csi-driver}
 TAG=${TAG:-latest}
+export INFRACLUSTER_LABELS=${INFRACLUSTER_LABELS:-"tenant-cluster=${TENANT_CLUSTER_NAMESPACE}"}
 
 function tenant::deploy_kubeconfig_secret() {
   TOKEN=$(_kubectl create token kubevirt-csi -n $TENANT_CLUSTER_NAMESPACE)

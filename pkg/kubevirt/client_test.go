@@ -9,6 +9,7 @@ import (
 
 	k8sv1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
@@ -20,8 +21,8 @@ import (
 )
 
 const (
-	storageClassName             = "test-storage-class"
 	defaultStorageClassName      = "default-storage-class"
+	storageClassName             = "test-storage-class"
 	volumeSnapshotClassName      = "test-volume-snapshot-class"
 	provisioner                  = "test-provisioner"
 	nonMatchingProvisioner       = "non-matching-provisioner-snapshot-class"
@@ -29,9 +30,11 @@ const (
 	otherVolumeSnapshotClassName = "other-volume-snapshot-class"
 	testVolumeName               = "test-volume"
 	testVolumeNameNotAllowed     = "test-volume-not-allowed"
-	testClaimName                = "test-claim"
-	testClaimName2               = "test-claim2"
-	testClaimName3               = "test-claim3"
+	validDataVolume              = "pvc-valid-data-volume"
+	nolabelDataVolume            = "nolabel-data-volume"
+	testClaimName                = "pvc-valid-data-volume"
+	testClaimName2               = "pvc-valid-data-volume2"
+	testClaimName3               = "pvc-valid-data-volume3"
 	testNamespace                = "test-namespace"
 	unboundTestClaimName         = "unbound-test-claim"
 )
@@ -40,6 +43,63 @@ var _ = Describe("Client", func() {
 	var (
 		c *client
 	)
+
+	Context("volumes", func() {
+		BeforeEach(func() {
+			// Setup code before each test
+			c = NewFakeClient()
+			c = NewFakeCdiClient(c, createValidDataVolume(), createNoLabelDataVolume(), createWrongPrefixDataVolume())
+		})
+
+		DescribeTable("GetDataVolume should return the right thing", func(volumeName string, expectedErr error) {
+			_, err := c.GetDataVolume(context.Background(), testNamespace, volumeName)
+			if expectedErr != nil {
+				Expect(err).To(Equal(expectedErr))
+			} else {
+				Expect(err).ToNot(HaveOccurred())
+			}
+		},
+			Entry("when the data volume exists", validDataVolume, nil),
+			Entry("when the data volume exists, but no labels", nolabelDataVolume, ErrInvalidVolume),
+			Entry("when the data volume exists, but no labels", testVolumeName, ErrInvalidVolume),
+		)
+
+		It("should return not exists if the data volume does not exist", func() {
+			_, err := c.GetDataVolume(context.Background(), testNamespace, "notexist")
+			Expect(err).To(HaveOccurred())
+			Expect(errors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("DeleteDataVolume should not delete volumes if the right prefix doesn't exist", func() {
+			err := c.DeleteDataVolume(context.Background(), testNamespace, testVolumeName)
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(Equal(ErrInvalidVolume))
+		})
+
+		It("DeleteDataVolume return nil if volume doesn't exist", func() {
+			err := c.DeleteDataVolume(context.Background(), testNamespace, "notexist")
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("DeleteDataVolume should delete volumes if valid", func() {
+			err := c.DeleteDataVolume(context.Background(), testNamespace, validDataVolume)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Should create a volume if a valid volume is passed", func() {
+			dataVolume := createValidDataVolume()
+			dataVolume.Name = "pvc-test2"
+			_, err := c.CreateDataVolume(context.Background(), testNamespace, dataVolume)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Should not create a volume if an invalid volume name is passed", func() {
+			dataVolume := createValidDataVolume()
+			dataVolume.Name = "test"
+			_, err := c.CreateDataVolume(context.Background(), testNamespace, dataVolume)
+			Expect(err).To(Equal(ErrInvalidVolume))
+		})
+	})
 
 	Context("Snapshot class", func() {
 		BeforeEach(func() {
@@ -118,23 +178,13 @@ var _ = Describe("Client", func() {
 	})
 
 	Context("Snapshot operators", func() {
-		createValidDataVolume := func(name string) *cdiv1.DataVolume {
-			return &cdiv1.DataVolume{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: testNamespace,
-				},
-				Spec: cdiv1.DataVolumeSpec{},
-			}
-		}
-
 		BeforeEach(func() {
 			// Setup code before each test
-			c = NewFakeCdiClient(NewFakeClient(), createValidDataVolume(testClaimName))
+			c = NewFakeCdiClient(NewFakeClient(), createValidDataVolume())
 		})
 
 		It("should return error if the volume snapshot class is not found", func() {
-			s, err := c.CreateVolumeSnapshot(context.TODO(), testNamespace, "snap", testClaimName, "non-existing-snapshot-class")
+			s, err := c.CreateVolumeSnapshot(context.TODO(), testNamespace, "snap", validDataVolume, "non-existing-snapshot-class")
 			Expect(err).To(HaveOccurred())
 			Expect(s).To(BeNil())
 			Expect(err.Error()).To(ContainSubstring("provided volume snapshot class cannot be matched with storage class"))
@@ -148,7 +198,7 @@ var _ = Describe("Client", func() {
 		})
 
 		It("should delete volumesnapshot if it exists and it valid", func() {
-			s, err := c.CreateVolumeSnapshot(context.TODO(), testNamespace, "snap", testClaimName, volumeSnapshotClassName)
+			s, err := c.CreateVolumeSnapshot(context.TODO(), testNamespace, "snap", validDataVolume, volumeSnapshotClassName)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(s.Name).To(Equal("snap"))
 			err = c.DeleteVolumeSnapshot(context.TODO(), s.GetNamespace(), s.GetName())
@@ -161,16 +211,16 @@ var _ = Describe("Client", func() {
 		})
 
 		It("should return error if get volume returns an error", func() {
-			s, err := c.CreateVolumeSnapshot(context.TODO(), testNamespace, "snap", testClaimName, volumeSnapshotClassName)
+			s, err := c.CreateVolumeSnapshot(context.TODO(), testNamespace, "snap", validDataVolume, volumeSnapshotClassName)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(s.Name).To(Equal("snap"))
-			c.infraLabelMap = map[string]string{"test": "test"}
+			c.infraLabelMap = map[string]string{"test": "test2"}
 			err = c.DeleteVolumeSnapshot(context.TODO(), s.GetNamespace(), s.GetName())
 			Expect(err).To(Equal(ErrInvalidSnapshot))
 		})
 
 		It("should properly list snapshots", func() {
-			s, err := c.CreateVolumeSnapshot(context.TODO(), testNamespace, "snap", testClaimName, volumeSnapshotClassName)
+			s, err := c.CreateVolumeSnapshot(context.TODO(), testNamespace, "snap", validDataVolume, volumeSnapshotClassName)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(s.Name).To(Equal("snap"))
 			l, err := c.ListVolumeSnapshots(context.TODO(), testNamespace)
@@ -206,7 +256,14 @@ var _ = Describe("Client", func() {
 				util.StorageClassEnforcement{AllowList: []string{}, AllowDefault: true}, false),
 		)
 	})
+
 })
+
+func NewFakeCdiClient(c *client, objects ...runtime.Object) *client {
+	fakeCdiClient := cdicli.NewSimpleClientset(objects...)
+	c.cdiClient = fakeCdiClient
+	return c
+}
 
 func NewFakeClient() *client {
 	storageClass := createStorageClass(storageClassName, provisioner, false)
@@ -236,6 +293,8 @@ func NewFakeClient() *client {
 	result := &client{
 		kubernetesClient: fakeK8sClient,
 		snapClient:       fakeSnapClient,
+		infraLabelMap:    map[string]string{"test": "test"},
+		volumePrefix:     "pvc-",
 		storageClassEnforcement: util.StorageClassEnforcement{
 			AllowList:    []string{storageClassName},
 			AllowAll:     false,
@@ -243,12 +302,6 @@ func NewFakeClient() *client {
 		},
 	}
 	return result
-}
-
-func NewFakeCdiClient(c *client, objects ...runtime.Object) *client {
-	fakeCdiClient := cdicli.NewSimpleClientset(objects...)
-	c.cdiClient = fakeCdiClient
-	return c
 }
 
 func createVolumeSnapshotClass(name, provisioner string, isDefault bool) *snapshotv1.VolumeSnapshotClass {
@@ -282,6 +335,7 @@ func createPersistentVolumeClaim(name, volumeName, storageClassName string) *k8s
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: testNamespace,
+			Labels:    map[string]string{"test": "test"},
 		},
 		Spec: k8sv1.PersistentVolumeClaimSpec{
 			StorageClassName: ptr.To[string](storageClassName),
@@ -303,4 +357,27 @@ func createStorageClass(name, provisioner string, isDefault bool) *storagev1.Sto
 		}
 	}
 	return res
+}
+
+func createDataVolume(name string, labels map[string]string) *cdiv1.DataVolume {
+	return &cdiv1.DataVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: testNamespace,
+			Labels:    labels,
+		},
+		Spec: cdiv1.DataVolumeSpec{},
+	}
+}
+
+func createValidDataVolume() *cdiv1.DataVolume {
+	return createDataVolume(validDataVolume, map[string]string{"test": "test"})
+}
+
+func createNoLabelDataVolume() *cdiv1.DataVolume {
+	return createDataVolume(nolabelDataVolume, nil)
+}
+
+func createWrongPrefixDataVolume() *cdiv1.DataVolume {
+	return createDataVolume(testVolumeName, map[string]string{"test": "test"})
 }

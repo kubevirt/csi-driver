@@ -10,18 +10,22 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/klog/v2"
 
 	"k8s.io/client-go/tools/clientcmd"
+	cdicli "kubevirt.io/csi-driver/pkg/generated/containerized-data-importer/client-go/clientset/versioned"
 	kubecli "kubevirt.io/csi-driver/pkg/generated/kubevirt/client-go/clientset/versioned"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
 	"github.com/spf13/pflag"
 	k8sv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes"
+	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 )
 
 var virtClient *kubecli.Clientset
@@ -282,6 +286,136 @@ var _ = Describe("CreatePVC", func() {
 		Entry("Filesystem volume mode", k8sv1.PersistentVolumeFilesystem, attacherPodFs),
 		Entry("Block volume mode", k8sv1.PersistentVolumeBlock, attacherPodBlock),
 	)
+
+	Context("Should prevent access to volumes from infra cluster", func() {
+		var tenantPVC *k8sv1.PersistentVolumeClaim
+		var tenantPV *k8sv1.PersistentVolume
+		var infraDV *cdiv1.DataVolume
+		var infraCdiClient *cdicli.Clientset
+		BeforeEach(func() {
+			var err error
+			infraCdiClient, err = generateInfraCdiClient()
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			By("Cleaning up resources for test")
+			if tenantPVC != nil {
+				err := tenantClient.CoreV1().PersistentVolumeClaims(tenantPVC.Namespace).Delete(context.Background(), tenantPVC.Name, metav1.DeleteOptions{})
+				Expect(err).ToNot(HaveOccurred())
+				Eventually(func() bool {
+					_, err := tenantClient.CoreV1().PersistentVolumeClaims(tenantPVC.Namespace).Get(context.Background(), tenantPVC.Name, metav1.GetOptions{})
+					return errors.IsNotFound(err)
+				}, 1*time.Minute, 2*time.Second).Should(BeTrue(), "tenant pvc should disappear")
+				tenantPVC = nil
+			}
+			if tenantPV != nil {
+				err := tenantClient.CoreV1().PersistentVolumes().Delete(context.Background(), tenantPV.Name, metav1.DeleteOptions{})
+				Expect(err).ToNot(HaveOccurred())
+				// For some reason this takes about 2 minutes.
+				Eventually(func() bool {
+					_, err := tenantClient.CoreV1().PersistentVolumes().Get(context.Background(), tenantPV.Name, metav1.GetOptions{})
+					return errors.IsNotFound(err)
+				}, 3*time.Minute, 2*time.Second).Should(BeTrue(), "tenant pv should disappear")
+				tenantPV = nil
+			}
+			if infraDV != nil {
+				_, err := infraCdiClient.CdiV1beta1().DataVolumes(InfraClusterNamespace).Get(context.Background(), infraDV.Name, metav1.GetOptions{})
+				Expect(err).ToNot(HaveOccurred())
+				err = infraCdiClient.CdiV1beta1().DataVolumes(InfraClusterNamespace).Delete(context.Background(), infraDV.Name, metav1.DeleteOptions{})
+				Expect(err).ToNot(HaveOccurred())
+				infraDV = nil
+			}
+		})
+
+		It("should not be able to create a PV and access a volume from the infra cluster that is not labeled", func() {
+			infraDV = &cdiv1.DataVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "infra-pvc",
+					Namespace: InfraClusterNamespace,
+				},
+				Spec: cdiv1.DataVolumeSpec{
+					Source: &cdiv1.DataVolumeSource{
+						Blank: &cdiv1.DataVolumeBlankImage{},
+					},
+					Storage: &cdiv1.StorageSpec{
+						Resources: k8sv1.ResourceRequirements{
+							Requests: k8sv1.ResourceList{
+								k8sv1.ResourceStorage: resource.MustParse("1Gi"),
+							},
+						},
+					},
+				},
+			}
+			var err error
+			infraDV, err = infraCdiClient.CdiV1beta1().DataVolumes(InfraClusterNamespace).Create(context.Background(), infraDV, metav1.CreateOptions{})
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Creating a specially crafted PV, attempt to access volume from infra cluster that should not be accessed")
+			tenantPV = &k8sv1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "tenant-pv",
+				},
+				Spec: k8sv1.PersistentVolumeSpec{
+					AccessModes: []k8sv1.PersistentVolumeAccessMode{k8sv1.ReadWriteOnce},
+					Capacity:    k8sv1.ResourceList{k8sv1.ResourceStorage: resource.MustParse("1Gi")},
+					PersistentVolumeSource: k8sv1.PersistentVolumeSource{
+						CSI: &k8sv1.CSIPersistentVolumeSource{
+							Driver:       "csi.kubevirt.io",
+							VolumeHandle: infraDV.Name,
+							VolumeAttributes: map[string]string{
+								"bus":    "scsi",
+								"serial": "abcd",
+								"storage.kubernetes.io/csiProvisionerIdentity": "1708112628060-923-csi.kubevirt.io",
+							},
+							FSType: "ext4",
+						},
+					},
+					StorageClassName:              "kubevirt",
+					PersistentVolumeReclaimPolicy: k8sv1.PersistentVolumeReclaimDelete,
+				},
+			}
+			_, err = tenantClient.CoreV1().PersistentVolumes().Create(context.Background(), tenantPV, metav1.CreateOptions{})
+			Expect(err).ToNot(HaveOccurred())
+			tenantPVC = &k8sv1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "tenant-pvc",
+				},
+				Spec: k8sv1.PersistentVolumeClaimSpec{
+					AccessModes: []k8sv1.PersistentVolumeAccessMode{k8sv1.ReadWriteOnce},
+					Resources: k8sv1.ResourceRequirements{
+						Requests: k8sv1.ResourceList{
+							k8sv1.ResourceStorage: resource.MustParse("1Gi"),
+						},
+					},
+					VolumeName: tenantPV.Name,
+				},
+			}
+			tenantPVC, err = tenantClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), tenantPVC, metav1.CreateOptions{})
+			Expect(err).ToNot(HaveOccurred())
+			pod := writerPodFs(tenantPVC.Name)
+			By("Creating pod that attempts to use the specially crafted PVC")
+			pod, err = tenantClient.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+			Expect(err).ToNot(HaveOccurred())
+			defer deletePod(tenantClient.CoreV1(), namespace, pod.Name)
+
+			involvedObject := fmt.Sprintf("involvedObject.name=%s", pod.Name)
+			By("Waiting for error event to show up in pod event log")
+			Eventually(func() bool {
+				list, err := tenantClient.CoreV1().Events(namespace).List(context.Background(), metav1.ListOptions{
+					FieldSelector: involvedObject, TypeMeta: metav1.TypeMeta{Kind: "Pod"},
+				})
+				Expect(err).ToNot(HaveOccurred())
+				for _, event := range list.Items {
+					klog.Infof("Event: %s [%s]", event.Message, event.Reason)
+					if event.Reason == "FailedAttachVolume" && strings.Contains(event.Message, "invalid volume name") {
+						return true
+					}
+				}
+				return false
+			}, 30*time.Second, time.Second).Should(BeTrue(), "error event should show up in pod event log")
+		})
+	})
 })
 
 func writerPodFs(volumeName string) *k8sv1.Pod {

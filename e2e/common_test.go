@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/klog/v2"
+	cdicli "kubevirt.io/csi-driver/pkg/generated/containerized-data-importer/client-go/clientset/versioned"
 )
 
 // RunCmd function executes a command, and returns STDOUT and STDERR bytes
@@ -190,6 +191,15 @@ func generateInfraClient() (*kubernetes.Clientset, error) {
 	}
 
 	return kubernetes.NewForConfig(restConfig)
+}
+
+func generateInfraCdiClient() (*cdicli.Clientset, error) {
+	restConfig, err := generateInfraRestConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	return cdicli.NewForConfig(restConfig)
 }
 
 func generateInfraSnapClient() (*snapcli.Clientset, error) {
