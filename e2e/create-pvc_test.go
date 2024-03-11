@@ -109,6 +109,107 @@ var _ = Describe("CreatePVC", func() {
 		Entry("Block volume mode", Label("Block"), k8sv1.PersistentVolumeBlock, withBlock, blockAttachCommand),
 	)
 
+	It("should creates a RW-Many block pvc and attaches to pod", Label("pvcCreation", "RWX", "Block"), func() {
+		pvcName := "test-pvc"
+		storageClassName := "kubevirt"
+		pvc := pvcSpec(pvcName, storageClassName, "10Mi")
+		volumeMode := k8sv1.PersistentVolumeBlock
+		pvc.Spec.VolumeMode = &volumeMode
+		pvc.Spec.AccessModes = []k8sv1.PersistentVolumeAccessMode{k8sv1.ReadWriteMany}
+
+		By("creating a pvc")
+		_, err := tenantClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
+		Expect(err).ToNot(HaveOccurred())
+
+		By("creating a pod that attaches pvc")
+		const (
+			labelKey         = "app"
+			writerLabelValue = "writer"
+		)
+
+		writerPod := runPod(
+			tenantClient.CoreV1(),
+			namespace,
+			createPod("writer-pod",
+				withBlock(pvc.Name),
+				withCommand(blockWriteCommand+" && sleep 60"),
+				withLabel(labelKey, writerLabelValue),
+			),
+			false,
+		)
+
+		GinkgoWriter.Printf("[DEBUG] writer pod node: %s\n", writerPod.Spec.NodeName)
+
+		By("creating a different pod that reads from pvc")
+		Eventually(func(g Gomega) {
+			readerPod := runPod(
+				tenantClient.CoreV1(),
+				namespace,
+				createPod("reader-pod",
+					withCommand(blockReadCommand),
+					withBlock(pvc.Name),
+					withPodAntiAffinity(labelKey, writerLabelValue),
+				),
+				true,
+			)
+
+			defer deletePod(tenantClient.CoreV1(), namespace, readerPod.Name)
+			GinkgoWriter.Printf("[DEBUG] reader pod node: %s\n", readerPod.Spec.NodeName)
+
+			s := tenantClient.CoreV1().Pods(namespace).GetLogs(readerPod.Name, &k8sv1.PodLogOptions{})
+			reader, err := s.Stream(context.Background())
+			g.Expect(err).ToNot(HaveOccurred())
+			defer reader.Close()
+			buf := new(bytes.Buffer)
+			n, err := buf.ReadFrom(reader)
+			g.Expect(err).ToNot(HaveOccurred())
+
+			g.Expect(n).To(BeEquivalentTo(len("testing\n")))
+			out := buf.String()
+			g.Expect(strings.TrimSpace(out)).To(Equal("testing"))
+
+		}).WithTimeout(120 * time.Second).WithPolling(20 * time.Second).Should(Succeed())
+
+		deletePod(tenantClient.CoreV1(), namespace, writerPod.Name)
+	})
+
+	It("should reject a RW-Many file-system pvc and attaches to pod", Label("pvcCreation", "RWX", "FS"), func() {
+		const pvcName = "test-pvc"
+		storageClassName := "kubevirt"
+		pvc := pvcSpec(pvcName, storageClassName, "10Mi")
+		volumeMode := k8sv1.PersistentVolumeFilesystem
+		pvc.Spec.VolumeMode = &volumeMode
+		pvc.Spec.AccessModes = []k8sv1.PersistentVolumeAccessMode{k8sv1.ReadWriteMany}
+
+		By("creating a pvc")
+		_, err := tenantClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
+		Expect(err).ToNot(HaveOccurred())
+
+		By("creating a pod that attaches pvc")
+		runPodAndExpectPending(
+			tenantClient.CoreV1(),
+			namespace,
+			createPod("test-pod", withFileSystem(pvc.Name), withCommand(fsAttachCommand)))
+
+		Eventually(func(g Gomega) bool {
+			//Ensure we don't see couldn't find device by serial id in pod event log.
+			events, err := tenantClient.CoreV1().Events(namespace).List(context.Background(), metav1.ListOptions{FieldSelector: fmt.Sprintf("involvedObject.name=%s", pvcName), TypeMeta: metav1.TypeMeta{Kind: "PersistentVolumeClaim"}})
+			g.Expect(err).ToNot(HaveOccurred())
+
+			foundError := false
+			GinkgoWriter.Println("PVC Events:")
+			for _, evt := range events.Items {
+				GinkgoWriter.Println(evt.Message)
+				if strings.Contains(evt.Message, "non-block volume with RWX access mode is not supported") {
+					foundError = true
+				}
+			}
+
+			return foundError
+		}).WithTimeout(5 * time.Minute).WithPolling(10 * time.Second).Should(BeTrue())
+
+	})
+
 	DescribeTable("creates a pvc, attaches to pod, re-attach to another pod", Label("pvcCreation"), func(volumeMode k8sv1.PersistentVolumeMode, storageOpt storageOption, attachCmd string) {
 		nodes, err := tenantClient.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 		Expect(err).ToNot(HaveOccurred())
@@ -482,6 +583,18 @@ func runPod(client v1.CoreV1Interface, namespace string, pod *k8sv1.Pod, waitCom
 	}
 	// Return updated pod
 	return pod
+}
+
+func runPodAndExpectPending(client v1.CoreV1Interface, namespace string, pod *k8sv1.Pod) {
+	pod, err := client.Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+	Expect(err).ToNot(HaveOccurred())
+
+	Eventually(func(g Gomega) k8sv1.PodPhase {
+		pod, err = client.Pods(namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
+		g.Expect(err).ToNot(HaveOccurred())
+
+		return pod.Status.Phase
+	}).WithTimeout(60*time.Second).WithPolling(5*time.Second).Should(Equal(k8sv1.PodPending), "Pod should never reach Succeeded state")
 }
 
 func deletePod(client v1.CoreV1Interface, ns, podName string) {
