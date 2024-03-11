@@ -17,10 +17,9 @@ DriverInfo:
     snapshotDataSource: true
     topology: false
     capacity: false
-    RWX: false
-  SupportedFsType:
-    ext4: {}
-    xfs: {}
+    RWX: true
+  RequiredAccessModes:
+  - ReadWriteMany
 InlineVolumes:
 - shared: false
 

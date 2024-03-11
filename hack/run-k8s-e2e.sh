@@ -48,7 +48,7 @@ function ensure_synced {
 
 function create_test_driver_cm {
     echo "Creating test-driver CM"
-    ./kubevirtci kubectl create configmap -n $TENANT_CLUSTER_NAMESPACE $test_driver_cm --from-file=./hack/test-driver.yaml
+    ./kubevirtci kubectl create configmap -n $TENANT_CLUSTER_NAMESPACE $test_driver_cm --from-file=./hack/test-driver.yaml --from-file=./hack/test-driver-rwx.yaml
 }
 
 function create_capk_secret {
@@ -95,11 +95,11 @@ spec:
     - -c
     - |
       cd /tmp
-      curl --location https://dl.k8s.io/v1.26.0/kubernetes-test-linux-amd64.tar.gz |   tar --strip-components=3 -zxf - kubernetes/test/bin/e2e.test kubernetes/test/bin/ginkgo
+      curl --location https://dl.k8s.io/v1.26.0/kubernetes-test-linux-amd64.tar.gz | tar --strip-components=3 -zxf - kubernetes/test/bin/e2e.test kubernetes/test/bin/ginkgo
       chmod +x e2e.test
       curl -LO "https://dl.k8s.io/release/v1.26.0/bin/linux/amd64/kubectl"
       chmod +x kubectl
-      echo \$TEST_DRIVER_PATH
+      echo \${TEST_DRIVER_PATH}
       ./e2e.test -kubeconfig \${KUBECONFIG} \
             -kubectl-path ./kubectl \
             -ginkgo.v \
@@ -109,11 +109,32 @@ spec:
             -ginkgo.skip='SELinuxMountReadWriteOncePod.*' \
             -storage.testdriver=\${TEST_DRIVER_PATH}/test-driver.yaml \
             -provider=local -report-dir=/tmp
-      ret=\$?
+      ret1=\$?
+      if [[ \${ret1} -ne 0 ]]; then
+        echo "kubernetes e2e test failed"
+      fi
+      ./e2e.test -kubeconfig \${KUBECONFIG} \
+            -kubectl-path ./kubectl \
+            -ginkgo.v \
+            -ginkgo.timeout=2h \
+            -ginkgo.focus='External.Storage.*csi.kubevirt.io.*should concurrently access the single volume from pods on different node.*' \
+            -ginkgo.skip='CSI Ephemeral-volume*' \
+            -ginkgo.skip='SELinuxMountReadWriteOncePod' \
+            -ginkgo.skip='\((?:xfs|filesystem volmode|ntfs|ext4)\).* multiVolume \[Slow]' \
+            -storage.testdriver=\${TEST_DRIVER_PATH}/test-driver-rwx.yaml \
+            -report-prefix="rwx_" \
+            -provider=local -report-dir=/tmp
+      ret2=\$?
+      if [[ \${ret2} -ne 0 ]]; then
+        echo "kubernetes e2e RWX test failed"
+      fi
       while [ ! -f /tmp/exit.txt ]; do
         sleep 2
       done
-      exit \$ret
+      if [[ \${ret1} -ne 0 ]]; then
+         exit \ret1
+       fi
+       exit \$ret2
     volumeMounts:
     - name: kubeconfig
       mountPath: "/etc/kubernetes/kubeconfig"
@@ -165,9 +186,14 @@ while [[ ! $(./kubevirtci kubectl exec -n $TENANT_CLUSTER_NAMESPACE ${test_pod} 
   sleep 30
 done
 
+while [[ ! $(./kubevirtci kubectl exec -n $TENANT_CLUSTER_NAMESPACE ${test_pod} -- ls /tmp/junit_rwx_01.xml 2>/dev/null) ]]; do
+  sleep 30
+done
+
 if [[ -n "$ARTIFACTS" ]]; then
   echo "Copying results"
-  ./kubevirtci kubectl cp ${TENANT_CLUSTER_NAMESPACE}/${test_pod}:/tmp/junit_01.xml $ARTIFACTS/junit.functest.xml
+  ./kubevirtci kubectl cp "${TENANT_CLUSTER_NAMESPACE}/${test_pod}:/tmp/junit_01.xml" "${ARTIFACTS}/junit.functest.xml"
+  ./kubevirtci kubectl cp "${TENANT_CLUSTER_NAMESPACE}/${test_pod}:/tmp/junit_rwx_01.xml" "${ARTIFACTS}/junit.functest-rwx.xml"
 fi
 
 ./kubevirtci kubectl exec -n $TENANT_CLUSTER_NAMESPACE ${test_pod} -- touch /tmp/exit.txt
