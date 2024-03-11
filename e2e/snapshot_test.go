@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	k8sv1 "k8s.io/api/core/v1"
@@ -13,9 +14,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
-	snapcli "kubevirt.io/csi-driver/pkg/generated/external-snapshotter/client-go/clientset/versioned"
 
-	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	snapcli "kubevirt.io/csi-driver/pkg/generated/external-snapshotter/client-go/clientset/versioned"
 )
 
 var _ = Describe("Snapshot", func() {
@@ -59,7 +59,7 @@ var _ = Describe("Snapshot", func() {
 		_ = os.RemoveAll(tmpDir)
 	})
 
-	DescribeTable("creates a pvc and attaches to pod, then create snapshot", Label("pvcCreation"), func(volumeMode k8sv1.PersistentVolumeMode, podCreationFunc, podReaderFunc func(string) *k8sv1.Pod) {
+	DescribeTable("creates a pvc and attaches to pod, then create snapshot", Label("pvcCreation", "snapshot"), func(volumeMode k8sv1.PersistentVolumeMode, storageOpt storageOption, writeCmd, readCmd string) {
 		pvcName := "test-pvc"
 		storageClassName := "kubevirt"
 		pvc := pvcSpec(pvcName, storageClassName, "10Mi")
@@ -70,10 +70,15 @@ var _ = Describe("Snapshot", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		By("creating a pod that attaches pvc")
+		wPod := createPod("writer-pod",
+			withCommand(writeCmd),
+			storageOpt(pvc.Name),
+		)
 		runPod(
 			tenantClient.CoreV1(),
 			namespace,
-			podCreationFunc(pvc.Name))
+			wPod,
+			true)
 
 		By("creating a snapshot")
 		snapshotName := "test-snapshot"
@@ -125,13 +130,17 @@ var _ = Describe("Snapshot", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		By("creating a pod that attaches the restored pvc, and checks the changes are there")
+		rPod := createPod("reader-pod",
+			withCommand(readCmd),
+			storageOpt(pvc.Name))
 		runPod(
 			tenantClient.CoreV1(),
 			namespace,
-			podReaderFunc(pvc.Name))
+			rPod,
+			true)
 
 	},
-		Entry("Filesystem volume mode", k8sv1.PersistentVolumeFilesystem, writerPodFs, readerPodFs),
-		Entry("Block volume mode", k8sv1.PersistentVolumeBlock, writerPodBlock, readerPodBlock),
+		Entry("Filesystem volume mode", Label("FS"), k8sv1.PersistentVolumeFilesystem, withFileSystem, fsWriteCommand, fsReadCommand),
+		Entry("Block volume mode", Label("Block"), k8sv1.PersistentVolumeBlock, withBlock, blockWriteCommand, blockReadCommand),
 	)
 })
