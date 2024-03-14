@@ -15,8 +15,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
@@ -51,36 +53,64 @@ var controllerCaps = []csi.ControllerServiceCapability_RPC_Type{
 	csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
 }
 
-func (c *ControllerService) validateCreateVolumeRequest(req *csi.CreateVolumeRequest) error {
+func (c *ControllerService) validateCreateVolumeRequest(req *csi.CreateVolumeRequest) (bool, error) {
 	if req == nil {
-		return status.Error(codes.InvalidArgument, "missing request")
+		return false, status.Error(codes.InvalidArgument, "missing request")
 	}
 	// Check arguments
 	if len(req.GetName()) == 0 {
-		return status.Error(codes.InvalidArgument, "name missing in request")
+		return false, status.Error(codes.InvalidArgument, "name missing in request")
 	}
 	caps := req.GetVolumeCapabilities()
+
 	if caps == nil {
-		return status.Error(codes.InvalidArgument, "volume capabilities missing in request")
+		return false, status.Error(codes.InvalidArgument, "volume capabilities missing in request")
+	}
+
+	isBlock, isRWX := getAccessMode(caps)
+
+	if isRWX && !isBlock {
+		return false, status.Error(codes.InvalidArgument, "non-block volume with RWX access mode is not supported")
 	}
 
 	if c.storageClassEnforcement.AllowAll {
-		return nil
+		return isRWX, nil
 	}
 
 	storageClassName := req.Parameters[infraStorageClassNameParameter]
 	if storageClassName == "" {
 		if c.storageClassEnforcement.AllowDefault {
-			return nil
+			return isRWX, nil
 		} else {
-			return unallowedStorageClass
+			return false, unallowedStorageClass
 		}
 	}
 	if !util.Contains(c.storageClassEnforcement.AllowList, storageClassName) {
-		return unallowedStorageClass
+		return false, unallowedStorageClass
 	}
 
-	return nil
+	return isRWX, nil
+}
+
+func getAccessMode(caps []*csi.VolumeCapability) (bool, bool) {
+	isBlock := false
+	isRWX := false
+
+	for _, capability := range caps {
+		if capability != nil {
+			if capability.GetBlock() != nil {
+				isBlock = true
+			}
+
+			if am := capability.GetAccessMode(); am != nil {
+				if am.Mode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER {
+					isRWX = true
+				}
+			}
+		}
+	}
+
+	return isBlock, isRWX
 }
 
 // CreateVolume Create a new DataVolume.
@@ -90,7 +120,8 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if req != nil {
 		klog.V(3).Infof("Create Volume Request: %+v", *req)
 	}
-	if err := c.validateCreateVolumeRequest(req); err != nil {
+	isRWX, err := c.validateCreateVolumeRequest(req)
+	if err != nil {
 		return nil, err
 	}
 
@@ -107,20 +138,38 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	// Create DataVolume object
-	dv := &cdiv1.DataVolume{}
-	dv.Name = dvName
-	dv.Namespace = c.infraClusterNamespace
-	dv.Kind = "DataVolume"
-	dv.APIVersion = cdiv1.SchemeGroupVersion.String()
-	dv.ObjectMeta.Labels = c.infraClusterLabels
-	dv.ObjectMeta.Annotations = map[string]string{
-		"cdi.kubevirt.io/storage.deleteAfterCompletion": "false",
+	source, err := c.determineDvSource(ctx, req)
+	if err != nil {
+		return nil, err
 	}
-	dv.Spec.Storage = &cdiv1.StorageSpec{
-		Resources: corev1.ResourceRequirements{
-			Requests: corev1.ResourceList{
-				corev1.ResourceStorage: *resource.NewScaledQuantity(storageSize, 0)},
+
+	dv := &cdiv1.DataVolume{
+		TypeMeta: v1.TypeMeta{
+			Kind:       "DataVolume",
+			APIVersion: cdiv1.SchemeGroupVersion.String(),
 		},
+		ObjectMeta: v1.ObjectMeta{
+			Name:      dvName,
+			Namespace: c.infraClusterNamespace,
+			Labels:    c.infraClusterLabels,
+			Annotations: map[string]string{
+				"cdi.kubevirt.io/storage.deleteAfterCompletion": "false",
+			},
+		},
+		Spec: cdiv1.DataVolumeSpec{
+			Storage: &cdiv1.StorageSpec{
+				Resources: corev1.ResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceStorage: *resource.NewScaledQuantity(storageSize, 0)},
+				},
+			},
+			Source: source,
+		},
+	}
+
+	if isRWX {
+		dv.Spec.Storage.VolumeMode = ptr.To(corev1.PersistentVolumeBlock)
+		dv.Spec.Storage.AccessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}
 	}
 
 	// Only set the storageclass if it is defined. Otherwise we use the
@@ -130,14 +179,9 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 		dv.Spec.Storage.StorageClassName = &storageClassName
 	}
 
-	var err error
-	dv.Spec.Source, err = c.determineDvSource(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
 	if existingDv, err := c.virtClient.GetDataVolume(ctx, c.infraClusterNamespace, dvName); errors.IsNotFound(err) {
 		// Create DataVolume
+		klog.Infof("creating new DataVolume %s/%s", c.infraClusterNamespace, req.Name)
 		dv, err = c.virtClient.CreateDataVolume(ctx, c.infraClusterNamespace, dv)
 		if err != nil {
 			klog.Error("failed creating DataVolume " + dvName)

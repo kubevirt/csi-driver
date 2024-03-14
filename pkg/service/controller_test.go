@@ -19,6 +19,7 @@ import (
 	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
+
 	"kubevirt.io/csi-driver/pkg/util"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -38,7 +39,7 @@ var _ = Describe("StorageClass", func() {
 		client := &ControllerClientMock{}
 		controller := ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
 
-		response, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest())
+		response, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER)))
 		Expect(err).ToNot(HaveOccurred())
 		Expect(testVolumeName).To(Equal(response.GetVolume().GetVolumeId()))
 		Expect(testDataVolumeUID).To(Equal(response.GetVolume().VolumeContext[serialParameter]))
@@ -48,24 +49,57 @@ var _ = Describe("StorageClass", func() {
 })
 
 var _ = Describe("CreateVolume", func() {
-	It("should successfully create a volume", func() {
+	DescribeTable("should successfully create a volume", func(cap *csi.VolumeCapability, expectedAC *corev1.PersistentVolumeAccessMode, expectedVolumeMode *corev1.PersistentVolumeMode) {
 		client := &ControllerClientMock{}
 		controller := ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
 
-		response, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest())
+		request := getCreateVolumeRequest(cap)
+		response, err := controller.CreateVolume(context.TODO(), request)
 		Expect(err).ToNot(HaveOccurred())
 
-		Expect(testVolumeName).To(Equal(response.GetVolume().GetVolumeId()))
-		Expect(testDataVolumeUID).To(Equal(response.GetVolume().VolumeContext[serialParameter]))
-		Expect(string(getBusType())).To(Equal(response.GetVolume().VolumeContext[busParameter]))
-		Expect(testVolumeStorageSize).To(Equal(response.GetVolume().GetCapacityBytes()))
+		Expect(response.GetVolume().GetVolumeId()).To(Equal(testVolumeName))
+		Expect(response.GetVolume().VolumeContext[serialParameter]).To(Equal(testDataVolumeUID))
+		Expect(response.GetVolume().VolumeContext[busParameter]).To(Equal(string(getBusType())))
+		Expect(response.GetVolume().GetCapacityBytes()).To(Equal(testVolumeStorageSize))
+
+		dv, err := client.GetDataVolume(context.TODO(), testInfraNamespace, request.Name)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(dv).ToNot(BeNil())
+
+		if expectedAC != nil {
+			Expect(dv.Spec.Storage).ToNot(BeNil())
+			Expect(dv.Spec.Storage.AccessModes).ToNot(BeEmpty())
+			Expect(dv.Spec.Storage.AccessModes[0]).To(Equal(*expectedAC))
+		} else if dv.Spec.Storage != nil {
+			Expect(dv.Spec.Storage.AccessModes).To(BeEmpty())
+		}
+
+		if expectedVolumeMode != nil {
+			Expect(dv.Spec.Storage).ToNot(BeNil())
+			Expect(dv.Spec.Storage.VolumeMode).To(HaveValue(Equal(*expectedVolumeMode)))
+		} else if dv.Spec.Storage != nil {
+			Expect(dv.Spec.Storage.VolumeMode).To(BeNil())
+		}
+	},
+		Entry("volume mode = block; [RWX]", getVolumeCapability(corev1.PersistentVolumeBlock, csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER), ptr.To(corev1.ReadWriteMany), ptr.To(corev1.PersistentVolumeBlock)),
+		Entry("volume mode = block; [RWO]", getVolumeCapability(corev1.PersistentVolumeBlock, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER), nil, nil),
+		Entry("volume mode = filesystem; [RWO]", getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER), nil, nil),
+	)
+
+	It("should reject create volume request for FS & RWX", func() {
+		client := &ControllerClientMock{}
+		controller := ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
+
+		response, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER)))
+		Expect(err).To(MatchError(ContainSubstring("non-block volume with RWX access mode is not supported")))
+		Expect(response).To(BeNil())
 	})
 
 	It("should propagate error from CreateVolume", func() {
 		client := &ControllerClientMock{FailCreateDataVolume: true}
 		controller := ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
 
-		_, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest())
+		_, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER)))
 		Expect(err).To(HaveOccurred())
 	})
 
@@ -76,15 +110,13 @@ var _ = Describe("CreateVolume", func() {
 		busTypeLocal := kubevirtv1.DiskBusVirtio
 		testBusType = &busTypeLocal
 
-		response, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest())
+		response, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER)))
 		Expect(err).ToNot(HaveOccurred())
 		Expect(response.GetVolume().GetVolumeContext()[busParameter]).To(Equal(string(busTypeLocal)))
 	})
 
 	It("should not allow storage class not in the allow list", func() {
 		client := &ControllerClientMock{}
-		allowedStorageClasses = []string{"allowedClass"}
-		allowAllStorageClasses = false
 		storageClassEnforcement = util.StorageClassEnforcement{
 			AllowList:    []string{"allowedClass"},
 			AllowAll:     false,
@@ -92,7 +124,7 @@ var _ = Describe("CreateVolume", func() {
 		}
 		controller := ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
 
-		request := getCreateVolumeRequest()
+		request := getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER))
 		request.Parameters[infraStorageClassNameParameter] = "notAllowedClass"
 
 		_, err := controller.CreateVolume(context.TODO(), request)
@@ -474,11 +506,8 @@ var (
 	testVMName                                    = "test-vm"
 	testVMUID                                     = "6fc9c805-b3a0-570b-9d1b-3b8b9cfc9fb7"
 	testDataVolumeUID                             = "2d0111d5-494f-4731-8f67-122b27d3c366"
-	testVolumeMode                                = corev1.PersistentVolumeFilesystem
 	testBusType               *kubevirtv1.DiskBus = nil // nil==do not pass bus type
 	testInfraLabels                               = map[string]string{"infra-label-name": "infra-label-value"}
-	allowedStorageClasses                         = []string{}
-	allowAllStorageClasses                        = true
 	storageClassEnforcement                       = util.StorageClassEnforcement{
 		AllowAll:     true,
 		AllowDefault: true,
@@ -493,20 +522,29 @@ func getBusType() kubevirtv1.DiskBus {
 	}
 }
 
-func getCreateVolumeRequest() *csi.CreateVolumeRequest {
-
+func getVolumeCapability(volumeMode corev1.PersistentVolumeMode, accessModes csi.VolumeCapability_AccessMode_Mode) *csi.VolumeCapability {
 	var volumeCapability *csi.VolumeCapability
 
-	if testVolumeMode == corev1.PersistentVolumeFilesystem {
+	if volumeMode == corev1.PersistentVolumeFilesystem {
 		volumeCapability = &csi.VolumeCapability{
 			AccessType: &csi.VolumeCapability_Mount{},
 		}
 	} else {
 		volumeCapability = &csi.VolumeCapability{
-			AccessType: &csi.VolumeCapability_Block{},
+			AccessType: &csi.VolumeCapability_Block{
+				Block: &csi.VolumeCapability_BlockVolume{},
+			},
 		}
 	}
 
+	volumeCapability.AccessMode = &csi.VolumeCapability_AccessMode{
+		Mode: accessModes,
+	}
+
+	return volumeCapability
+}
+
+func getCreateVolumeRequest(volumeCapability *csi.VolumeCapability) *csi.CreateVolumeRequest {
 	parameters := map[string]string{}
 	if testInfraStorageClassName != "" {
 		parameters[infraStorageClassNameParameter] = testInfraStorageClassName
@@ -651,6 +689,11 @@ func (c *ControllerClientMock) CreateDataVolume(_ context.Context, namespace str
 	result := dataVolume.DeepCopy()
 
 	result.SetUID(types.UID(testDataVolumeUID))
+
+	if c.datavolumes == nil {
+		c.datavolumes = make(map[string]*cdiv1.DataVolume)
+	}
+	c.datavolumes[getKey(namespace, dataVolume.Name)] = dataVolume
 
 	return result, nil
 }

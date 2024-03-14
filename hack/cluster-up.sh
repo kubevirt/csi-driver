@@ -16,7 +16,7 @@ echo "Creating $TENANT_CLUSTER_NAMESPACE"
 ./kubevirtci create-cluster
 
 echo "Waiting for $TENANT_CLUSTER_NAMESPACE vmis to be ready"
-./kubevirtci kubectl wait --for=condition=Ready vmi -l capk.cluster.x-k8s.io/kubevirt-machine-namespace=$TENANT_CLUSTER_NAMESPACE -n $TENANT_CLUSTER_NAMESPACE
+./kubevirtci kubectl wait --for=condition=Ready vmi -l capk.cluster.x-k8s.io/kubevirt-machine-namespace=$TENANT_CLUSTER_NAMESPACE -n $TENANT_CLUSTER_NAMESPACE --timeout=300s
 
 echo "Installing networking (calico)"
 ./kubevirtci install-calico
