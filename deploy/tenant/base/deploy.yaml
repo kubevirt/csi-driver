@@ -239,9 +239,6 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
-            limits:
-              memory: 500Mi
-              cpu: 250m
         - name: csi-node-driver-registrar
           image: quay.io/openshift/origin-csi-node-driver-registrar:latest
           args:
@@ -266,9 +263,6 @@ spec:
             requests:
               memory: 20Mi
               cpu: 5m
-            limits:
-              memory: 500Mi
-              cpu: 100m
         - name: csi-liveness-probe
           image: quay.io/openshift/origin-csi-livenessprobe:latest
           args:
@@ -282,9 +276,6 @@ spec:
             requests:
               memory: 20Mi
               cpu: 5m
-            limits:
-              memory: 500Mi
-              cpu: 100m
       volumes:
         - name: kubelet-dir
           hostPath:
