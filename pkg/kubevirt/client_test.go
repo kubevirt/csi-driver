@@ -35,6 +35,7 @@ const (
 	testClaimName                = "pvc-valid-data-volume"
 	testClaimName2               = "pvc-valid-data-volume2"
 	testClaimName3               = "pvc-valid-data-volume3"
+	testClaimName4               = "pvc-default-storage-class"
 	testNamespace                = "test-namespace"
 	unboundTestClaimName         = "unbound-test-claim"
 )
@@ -122,26 +123,20 @@ var _ = Describe("Client", func() {
 			Entry("should return error when provider doesn't match", storageClassName, nonMatchingProvisioner, "", true),
 		)
 
-		It("Storage class from volume should return a storage class", func() {
-			storageClass, err := c.getStorageClassFromVolume(context.TODO(), testVolumeName)
+		It("storage class from claim should return a storage class name", func() {
+			storageClassName, err := c.getStorageClassNameFromClaimName(context.TODO(), testNamespace, testClaimName)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(storageClass).To(Equal(storageClassName))
+			Expect(storageClassName).To(Equal(storageClassName))
 		})
 
-		It("Storage class from volume should return error if getting volume returns an error", func() {
-			storageClass, err := c.getStorageClassFromVolume(context.TODO(), "invalid")
+		It("storage class from claim should return error if getting claim name returns an error", func() {
+			volumeName, err := c.getStorageClassNameFromClaimName(context.TODO(), testNamespace, "invalid")
 			Expect(err).To(HaveOccurred())
-			Expect(storageClass).To(Equal(""))
+			Expect(volumeName).To(Equal(""))
 		})
 
-		It("volume from claim should return a volume name", func() {
-			volumeName, err := c.getVolumeNameFromClaimName(context.TODO(), testNamespace, testClaimName)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(volumeName).To(Equal(testVolumeName))
-		})
-
-		It("volume from claim should return error if getting claim name returns an error", func() {
-			volumeName, err := c.getVolumeNameFromClaimName(context.TODO(), testNamespace, "invalid")
+		It("snapshot class from claim name should return error if claim has nil storage class", func() {
+			volumeName, err := c.getSnapshotClassNameFromVolumeClaimName(context.TODO(), testNamespace, testClaimName4, volumeSnapshotClassName)
 			Expect(err).To(HaveOccurred())
 			Expect(volumeName).To(Equal(""))
 		})
@@ -158,8 +153,6 @@ var _ = Describe("Client", func() {
 		},
 			Entry("should return snapshot class", testClaimName, testNamespace, volumeSnapshotClassName, volumeSnapshotClassName, false),
 			Entry("should return error when claim is invalid", "invalid", testNamespace, volumeSnapshotClassName, "", true),
-			Entry("should return error when claim is unbound", unboundTestClaimName, testNamespace, volumeSnapshotClassName, "", true),
-			Entry("should return error when volume cannot be found", testClaimName2, testNamespace, volumeSnapshotClassName, "", true),
 		)
 
 		It("should return error if the storage class is not allowed", func() {
@@ -270,9 +263,10 @@ func NewFakeClient() *client {
 	defaultStorageClass := createStorageClass(defaultStorageClassName, provisioner, true)
 	testVolume := createPersistentVolume(testVolumeName, storageClassName)
 	testVolumeNotAllowed := createPersistentVolume(testVolumeNameNotAllowed, "not-allowed-storage-class")
-	testClaim := createPersistentVolumeClaim(testClaimName, testVolumeName, storageClassName)
-	testClaim2 := createPersistentVolumeClaim(testClaimName2, "testVolumeName2", storageClassName)
-	testClaim3 := createPersistentVolumeClaim(testClaimName3, testVolumeNameNotAllowed, "not-allowed-storage-class")
+	testClaim := createPersistentVolumeClaim(testClaimName, testVolumeName, ptr.To[string](storageClassName))
+	testClaim2 := createPersistentVolumeClaim(testClaimName2, "testVolumeName2", ptr.To[string](storageClassName))
+	testClaim3 := createPersistentVolumeClaim(testClaimName3, testVolumeNameNotAllowed, ptr.To[string]("not-allowed-storage-class"))
+	testClaimDefault := createPersistentVolumeClaim(testClaimName4, testVolumeName, nil)
 	unboundClaim := &k8sv1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      unboundTestClaimName,
@@ -283,7 +277,7 @@ func NewFakeClient() *client {
 		},
 	}
 	fakeK8sClient := k8sfake.NewSimpleClientset(storageClass, defaultStorageClass, testVolume,
-		testVolumeNotAllowed, testClaim, testClaim2, testClaim3, unboundClaim)
+		testVolumeNotAllowed, testClaim, testClaim2, testClaim3, unboundClaim, testClaimDefault)
 
 	fakeSnapClient := snapfake.NewSimpleClientset(
 		createVolumeSnapshotClass(volumeSnapshotClassName, provisioner, false),
@@ -330,18 +324,21 @@ func createPersistentVolume(name, storageClassName string) *k8sv1.PersistentVolu
 	}
 }
 
-func createPersistentVolumeClaim(name, volumeName, storageClassName string) *k8sv1.PersistentVolumeClaim {
-	return &k8sv1.PersistentVolumeClaim{
+func createPersistentVolumeClaim(name, volumeName string, storageClassName *string) *k8sv1.PersistentVolumeClaim {
+	pvc := &k8sv1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: testNamespace,
 			Labels:    map[string]string{"test": "test"},
 		},
 		Spec: k8sv1.PersistentVolumeClaimSpec{
-			StorageClassName: ptr.To[string](storageClassName),
-			VolumeName:       volumeName,
+			VolumeName: volumeName,
 		},
 	}
+	if storageClassName != nil {
+		pvc.Spec.StorageClassName = storageClassName
+	}
+	return pvc
 }
 
 func createStorageClass(name, provisioner string, isDefault bool) *storagev1.StorageClass {
