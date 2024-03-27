@@ -141,9 +141,6 @@ kind: ClusterRole
 metadata:
   name: kubevirt-csi-snapshot
 rules:
-- apiGroups: [""]
-  resources: ["persistentvolumes"]
-  verbs: ["get"]
 - apiGroups: ["storage.k8s.io"]
   resources: ["storageclasses"]
   verbs: ["get"]

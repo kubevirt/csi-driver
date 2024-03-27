@@ -280,14 +280,13 @@ func (c *client) CreateVolumeSnapshot(ctx context.Context, namespace, name, clai
 }
 
 func (c *client) getSnapshotClassNameFromVolumeClaimName(ctx context.Context, namespace, claimName, snapshotClassName string) (string, error) {
-	volumeName, err := c.getVolumeNameFromClaimName(ctx, namespace, claimName)
-	if err != nil || volumeName == "" {
-		klog.V(2).Infof("Error getting volume name for claim %s in namespace %s: %v", claimName, namespace, err)
+	storageClassName, err := c.getStorageClassNameFromClaimName(ctx, namespace, claimName)
+	if err != nil {
+		klog.V(2).Infof("Error getting storage class name for claim %s in namespace %s: %v", claimName, namespace, err)
 		return "", fmt.Errorf("unable to determine snapshot class name for infra source volume")
 	}
-	storageClassName, err := c.getStorageClassFromVolume(ctx, volumeName)
-	if err != nil {
-		return "", err
+	if storageClassName == "" {
+		return "", fmt.Errorf("unable to determine storage class name for snapshot creation")
 	}
 	allowed, err := c.isStorageClassAllowed(ctx, storageClassName)
 	if err != nil {
@@ -327,24 +326,18 @@ func (c *client) isStorageClassAllowed(ctx context.Context, storageClassName str
 }
 
 // Determine the name of the volume associated with the passed in claim name
-func (c *client) getVolumeNameFromClaimName(ctx context.Context, namespace, claimName string) (string, error) {
+func (c *client) getStorageClassNameFromClaimName(ctx context.Context, namespace, claimName string) (string, error) {
 	volumeClaim, err := c.kubernetesClient.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, claimName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("Error getting volume claim %s in namespace %s: %v", claimName, namespace, err)
 		return "", err
 	}
 	klog.V(5).Infof("found volumeClaim %#v", volumeClaim)
-	return volumeClaim.Spec.VolumeName, nil
-}
-
-// Determine the storage class from the volume
-func (c *client) getStorageClassFromVolume(ctx context.Context, volumeName string) (string, error) {
-	volume, err := c.kubernetesClient.CoreV1().PersistentVolumes().Get(ctx, volumeName, metav1.GetOptions{})
-	if err != nil {
-		klog.V(2).Infof("Error getting volume %s: %v", volumeName, err)
-		return "", err
+	storageClassName := ""
+	if volumeClaim.Spec.StorageClassName != nil {
+		storageClassName = *volumeClaim.Spec.StorageClassName
 	}
-	return volume.Spec.StorageClassName, nil
+	return storageClassName, nil
 }
 
 // Get the associated snapshot class based on the storage class the following logic is used:
