@@ -27,11 +27,9 @@ import (
 )
 
 const (
-	infraStorageClassNameParameter  = "infraStorageClassName"
-	infraSnapshotClassNameParameter = "infraSnapshotClassName"
-	busParameter                    = "bus"
-	busDefaultValue                 = kubevirtv1.DiskBus("scsi")
-	serialParameter                 = "serial"
+	busParameter    = "bus"
+	busDefaultValue = kubevirtv1.DiskBus("scsi")
+	serialParameter = "serial"
 )
 
 var (
@@ -77,7 +75,7 @@ func (c *ControllerService) validateCreateVolumeRequest(req *csi.CreateVolumeReq
 		return isRWX, nil
 	}
 
-	storageClassName := req.Parameters[infraStorageClassNameParameter]
+	storageClassName := req.Parameters[client.InfraStorageClassNameParameter]
 	if storageClassName == "" {
 		if c.storageClassEnforcement.AllowDefault {
 			return isRWX, nil
@@ -126,7 +124,7 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	// Prepare parameters for the DataVolume
-	storageClassName := req.Parameters[infraStorageClassNameParameter]
+	storageClassName := req.Parameters[client.InfraStorageClassNameParameter]
 	storageSize := req.GetCapacityRange().GetRequiredBytes()
 	dvName := req.Name
 	value, ok := req.Parameters[busParameter]
@@ -552,7 +550,7 @@ func (c *ControllerService) CreateSnapshot(ctx context.Context, req *csi.CreateS
 			return nil, status.Errorf(codes.NotFound, "source volume %s not found", req.GetSourceVolumeId())
 		}
 		// Prepare parameters for the DataVolume
-		snapshotClassName := req.Parameters[infraSnapshotClassNameParameter]
+		snapshotClassName := req.Parameters[client.InfraSnapshotClassNameParameter]
 		volumeSnapshot, err := c.virtClient.CreateVolumeSnapshot(ctx, c.infraClusterNamespace, req.GetName(), req.GetSourceVolumeId(), snapshotClassName)
 		if err != nil {
 			return nil, err

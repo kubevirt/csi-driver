@@ -20,6 +20,7 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
+	client "kubevirt.io/csi-driver/pkg/kubevirt"
 	"kubevirt.io/csi-driver/pkg/util"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -116,16 +117,16 @@ var _ = Describe("CreateVolume", func() {
 	})
 
 	It("should not allow storage class not in the allow list", func() {
-		client := &ControllerClientMock{}
+		cli := &ControllerClientMock{}
 		storageClassEnforcement = util.StorageClassEnforcement{
 			AllowList:    []string{"allowedClass"},
 			AllowAll:     false,
 			AllowDefault: true,
 		}
-		controller := ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
+		controller := ControllerService{cli, testInfraNamespace, testInfraLabels, storageClassEnforcement}
 
 		request := getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER))
-		request.Parameters[infraStorageClassNameParameter] = "notAllowedClass"
+		request.Parameters[client.InfraStorageClassNameParameter] = "notAllowedClass"
 
 		_, err := controller.CreateVolume(context.TODO(), request)
 		Expect(err).To(HaveOccurred())
@@ -547,7 +548,7 @@ func getVolumeCapability(volumeMode corev1.PersistentVolumeMode, accessModes csi
 func getCreateVolumeRequest(volumeCapability *csi.VolumeCapability) *csi.CreateVolumeRequest {
 	parameters := map[string]string{}
 	if testInfraStorageClassName != "" {
-		parameters[infraStorageClassNameParameter] = testInfraStorageClassName
+		parameters[client.InfraStorageClassNameParameter] = testInfraStorageClassName
 	}
 	if testBusType != nil {
 		parameters[busParameter] = string(*testBusType)

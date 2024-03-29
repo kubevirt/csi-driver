@@ -129,6 +129,10 @@ rules:
     resources: ["securitycontextconstraints"]
     verbs: ["use"]
     resourceNames: ["privileged"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotclasses"]
+    verbs: ["list"]
+
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1

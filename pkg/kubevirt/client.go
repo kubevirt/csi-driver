@@ -27,9 +27,21 @@ import (
 )
 
 const (
-	vmiSubresourceURL       = "/apis/subresources.kubevirt.io/%s/namespaces/%s/virtualmachineinstances/%s/%s"
-	annDefaultSnapshotClass = "snapshot.storage.kubernetes.io/is-default-class"
+	vmiSubresourceURL               = "/apis/subresources.kubevirt.io/%s/namespaces/%s/virtualmachineinstances/%s/%s"
+	annDefaultSnapshotClass         = "snapshot.storage.kubernetes.io/is-default-class"
+	InfraStorageClassNameParameter  = "infraStorageClassName"
+	InfraSnapshotClassNameParameter = "infraSnapshotClassName"
 )
+
+type InfraTenantStorageSnapshotMapping struct {
+	VolumeSnapshotClasses []InfraToTenantMapping
+	StorageClasses        []string
+}
+
+type InfraToTenantMapping struct {
+	Infra  string
+	Tenant string
+}
 
 //go:generate mockgen -source=./client.go -destination=./mock/client_generated.go -package=mock
 
@@ -56,30 +68,32 @@ type Client interface {
 }
 
 type client struct {
-	kubernetesClient        kubernetes.Interface
-	virtClient              kubecli.Interface
-	cdiClient               cdicli.Interface
-	snapClient              snapcli.Interface
-	restClient              *rest.RESTClient
-	storageClassEnforcement util.StorageClassEnforcement
-	infraLabelMap           map[string]string
-	volumePrefix            string
+	infraKubernetesClient             kubernetes.Interface
+	tenantKubernetesClient            kubernetes.Interface
+	virtClient                        kubecli.Interface
+	cdiClient                         cdicli.Interface
+	infraSnapClient                   snapcli.Interface
+	restClient                        *rest.RESTClient
+	storageClassEnforcement           util.StorageClassEnforcement
+	infraLabelMap                     map[string]string
+	volumePrefix                      string
+	infraTenantStorageSnapshotMapping []InfraTenantStorageSnapshotMapping
 }
 
 // NewClient New creates our client wrapper object for the actual kubeVirt and kubernetes clients we use.
-func NewClient(config *rest.Config, infraClusterLabelMap map[string]string, storageClassEnforcement util.StorageClassEnforcement, prefix string) (Client, error) {
+func NewClient(infraConfig *rest.Config, infraClusterLabelMap map[string]string, tenantKubernetesClient kubernetes.Interface, tenantSnapshotClient snapcli.Interface, storageClassEnforcement util.StorageClassEnforcement, prefix string) (Client, error) {
 	result := &client{}
 
 	Scheme := runtime.NewScheme()
 	Codecs := serializer.NewCodecFactory(Scheme)
 
-	shallowCopy := *config
+	shallowCopy := *infraConfig
 	shallowCopy.GroupVersion = &kubevirtv1.StorageGroupVersion
 	shallowCopy.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: Codecs}
 	shallowCopy.APIPath = "/apis"
 	shallowCopy.ContentType = runtime.ContentTypeJSON
-	if config.UserAgent == "" {
-		config.UserAgent = rest.DefaultKubernetesUserAgent()
+	if infraConfig.UserAgent == "" {
+		infraConfig.UserAgent = rest.DefaultKubernetesUserAgent()
 	}
 
 	restClient, err := rest.RESTClientFor(&shallowCopy)
@@ -87,20 +101,20 @@ func NewClient(config *rest.Config, infraClusterLabelMap map[string]string, stor
 		return nil, err
 	}
 
-	clientset, err := kubernetes.NewForConfig(config)
+	clientset, err := kubernetes.NewForConfig(infraConfig)
 	if err != nil {
 		return nil, err
 	}
-	result.kubernetesClient = clientset
-	kubevirtClient, err := kubecli.NewForConfig(config)
+	result.infraKubernetesClient = clientset
+	kubevirtClient, err := kubecli.NewForConfig(infraConfig)
 	if err != nil {
 		return nil, err
 	}
-	cdiClient, err := cdicli.NewForConfig(config)
+	cdiClient, err := cdicli.NewForConfig(infraConfig)
 	if err != nil {
 		return nil, err
 	}
-	snapClient, err := snapcli.NewForConfig(config)
+	snapClient, err := snapcli.NewForConfig(infraConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -108,10 +122,16 @@ func NewClient(config *rest.Config, infraClusterLabelMap map[string]string, stor
 	result.virtClient = kubevirtClient
 	result.cdiClient = cdiClient
 	result.restClient = restClient
-	result.snapClient = snapClient
+	result.infraSnapClient = snapClient
 	result.infraLabelMap = infraClusterLabelMap
 	result.volumePrefix = fmt.Sprintf("%s-", prefix)
 	result.storageClassEnforcement = storageClassEnforcement
+	result.tenantKubernetesClient = tenantKubernetesClient
+	storageSnapshotMapping, err := result.buildStorageClassSnapshotClassMapping(tenantKubernetesClient, tenantSnapshotClient, storageClassEnforcement.StorageSnapshotMapping)
+	if err != nil {
+		return nil, err
+	}
+	result.infraTenantStorageSnapshotMapping = storageSnapshotMapping
 	return result, nil
 }
 
@@ -223,7 +243,7 @@ func (c *client) CreateDataVolume(ctx context.Context, namespace string, dataVol
 
 // Ping performs a minimal request to the infra-cluster k8s api
 func (c *client) Ping(ctx context.Context) error {
-	_, err := c.kubernetesClient.Discovery().ServerVersion()
+	_, err := c.infraKubernetesClient.Discovery().ServerVersion()
 	return err
 }
 
@@ -255,8 +275,8 @@ func (c *client) GetDataVolume(ctx context.Context, namespace string, name strin
 func (c *client) CreateVolumeSnapshot(ctx context.Context, namespace, name, claimName, snapshotClassName string) (*snapshotv1.VolumeSnapshot, error) {
 	if dv, err := c.GetDataVolume(ctx, namespace, claimName); err != nil {
 		return nil, err
-	} else if dv != nil {
-		snapshotClassName, err := c.getSnapshotClassNameFromVolumeClaimName(ctx, namespace, dv.GetName(), snapshotClassName)
+	} else {
+		snapshotClassNameFromStorage, err := c.getSnapshotClassNameFromVolumeClaimName(ctx, namespace, dv.GetName(), snapshotClassName)
 		if err != nil {
 			return nil, err
 		}
@@ -270,64 +290,81 @@ func (c *client) CreateVolumeSnapshot(ctx context.Context, namespace, name, clai
 				Source: snapshotv1.VolumeSnapshotSource{
 					PersistentVolumeClaimName: &claimName,
 				},
-				VolumeSnapshotClassName: &snapshotClassName,
 			},
 		}
-		klog.V(5).Infof("Creating snapshot %s with snapshot class %s, %#v", name, snapshotClassName, snapshot)
-		return c.snapClient.SnapshotV1().VolumeSnapshots(namespace).Create(ctx, snapshot, metav1.CreateOptions{})
+		// If the snapshot class is not found (blank), use 'default snapshost class' for infra cluster
+		// that is associated with the storage class provider.
+		if snapshotClassNameFromStorage != "" {
+			snapshot.Spec.VolumeSnapshotClassName = &snapshotClassNameFromStorage
+		}
+		klog.V(5).Infof("Creating snapshot %s with snapshot class [%s], %#v", name, snapshotClassName, snapshot)
+		return c.infraSnapClient.SnapshotV1().VolumeSnapshots(namespace).Create(ctx, snapshot, metav1.CreateOptions{})
 	}
-	return nil, nil
 }
 
 func (c *client) getSnapshotClassNameFromVolumeClaimName(ctx context.Context, namespace, claimName, snapshotClassName string) (string, error) {
 	storageClassName, err := c.getStorageClassNameFromClaimName(ctx, namespace, claimName)
 	if err != nil {
 		klog.V(2).Infof("Error getting storage class name for claim %s in namespace %s: %v", claimName, namespace, err)
-		return "", fmt.Errorf("unable to determine snapshot class name for infra source volume")
+		return "", fmt.Errorf("unable to determine volume snapshot class name for infra source volume")
 	}
-	if storageClassName == "" {
-		return "", fmt.Errorf("unable to determine storage class name for snapshot creation")
+	if storageClassName == "" && !c.storageClassEnforcement.AllowDefault {
+		return "", fmt.Errorf("unable to determine volume snapshot class name for snapshot creation, and default not allowed")
+	} else if storageClassName != "" && !(util.Contains(c.storageClassEnforcement.AllowList, storageClassName) || c.storageClassEnforcement.AllowAll) {
+		return "", fmt.Errorf("unable to determine volume snapshot class name for snapshot creation, no valid snapshot classes found")
 	}
-	allowed, err := c.isStorageClassAllowed(ctx, storageClassName)
-	if err != nil {
-		return "", err
+	snapshotClassNames := c.getInfraSnapshotClassesFromInfraStorageClassName(storageClassName)
+	if util.Contains(snapshotClassNames, snapshotClassName) {
+		return snapshotClassName, nil
 	}
-	if !allowed {
-		return "", fmt.Errorf("storage class %s is not allowed for snapshot creation", storageClassName)
-	}
-	snapshotClass, err := c.getSnapshotClassFromStorageClass(ctx, storageClassName, snapshotClassName)
-	if err != nil {
-		return "", err
-	}
-	return snapshotClass.Name, nil
-}
-
-func (c *client) isStorageClassAllowed(ctx context.Context, storageClassName string) (bool, error) {
-	if !c.storageClassEnforcement.AllowAll && !util.Contains(c.storageClassEnforcement.AllowList, storageClassName) {
-		if c.storageClassEnforcement.AllowDefault {
-			// Check if storage class is default and default is allowed.
-			storageClass, err := c.kubernetesClient.StorageV1().StorageClasses().Get(ctx, storageClassName, metav1.GetOptions{})
-			if err != nil {
-				if errors.IsNotFound(err) {
-					return false, nil
-				} else {
-					return false, err
-				}
-			}
-			ann := storageClass.GetAnnotations()
-			if v, ok := ann["storageclass.kubernetes.io/is-default-class"]; !ok || v != "true" {
-				return false, nil
+	if !(c.storageClassEnforcement.AllowAll || c.storageClassEnforcement.AllowDefault) {
+		tenantSnapshotClasses := c.getTenantSnapshotClassesFromInfraStorageClassName(storageClassName)
+		if len(tenantSnapshotClasses) > 0 {
+			if snapshotClassName == "" {
+				return "", fmt.Errorf("unable to determine volume snapshot class name for snapshot creation, valid snapshot classes are %v", tenantSnapshotClasses)
+			} else {
+				return "", fmt.Errorf("volume snapshot class %s is not compatible with PVC with storage class %s, valid snapshot classes for this pvc are %v", snapshotClassName, storageClassName, tenantSnapshotClasses)
 			}
 		} else {
-			return false, nil
+			return "", fmt.Errorf("unable to determine volume snapshot class name for snapshot creation, no valid snapshot classes found")
 		}
 	}
-	return true, nil
+	return "", nil
+}
+
+func (c *client) getInfraSnapshotClassesFromInfraStorageClassName(storageClassName string) []string {
+	for _, storageSnapshotMapping := range c.infraTenantStorageSnapshotMapping {
+		for _, storageClass := range storageSnapshotMapping.StorageClasses {
+			if storageClassName == storageClass {
+				infraSnapshotClasses := []string{}
+				for _, snapshotClasses := range storageSnapshotMapping.VolumeSnapshotClasses {
+					infraSnapshotClasses = append(infraSnapshotClasses, snapshotClasses.Infra)
+				}
+				return infraSnapshotClasses
+			}
+		}
+	}
+	return nil
+}
+
+func (c *client) getTenantSnapshotClassesFromInfraStorageClassName(storageClassName string) []string {
+	for _, storageSnapshotMapping := range c.infraTenantStorageSnapshotMapping {
+		for _, storageClass := range storageSnapshotMapping.StorageClasses {
+			if storageClassName == storageClass {
+				tenantSnapshotClasses := []string{}
+				for _, snapshotClasses := range storageSnapshotMapping.VolumeSnapshotClasses {
+					tenantSnapshotClasses = append(tenantSnapshotClasses, snapshotClasses.Tenant)
+				}
+				return tenantSnapshotClasses
+			}
+		}
+	}
+	return nil
 }
 
 // Determine the name of the volume associated with the passed in claim name
 func (c *client) getStorageClassNameFromClaimName(ctx context.Context, namespace, claimName string) (string, error) {
-	volumeClaim, err := c.kubernetesClient.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, claimName, metav1.GetOptions{})
+	volumeClaim, err := c.infraKubernetesClient.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, claimName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("Error getting volume claim %s in namespace %s: %v", claimName, namespace, err)
 		return "", err
@@ -340,56 +377,8 @@ func (c *client) getStorageClassNameFromClaimName(ctx context.Context, namespace
 	return storageClassName, nil
 }
 
-// Get the associated snapshot class based on the storage class the following logic is used:
-// 1. If the snapshot class is provided AND the provisioner string matches, return that.
-// 2. If the snapshot class is empty, find the snapshot classes associated with provisioner string.
-// 3. Based on those snapshot classes use the one marked as default if set.
-// 4. If no default is set return the first one.
-func (c *client) getSnapshotClassFromStorageClass(ctx context.Context, storageClassName, volumeSnapshotClassName string) (*snapshotv1.VolumeSnapshotClass, error) {
-	storageClass, err := c.kubernetesClient.StorageV1().StorageClasses().Get(ctx, storageClassName, metav1.GetOptions{})
-	if err != nil {
-		klog.V(2).Infof("Error getting storage class %s: %v", storageClassName, err)
-		return nil, err
-	}
-	provisioner := storageClass.Provisioner
-	snapshotClasses, err := c.snapClient.SnapshotV1().VolumeSnapshotClasses().List(ctx, metav1.ListOptions{})
-	if errors.IsNotFound(err) {
-		klog.V(5).Info("No snapshot classes found")
-		return nil, nil
-	} else if err != nil {
-		klog.V(2).Infof("Error getting snapshot classes: %v", err)
-		return nil, err
-	}
-	var storageClassSnapshotClasses []snapshotv1.VolumeSnapshotClass
-	for _, snapshotClass := range snapshotClasses.Items {
-		if snapshotClass.Driver == provisioner {
-			storageClassSnapshotClasses = append(storageClassSnapshotClasses, snapshotClass)
-		}
-	}
-
-	var bestMatch *snapshotv1.VolumeSnapshotClass
-	for i, snapshotClass := range storageClassSnapshotClasses {
-		klog.V(5).Infof("Checking snapshot class %#v", snapshotClass)
-		if i == 0 {
-			bestMatch = &storageClassSnapshotClasses[i]
-		}
-		if snapshotClass.Name == volumeSnapshotClassName {
-			return &snapshotClass, nil
-		}
-		ann := snapshotClass.GetAnnotations()
-		if ann != nil && ann[annDefaultSnapshotClass] == "true" {
-			bestMatch = &storageClassSnapshotClasses[i]
-		}
-	}
-	if volumeSnapshotClassName != "" {
-		klog.V(2).Infof("provided volume snapshot class %s cannot be matched with storage class", volumeSnapshotClassName)
-		return nil, fmt.Errorf("provided volume snapshot class cannot be matched with storage class")
-	}
-	return bestMatch, nil
-}
-
 func (c *client) GetVolumeSnapshot(ctx context.Context, namespace, name string) (*snapshotv1.VolumeSnapshot, error) {
-	s, err := c.snapClient.SnapshotV1().VolumeSnapshots(namespace).Get(ctx, name, metav1.GetOptions{})
+	s, err := c.infraSnapClient.SnapshotV1().VolumeSnapshots(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -409,7 +398,7 @@ func (c *client) DeleteVolumeSnapshot(ctx context.Context, namespace, name strin
 	if err != nil {
 		return err
 	}
-	return c.snapClient.SnapshotV1().VolumeSnapshots(s.GetNamespace()).Delete(ctx, s.GetName(), metav1.DeleteOptions{})
+	return c.infraSnapClient.SnapshotV1().VolumeSnapshots(s.GetNamespace()).Delete(ctx, s.GetName(), metav1.DeleteOptions{})
 }
 
 func (c *client) ListVolumeSnapshots(ctx context.Context, namespace string) (*snapshotv1.VolumeSnapshotList, error) {
@@ -417,9 +406,50 @@ func (c *client) ListVolumeSnapshots(ctx context.Context, namespace string) (*sn
 	if err != nil {
 		return nil, err
 	}
-	return c.snapClient.SnapshotV1().VolumeSnapshots(namespace).List(ctx, metav1.ListOptions{
+	return c.infraSnapClient.SnapshotV1().VolumeSnapshots(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: sl.String(),
 	})
+}
+
+func (c *client) buildStorageClassSnapshotClassMapping(k8sClient kubernetes.Interface, snapshotClient snapcli.Interface, infraStorageSnapMapping []util.StorageSnapshotMapping) ([]InfraTenantStorageSnapshotMapping, error) {
+	provisionerMapping := make([]InfraTenantStorageSnapshotMapping, len(infraStorageSnapMapping))
+
+	volumeSnapshotClassList, err := snapshotClient.SnapshotV1().VolumeSnapshotClasses().List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	for i, storageSnapshotMapping := range infraStorageSnapMapping {
+		mapping := &InfraTenantStorageSnapshotMapping{
+			StorageClasses: storageSnapshotMapping.StorageClasses,
+		}
+		mapping = appendVolumeSnapshotInfraTenantMapping(mapping, storageSnapshotMapping.VolumeSnapshotClasses, volumeSnapshotClassList.Items)
+		provisionerMapping[i] = *mapping
+	}
+
+	return provisionerMapping, nil
+}
+
+func appendVolumeSnapshotInfraTenantMapping(mapping *InfraTenantStorageSnapshotMapping, infraVolumeSnapshotClasses []string, tenantVolumeSnapshotClasses []snapshotv1.VolumeSnapshotClass) *InfraTenantStorageSnapshotMapping {
+	for _, infraVolumeSnapshotClass := range infraVolumeSnapshotClasses {
+		tenantVolumeSnapshotClassName := ""
+		for _, tenantVolumeSnapshotClass := range tenantVolumeSnapshotClasses {
+			if infraVolumeSnapshotClassName, ok := tenantVolumeSnapshotClass.Parameters[InfraSnapshotClassNameParameter]; !ok {
+				klog.V(4).Infof("volume snapshot class %s does not have infraSnapshotClassName parameter", tenantVolumeSnapshotClass.Name)
+				continue
+			} else {
+				if infraVolumeSnapshotClassName == infraVolumeSnapshotClass {
+					tenantVolumeSnapshotClassName = tenantVolumeSnapshotClass.Name
+					break
+				}
+			}
+		}
+		mapping.VolumeSnapshotClasses = append(mapping.VolumeSnapshotClasses, InfraToTenantMapping{
+			Infra:  infraVolumeSnapshotClass,
+			Tenant: tenantVolumeSnapshotClassName,
+		})
+	}
+	return mapping
 }
 
 var ErrInvalidSnapshot = goerrors.New("invalid snapshot name")

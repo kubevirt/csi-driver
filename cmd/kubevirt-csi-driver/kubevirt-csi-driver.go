@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	klog "k8s.io/klog/v2"
 
+	snapcli "kubevirt.io/csi-driver/pkg/generated/external-snapshotter/client-go/clientset/versioned"
 	"kubevirt.io/csi-driver/pkg/kubevirt"
 	"kubevirt.io/csi-driver/pkg/service"
 	"kubevirt.io/csi-driver/pkg/util"
@@ -90,11 +91,15 @@ func handle() {
 	if err != nil {
 		klog.Fatalf("Failed to build tenant client set: %v", err)
 	}
+	tenantSnapshotClientSet, err := snapcli.NewForConfig(tenantRestConfig)
+	if err != nil {
+		klog.Fatalf("Failed to build tenant snapshot client set: %v", err)
+	}
 
 	infraClusterLabelsMap := parseLabels()
 	storageClassEnforcement := configureStorageClassEnforcement(infraStorageClassEnforcement)
 
-	virtClient, err := kubevirt.NewClient(infraRestConfig, infraClusterLabelsMap, storageClassEnforcement, *volumePrefix)
+	virtClient, err := kubevirt.NewClient(infraRestConfig, infraClusterLabelsMap, tenantClientSet, tenantSnapshotClientSet, storageClassEnforcement, *volumePrefix)
 	if err != nil {
 		klog.Fatal(err)
 	}

@@ -93,7 +93,6 @@ END
 mkdir -p ./deploy/controller-tenant/dev-overlay
 mkdir -p ./deploy/tenant/dev-overlay
 
-cluster::generate_controller_rbac $TENANT_CLUSTER_NAMESPACE
 cluster::generate_tenant_dev_kustomization
 cluster::generate_controller_dev_kustomization "controller-tenant" $CSI_DRIVER_NAMESPACE
 tenant::deploy_csidriver_namespace $CSI_DRIVER_NAMESPACE

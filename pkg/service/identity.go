@@ -28,12 +28,12 @@ func NewIdentityService(clientset kubernetes.Interface) *IdentityService {
 	}
 }
 
-//IdentityService of kubevirt-csi-driver
+// IdentityService of kubevirt-csi-driver
 type IdentityService struct {
 	connectivityProbe connectivityProbeInterface
 }
 
-//GetPluginInfo returns the vendor name and version - set in build time
+// GetPluginInfo returns the vendor name and version - set in build time
 func (i *IdentityService) GetPluginInfo(context.Context, *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
 	return &csi.GetPluginInfoResponse{
 		Name:          VendorName,
@@ -41,7 +41,7 @@ func (i *IdentityService) GetPluginInfo(context.Context, *csi.GetPluginInfoReque
 	}, nil
 }
 
-//GetPluginCapabilities declares the plugins capabilities
+// GetPluginCapabilities declares the plugins capabilities
 func (i *IdentityService) GetPluginCapabilities(context.Context, *csi.GetPluginCapabilitiesRequest) (*csi.GetPluginCapabilitiesResponse, error) {
 	return &csi.GetPluginCapabilitiesResponse{
 		Capabilities: []*csi.PluginCapability{

@@ -1,6 +1,6 @@
 module kubevirt.io/csi-driver
 
-go 1.20
+go 1.21
 
 require (
 	github.com/container-storage-interface/spec v1.6.0
@@ -25,7 +25,7 @@ require (
 	k8s.io/klog/v2 v2.120.1
 	k8s.io/utils v0.0.0-20240102154912-e7106e64919e
 	kubevirt.io/api v1.1.1
-	kubevirt.io/containerized-data-importer-api v1.58.1
+	kubevirt.io/containerized-data-importer-api v1.59.0
 )
 
 require (
