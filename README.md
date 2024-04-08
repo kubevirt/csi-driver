@@ -66,7 +66,7 @@ data:
   infraClusterNamespace: kvcluster
   infraClusterLabels: csi-driver/cluster=tenant
 ```
-
+For more information about the fields available in the `driver-config` ConfigMap see this [documentation](docs/snapshot-driver-config.md)
 ```yaml
 kind: Deployment
 apiVersion: apps/v1

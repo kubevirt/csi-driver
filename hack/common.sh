@@ -131,34 +131,6 @@ function tenant::deploy_snapshotresources() {
   ./kubevirtci kubectl-tenant apply -f ./deploy/tenant/base/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
   ./kubevirtci kubectl-tenant apply -f ./deploy/tenant/base/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
   ./kubevirtci kubectl-tenant apply -f ./deploy/tenant/base/snapshot.storage.k8s.io_volumesnapshots.yaml
-}
-
-function cluster::generate_controller_rbac() {
-  cat <<- END | ./kubevirtci kubectl apply -f -
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: kubevirt-csi-snapshot
-rules:
-- apiGroups: ["storage.k8s.io"]
-  resources: ["storageclasses"]
-  verbs: ["get"]
-- apiGroups: ["snapshot.storage.k8s.io"]
-  resources: ["volumesnapshotclasses"]
-  verbs: ["get", "list"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: kubevirt-csi-snapshot
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: kubevirt-csi-snapshot
-subjects:
-- kind: ServiceAccount
-  name: kubevirt-csi
-  namespace: $1
-END
+  # Make sure the infra rbd snapshot class is the default snapshot class
+  ./kubevirtci kubectl patch volumesnapshotclass csi-rbdplugin-snapclass --type merge -p '{"metadata": {"annotations":{"snapshot.storage.kubernetes.io/is-default-class":"true"}}}'
 }
