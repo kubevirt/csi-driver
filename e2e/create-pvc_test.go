@@ -20,6 +20,7 @@ import (
 	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
@@ -113,8 +114,71 @@ var _ = Describe("CreatePVC", func() {
 		pvcName := "test-pvc"
 		storageClassName := "kubevirt"
 		pvc := pvcSpec(pvcName, storageClassName, "10Mi")
-		volumeMode := k8sv1.PersistentVolumeBlock
-		pvc.Spec.VolumeMode = &volumeMode
+		pvc.Spec.VolumeMode = ptr.To(k8sv1.PersistentVolumeBlock)
+		pvc.Spec.AccessModes = []k8sv1.PersistentVolumeAccessMode{k8sv1.ReadWriteMany}
+
+		By("creating a pvc")
+		_, err := tenantClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
+		Expect(err).ToNot(HaveOccurred())
+
+		By("creating a pod that attaches pvc")
+		const (
+			labelKey         = "app"
+			writerLabelValue = "writer"
+		)
+
+		writerPod := runPod(
+			tenantClient.CoreV1(),
+			namespace,
+			createPod("writer-pod",
+				withBlock(pvc.Name),
+				withCommand(blockWriteCommand+" && sleep 60"),
+				withLabel(labelKey, writerLabelValue),
+			),
+			false,
+		)
+
+		GinkgoWriter.Printf("[DEBUG] writer pod node: %s\n", writerPod.Spec.NodeName)
+
+		By("creating a different pod that reads from pvc")
+		Eventually(func(g Gomega) {
+			readerPod := runPod(
+				tenantClient.CoreV1(),
+				namespace,
+				createPod("reader-pod",
+					withCommand(blockReadCommand),
+					withBlock(pvc.Name),
+					withPodAntiAffinity(labelKey, writerLabelValue),
+				),
+				true,
+			)
+
+			defer deletePod(tenantClient.CoreV1(), namespace, readerPod.Name)
+			GinkgoWriter.Printf("[DEBUG] reader pod node: %s\n", readerPod.Spec.NodeName)
+
+			s := tenantClient.CoreV1().Pods(namespace).GetLogs(readerPod.Name, &k8sv1.PodLogOptions{})
+			reader, err := s.Stream(context.Background())
+			g.Expect(err).ToNot(HaveOccurred())
+			defer reader.Close()
+			buf := new(bytes.Buffer)
+			n, err := buf.ReadFrom(reader)
+			g.Expect(err).ToNot(HaveOccurred())
+
+			g.Expect(n).To(BeEquivalentTo(len("testing\n")))
+			out := buf.String()
+			g.Expect(strings.TrimSpace(out)).To(Equal("testing"))
+
+		}).WithTimeout(120 * time.Second).WithPolling(20 * time.Second).Should(Succeed())
+
+		deletePod(tenantClient.CoreV1(), namespace, writerPod.Name)
+	})
+
+	It("should creates a RW-Many block pvc, with FS infra storage class, and attaches to pod", Label("pvcCreation", "RWX", "Block", "infra-FS"), func() {
+		pvcName := "test-pvc"
+		storageClassName := "infra-fs"
+		pvc := pvcSpec(pvcName, storageClassName, "10Mi")
+
+		pvc.Spec.VolumeMode = ptr.To(k8sv1.PersistentVolumeBlock)
 		pvc.Spec.AccessModes = []k8sv1.PersistentVolumeAccessMode{k8sv1.ReadWriteMany}
 
 		By("creating a pvc")
@@ -177,8 +241,8 @@ var _ = Describe("CreatePVC", func() {
 		const pvcName = "test-pvc"
 		storageClassName := "kubevirt"
 		pvc := pvcSpec(pvcName, storageClassName, "10Mi")
-		volumeMode := k8sv1.PersistentVolumeFilesystem
-		pvc.Spec.VolumeMode = &volumeMode
+
+		pvc.Spec.VolumeMode = ptr.To(k8sv1.PersistentVolumeFilesystem)
 		pvc.Spec.AccessModes = []k8sv1.PersistentVolumeAccessMode{k8sv1.ReadWriteMany}
 
 		By("creating a pvc")
