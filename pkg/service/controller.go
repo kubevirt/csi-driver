@@ -18,7 +18,6 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
@@ -166,7 +165,6 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	if isRWX {
-		dv.Spec.Storage.VolumeMode = ptr.To(corev1.PersistentVolumeBlock)
 		dv.Spec.Storage.AccessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}
 	}
 

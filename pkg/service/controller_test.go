@@ -50,7 +50,7 @@ var _ = Describe("StorageClass", func() {
 })
 
 var _ = Describe("CreateVolume", func() {
-	DescribeTable("should successfully create a volume", func(cap *csi.VolumeCapability, expectedAC *corev1.PersistentVolumeAccessMode, expectedVolumeMode *corev1.PersistentVolumeMode) {
+	DescribeTable("should successfully create a volume", func(cap *csi.VolumeCapability, expectedAC *corev1.PersistentVolumeAccessMode) {
 		client := &ControllerClientMock{}
 		controller := ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
 
@@ -74,17 +74,10 @@ var _ = Describe("CreateVolume", func() {
 		} else if dv.Spec.Storage != nil {
 			Expect(dv.Spec.Storage.AccessModes).To(BeEmpty())
 		}
-
-		if expectedVolumeMode != nil {
-			Expect(dv.Spec.Storage).ToNot(BeNil())
-			Expect(dv.Spec.Storage.VolumeMode).To(HaveValue(Equal(*expectedVolumeMode)))
-		} else if dv.Spec.Storage != nil {
-			Expect(dv.Spec.Storage.VolumeMode).To(BeNil())
-		}
 	},
-		Entry("volume mode = block; [RWX]", getVolumeCapability(corev1.PersistentVolumeBlock, csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER), ptr.To(corev1.ReadWriteMany), ptr.To(corev1.PersistentVolumeBlock)),
-		Entry("volume mode = block; [RWO]", getVolumeCapability(corev1.PersistentVolumeBlock, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER), nil, nil),
-		Entry("volume mode = filesystem; [RWO]", getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER), nil, nil),
+		Entry("volume mode = block; [RWX]", getVolumeCapability(corev1.PersistentVolumeBlock, csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER), ptr.To(corev1.ReadWriteMany)),
+		Entry("volume mode = block; [RWO]", getVolumeCapability(corev1.PersistentVolumeBlock, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER), nil),
+		Entry("volume mode = filesystem; [RWO]", getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER), nil),
 	)
 
 	It("should reject create volume request for FS & RWX", func() {
