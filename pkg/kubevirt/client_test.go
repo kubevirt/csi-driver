@@ -152,10 +152,18 @@ var _ = Describe("Client", func() {
 		)
 
 		It("should return error if the storage class is not allowed", func() {
+			c.storageClassEnforcement = createDefaultStorageClassEnforcement()
 			res, err := c.getSnapshotClassNameFromVolumeClaimName(context.TODO(), testNamespace, testClaimNameNotAllowed, volumeSnapshotClassName)
 			Expect(err).To(HaveOccurred())
 			Expect(res).To(Equal(""))
 			Expect(err.Error()).To(ContainSubstring(snapshotClassNotFound))
+		})
+
+		It("should return blank without error if default is allowed", func() {
+			c.storageClassEnforcement = createAllowDefaultStorageClassEnforcement()
+			res, err := c.getSnapshotClassNameFromVolumeClaimName(context.TODO(), testNamespace, testClaimNameNotAllowed, volumeSnapshotClassName)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(res).To(Equal(""))
 		})
 
 		It("should return not error if the storage class is not allowed, but allowAll is true", func() {
