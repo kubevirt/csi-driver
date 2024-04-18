@@ -97,6 +97,7 @@ func handle() {
 	}
 
 	infraClusterLabelsMap := parseLabels()
+	klog.V(5).Infof("Storage class enforcement string: \n%s", infraStorageClassEnforcement)
 	storageClassEnforcement := configureStorageClassEnforcement(infraStorageClassEnforcement)
 
 	virtClient, err := kubevirt.NewClient(infraRestConfig, infraClusterLabelsMap, tenantClientSet, tenantSnapshotClientSet, storageClassEnforcement, *volumePrefix)
