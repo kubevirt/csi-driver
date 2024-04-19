@@ -323,7 +323,11 @@ func (c *client) getSnapshotClassNameFromVolumeClaimName(ctx context.Context, na
 		klog.V(2).Infof("Error getting storage class name for claim %s in namespace %s: %v", claimName, namespace, err)
 		return "", fmt.Errorf("unable to determine volume snapshot class name for infra source volume")
 	}
-	if storageClassName == "" && !c.storageClassEnforcement.AllowDefault {
+	if c.storageClassEnforcement.AllowDefault {
+		// Allow default is set to true, return blank snapshot class name so it remains blank in the created volume snapshot in the infra cluster.
+		return "", nil
+	}
+	if storageClassName == "" {
 		return "", fmt.Errorf("unable to determine volume snapshot class name for snapshot creation, and default not allowed")
 	} else if storageClassName != "" && !(util.Contains(c.storageClassEnforcement.AllowList, storageClassName) || c.storageClassEnforcement.AllowAll) {
 		return "", fmt.Errorf("unable to determine volume snapshot class name for snapshot creation, no valid snapshot classes found based on storage class [%s]", storageClassName)
