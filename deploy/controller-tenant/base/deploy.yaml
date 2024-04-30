@@ -36,7 +36,7 @@ spec:
             - "--infra-cluster-namespace=$(INFRACLUSTER_NAMESPACE)"
             - "--infra-cluster-kubeconfig=/var/run/secrets/infracluster/kubeconfig"
             - "--infra-cluster-labels=$(INFRACLUSTER_LABELS)"
-            - --v=5
+            - "--v=5"
           ports:
             - name: healthz
               containerPort: 10301
@@ -73,15 +73,14 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
-            limits:
-              memory: 500Mi
-              cpu: 250m
         - name: csi-provisioner
           image: quay.io/openshift/origin-csi-external-provisioner:latest
           args:
-            - --csi-address=$(ADDRESS)
-            - --default-fstype=ext4
-            - --v=5
+            - "--csi-address=$(ADDRESS)"
+            - "--default-fstype=ext4"
+            - "--v=5"
+            - "--timeout=3m"
+            - "--retry-interval-max=1m"
           env:
             - name: ADDRESS
               value: /var/lib/csi/sockets/pluginproxy/csi.sock
@@ -92,14 +91,13 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
-            limits:
-              memory: 500Mi
-              cpu: 250m
         - name: csi-attacher
           image: quay.io/openshift/origin-csi-external-attacher:latest
           args:
-            - --csi-address=$(ADDRESS)
-            - --v=5
+            - "--csi-address=$(ADDRESS)"
+            - "--v=5"
+            - "--timeout=3m"
+            - "--retry-interval-max=1m"
           env:
             - name: ADDRESS
               value: /var/lib/csi/sockets/pluginproxy/csi.sock
@@ -110,15 +108,12 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
-            limits:
-              memory: 500Mi
-              cpu: 250m
         - name: csi-liveness-probe
           image: quay.io/openshift/origin-csi-livenessprobe:latest
           args:
-            - --csi-address=/csi/csi.sock
-            - --probe-timeout=3s
-            - --health-port=10301
+            - "--csi-address=/csi/csi.sock"
+            - "--probe-timeout=3s"
+            - "--health-port=10301"
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -126,13 +121,11 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
-            limits:
-              memory: 500Mi
-              cpu: 250m
         - name: csi-snapshotter
           args:
-          - --v=3
-          - --csi-address=/csi/csi.sock
+          - "--v=3"
+          - "--csi-address=/csi/csi.sock"
+          - "--timeout=3m"
           image: k8s.gcr.io/sig-storage/csi-snapshotter:v4.2.1
           imagePullPolicy: IfNotPresent
           securityContext:
@@ -146,9 +139,6 @@ spec:
             requests:
               memory: 20Mi
               cpu: 10m
-            limits:
-              memory: 500Mi
-              cpu: 250m
       volumes:
         - name: socket-dir
           emptyDir: {}
