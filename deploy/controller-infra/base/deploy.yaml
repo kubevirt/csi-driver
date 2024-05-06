@@ -130,6 +130,7 @@ spec:
           - "--v=5"
           - "--csi-address=/csi/csi.sock"
           - "--kubeconfig=/var/run/secrets/tenantcluster/value"
+          - "--timeout=3m"
           image: k8s.gcr.io/sig-storage/csi-snapshotter:v4.2.1
           imagePullPolicy: IfNotPresent
           terminationMessagePath: /dev/termination-log
