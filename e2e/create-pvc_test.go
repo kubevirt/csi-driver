@@ -495,7 +495,16 @@ var _ = Describe("CreatePVC", func() {
 				tenantPVC = nil
 			}
 			if tenantPV != nil {
-				err := tenantClient.CoreV1().PersistentVolumes().Delete(context.Background(), tenantPV.Name, metav1.DeleteOptions{})
+				By("Ensuring volume attachments associated with the PV are deleted")
+				attachments, err := tenantClient.StorageV1().VolumeAttachments().List(context.Background(), metav1.ListOptions{})
+				Expect(err).ToNot(HaveOccurred())
+				for _, attachment := range attachments.Items {
+					if attachment.Spec.Source.PersistentVolumeName != nil && *attachment.Spec.Source.PersistentVolumeName == tenantPV.Name {
+						err = tenantClient.StorageV1().VolumeAttachments().Delete(context.Background(), attachment.Name, metav1.DeleteOptions{})
+						Expect(err).ToNot(HaveOccurred())
+					}
+				}
+				err = tenantClient.CoreV1().PersistentVolumes().Delete(context.Background(), tenantPV.Name, metav1.DeleteOptions{})
 				Expect(err).ToNot(HaveOccurred())
 				// For some reason this takes about 2 minutes.
 				Eventually(func() bool {
@@ -540,6 +549,9 @@ var _ = Describe("CreatePVC", func() {
 			tenantPV = &k8sv1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "tenant-pv",
+					Annotations: map[string]string{
+						"pv.kubernetes.io/provisioned-by": "csi.kubevirt.io",
+					},
 				},
 				Spec: k8sv1.PersistentVolumeSpec{
 					AccessModes: []k8sv1.PersistentVolumeAccessMode{k8sv1.ReadWriteOnce},

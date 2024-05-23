@@ -9,6 +9,7 @@ VIRTCTL_PATH=${TOOLS_DIR}/bin/virtctl
 DUMP_VERSION=$(curl -L https://storage.googleapis.com/kubevirt-prow/devel/nightly/release/kubevirt/kubevirt/latest)
 DUMP_PATH=${TOOLS_DIR}/bin/kubevirt-${DUMP_VERSION}-dump     
 TEST_WORKING_DIR=${TOOLS_DIR}/e2e-test-workingdir
+BIN_DIR=${BIN_DIR:-bin}
 export ARTIFACTS=${ARTIFACTS:-k8s-reporter}
 export KUBECONFIG=$(./kubevirtci kubeconfig)                                                                
 export INFRA_CLUSTER_NAMESPACE=${INFRA_CLUSTER_NAMESPACE:-kvcluster}
