@@ -2,9 +2,9 @@
 
 set -e
 
-export KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-k8s-1.28}
-export CAPK_GUEST_K8S_VERSION=${CAPK_GUEST_K8S_VERSION:-v1.26.0}
-export KUBEVIRTCI_TAG=${KUBEVIRTCI_TAG:-2309141019-029e67a}
+export KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-k8s-1.30}
+export CAPK_GUEST_K8S_VERSION=${CAPK_GUEST_K8S_VERSION:-v1.30.1}
+export KUBEVIRTCI_TAG=${KUBEVIRTCI_TAG:-2405151527-09bcd71}
 export KUBECONFIG=$(cluster-up/cluster-up/kubeconfig.sh)
 export KUBEVIRT_DEPLOY_PROMETHEUS=false
 export KUBEVIRT_NUM_NODES=${KUBEVIRT_NUM_NODES:-1}
@@ -15,7 +15,7 @@ export CAPK_RELEASE_VERSION="v0.1.8"
 export CLUSTERCTL_VERSION="v1.6.1"
 export CALICO_VERSION="v3.27.0"
 export KUBEVIRT_VERSION="v1.1.1"
-export NODE_VM_IMAGE_TEMPLATE=${NODE_VM_IMAGE_TEMPLATE:-quay.io/capk/ubuntu-2004-container-disk:v1.26.0}
+export NODE_VM_IMAGE_TEMPLATE=${NODE_VM_IMAGE_TEMPLATE:-quay.io/capk/ubuntu-2204-container-disk:v1.30.1}
 
 _default_bin_path=./hack/tools/bin
 _default_tmp_path=./hack/tools/bin/tmp
