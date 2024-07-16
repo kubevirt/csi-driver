@@ -38,7 +38,12 @@ var _ = Describe("StorageClass", func() {
 		defer func() { testInfraStorageClassName = origStorageClass }()
 
 		client := &ControllerClientMock{}
-		controller := ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
+		controller := ControllerService{
+			virtClient:              client,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
 
 		response, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER)))
 		Expect(err).ToNot(HaveOccurred())
@@ -52,7 +57,12 @@ var _ = Describe("StorageClass", func() {
 var _ = Describe("CreateVolume", func() {
 	DescribeTable("should successfully create a volume", func(cap *csi.VolumeCapability, expectedAC *corev1.PersistentVolumeAccessMode) {
 		client := &ControllerClientMock{}
-		controller := ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
+		controller := ControllerService{
+			virtClient:              client,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
 
 		request := getCreateVolumeRequest(cap)
 		response, err := controller.CreateVolume(context.TODO(), request)
@@ -82,7 +92,12 @@ var _ = Describe("CreateVolume", func() {
 
 	It("should reject create volume request for FS & RWX", func() {
 		client := &ControllerClientMock{}
-		controller := ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
+		controller := ControllerService{
+			virtClient:              client,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
 
 		response, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER)))
 		Expect(err).To(MatchError(ContainSubstring("non-block volume with RWX access mode is not supported")))
@@ -91,7 +106,12 @@ var _ = Describe("CreateVolume", func() {
 
 	It("should propagate error from CreateVolume", func() {
 		client := &ControllerClientMock{FailCreateDataVolume: true}
-		controller := ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
+		controller := ControllerService{
+			virtClient:              client,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
 
 		_, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER)))
 		Expect(err).To(HaveOccurred())
@@ -99,7 +119,12 @@ var _ = Describe("CreateVolume", func() {
 
 	It("should accept custom bus type", func() {
 		client := &ControllerClientMock{}
-		controller := ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
+		controller := ControllerService{
+			virtClient:              client,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
 
 		busTypeLocal := kubevirtv1.DiskBusVirtio
 		testBusType = &busTypeLocal
@@ -116,7 +141,12 @@ var _ = Describe("CreateVolume", func() {
 			AllowAll:     false,
 			AllowDefault: true,
 		}
-		controller := ControllerService{cli, testInfraNamespace, testInfraLabels, storageClassEnforcement}
+		controller := ControllerService{
+			virtClient:              cli,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
 
 		request := getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER))
 		request.Parameters[client.InfraStorageClassNameParameter] = "notAllowedClass"
@@ -130,7 +160,12 @@ var _ = Describe("CreateVolume", func() {
 var _ = Describe("DeleteVolume", func() {
 	It("should successfully delete a volume", func() {
 		client := &ControllerClientMock{}
-		controller := ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
+		controller := ControllerService{
+			virtClient:              client,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
 
 		_, err := controller.DeleteVolume(context.TODO(), getDeleteVolumeRequest())
 		Expect(err).ToNot(HaveOccurred())
@@ -138,7 +173,12 @@ var _ = Describe("DeleteVolume", func() {
 
 	It("should fail to delete a volume", func() {
 		client := &ControllerClientMock{FailDeleteDataVolume: true}
-		controller := ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
+		controller := ControllerService{
+			virtClient:              client,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
 
 		_, err := controller.DeleteVolume(context.TODO(), getDeleteVolumeRequest())
 		Expect(err).To(HaveOccurred())
@@ -152,7 +192,12 @@ var _ = Describe("PublishUnPublish", func() {
 	)
 	BeforeEach(func() {
 		client = &ControllerClientMock{}
-		controller = &ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
+		controller = &ControllerService{
+			virtClient:              client,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
 	})
 
 	It("should successfully publish", func() {
@@ -202,7 +247,13 @@ var _ = Describe("Snapshots", func() {
 	)
 	BeforeEach(func() {
 		client = &ControllerClientMock{}
-		controller = &ControllerService{client, testInfraNamespace, testInfraLabels, storageClassEnforcement}
+		controller = &ControllerService{
+			virtClient:              client,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
+
 	})
 
 	Context("Create snapshots", func() {

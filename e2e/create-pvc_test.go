@@ -580,7 +580,7 @@ var _ = Describe("CreatePVC", func() {
 				},
 				Spec: k8sv1.PersistentVolumeClaimSpec{
 					AccessModes: []k8sv1.PersistentVolumeAccessMode{k8sv1.ReadWriteOnce},
-					Resources: k8sv1.ResourceRequirements{
+					Resources: k8sv1.VolumeResourceRequirements{
 						Requests: k8sv1.ResourceList{
 							k8sv1.ResourceStorage: resource.MustParse("1Gi"),
 						},
@@ -624,7 +624,7 @@ func pvcSpec(pvcName, storageClassName, size string) *k8sv1.PersistentVolumeClai
 		ObjectMeta: metav1.ObjectMeta{Name: pvcName},
 		Spec: k8sv1.PersistentVolumeClaimSpec{
 			AccessModes: []k8sv1.PersistentVolumeAccessMode{k8sv1.ReadWriteOnce},
-			Resources: k8sv1.ResourceRequirements{
+			Resources: k8sv1.VolumeResourceRequirements{
 				Requests: k8sv1.ResourceList{
 					"storage": quantity,
 				},
