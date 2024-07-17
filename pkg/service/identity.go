@@ -2,8 +2,8 @@ package service
 
 import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/protobuf/ptypes/wrappers"
 	"golang.org/x/net/context"
+	wrappers "google.golang.org/protobuf/types/known/wrapperspb"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -30,8 +30,11 @@ func NewIdentityService(clientset kubernetes.Interface) *IdentityService {
 
 // IdentityService of kubevirt-csi-driver
 type IdentityService struct {
+	csi.UnimplementedIdentityServer
 	connectivityProbe connectivityProbeInterface
 }
+
+var _ csi.IdentityServer = &IdentityService{}
 
 // GetPluginInfo returns the vendor name and version - set in build time
 func (i *IdentityService) GetPluginInfo(context.Context, *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {

@@ -25,6 +25,7 @@ var nodeCaps = []csi.NodeServiceCapability_RPC_Type{
 
 // NodeService implements the CSI Driver node service
 type NodeService struct {
+	csi.UnimplementedNodeServer
 	nodeID       string
 	deviceLister DeviceLister
 	fsMaker      FsMaker
@@ -202,7 +203,7 @@ func (n *NodeService) validateNodePublishRequest(req *csi.NodePublishVolumeReque
 // NodePublishVolume mounts the volume to the target path (req.GetTargetPath)
 func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	if req != nil {
-		klog.V(3).Infof("Node Publish Request: %+v", *req)
+		klog.V(3).Infof("Node Publish Request: %s", req.String())
 	}
 	if err := n.validateNodePublishRequest(req); err != nil {
 		return nil, err
@@ -296,7 +297,7 @@ func (n *NodeService) validateNodeUnpublishRequest(req *csi.NodeUnpublishVolumeR
 // NodeUnpublishVolume unmount the volume from the worker node
 func (n *NodeService) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	if req != nil {
-		klog.V(3).Infof("Node Unpublish Request: %+v", *req)
+		klog.V(3).Infof("Node Unpublish Request: %s", req.String())
 	}
 	if err := n.validateNodeUnpublishRequest(req); err != nil {
 		klog.Errorf("Validate node unpublish failed %v", err)

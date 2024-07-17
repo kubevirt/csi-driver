@@ -37,6 +37,7 @@ var (
 
 // ControllerService implements the controller interface. See README for details.
 type ControllerService struct {
+	csi.UnimplementedControllerServer
 	virtClient              client.Client
 	infraClusterNamespace   string
 	infraClusterLabels      map[string]string
@@ -115,7 +116,7 @@ func getAccessMode(caps []*csi.VolumeCapability) (bool, bool) {
 // The new DataVolume.ID is used as the disk serial.
 func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	if req != nil {
-		klog.V(3).Infof("Create Volume Request: %+v", *req)
+		klog.V(3).Infof("Create Volume Request: %s", req.String())
 	}
 	isRWX, err := c.validateCreateVolumeRequest(req)
 	if err != nil {
@@ -255,7 +256,7 @@ func (c *ControllerService) validateDeleteVolumeRequest(req *csi.DeleteVolumeReq
 // DeleteVolume removes the data volume from kubevirt
 func (c *ControllerService) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	if req != nil {
-		klog.V(3).Infof("Delete Volume Request: %+v", *req)
+		klog.V(3).Infof("Delete Volume Request: %s", req.String())
 	}
 	if err := c.validateDeleteVolumeRequest(req); err != nil {
 		return nil, err
