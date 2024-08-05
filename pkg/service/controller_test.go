@@ -55,6 +55,13 @@ var _ = Describe("StorageClass", func() {
 })
 
 var _ = Describe("CreateVolume", func() {
+	AfterEach(func() {
+		storageClassEnforcement = util.StorageClassEnforcement{
+			AllowAll:     true,
+			AllowDefault: true,
+		}
+	})
+
 	DescribeTable("should successfully create a volume", func(cap *csi.VolumeCapability, expectedAC *corev1.PersistentVolumeAccessMode) {
 		client := &ControllerClientMock{}
 		controller := ControllerService{
@@ -154,6 +161,110 @@ var _ = Describe("CreateVolume", func() {
 		_, err := controller.CreateVolume(context.TODO(), request)
 		Expect(err).To(HaveOccurred())
 		Expect(err).To(Equal(unallowedStorageClass))
+	})
+
+	It("should create a volume with a snapshot datasource", func() {
+		client := &ControllerClientMock{}
+		client.snapshots = make(map[string]*snapshotv1.VolumeSnapshot)
+		client.snapshots[getKey(testInfraNamespace, "snapshot-1")] = &snapshotv1.VolumeSnapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "snapshot-1",
+				Namespace: testInfraNamespace,
+			},
+		}
+		controller := ControllerService{
+			virtClient:              client,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
+
+		request := getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER))
+		request.VolumeContentSource = &csi.VolumeContentSource{
+			Type: &csi.VolumeContentSource_Snapshot{
+				Snapshot: &csi.VolumeContentSource_SnapshotSource{
+					SnapshotId: "snapshot-1",
+				},
+			},
+		}
+
+		_, err := controller.CreateVolume(context.TODO(), request)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("should fail to create a volume with a snapshot datasource, if snapshot not found", func() {
+		client := &ControllerClientMock{}
+		controller := ControllerService{
+			virtClient:              client,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
+
+		request := getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER))
+		request.VolumeContentSource = &csi.VolumeContentSource{
+			Type: &csi.VolumeContentSource_Snapshot{
+				Snapshot: &csi.VolumeContentSource_SnapshotSource{
+					SnapshotId: "snapshot-1",
+				},
+			},
+		}
+
+		_, err := controller.CreateVolume(context.TODO(), request)
+		Expect(err).To(HaveOccurred())
+		Expect(err).To(Equal(status.Error(codes.NotFound, "source snapshot content snapshot-1 not found")))
+	})
+
+	It("should create a volume with a volume datasource", func() {
+		client := &ControllerClientMock{}
+		client.datavolumes = make(map[string]*cdiv1.DataVolume)
+		client.datavolumes[getKey(testInfraNamespace, "pvc-1")] = &cdiv1.DataVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pvc-1",
+				Namespace: testInfraNamespace,
+			},
+		}
+		controller := ControllerService{
+			virtClient:              client,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
+
+		request := getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER))
+		request.VolumeContentSource = &csi.VolumeContentSource{
+			Type: &csi.VolumeContentSource_Volume{
+				Volume: &csi.VolumeContentSource_VolumeSource{
+					VolumeId: "pvc-1",
+				},
+			},
+		}
+
+		_, err := controller.CreateVolume(context.TODO(), request)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("should fail to create a volume with a volume datasource, if volume not found", func() {
+		client := &ControllerClientMock{}
+		controller := ControllerService{
+			virtClient:              client,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
+
+		request := getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER))
+		request.VolumeContentSource = &csi.VolumeContentSource{
+			Type: &csi.VolumeContentSource_Volume{
+				Volume: &csi.VolumeContentSource_VolumeSource{
+					VolumeId: "pvc-1",
+				},
+			},
+		}
+
+		_, err := controller.CreateVolume(context.TODO(), request)
+		Expect(err).To(HaveOccurred())
+		Expect(err).To(Equal(status.Error(codes.NotFound, "source volume content pvc-1 not found")))
 	})
 })
 
