@@ -49,6 +49,7 @@ var controllerCaps = []csi.ControllerServiceCapability_RPC_Type{
 	csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME, // attach/detach
 	csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
 	csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
+	csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
 }
 
 func (c *ControllerService) validateCreateVolumeRequest(req *csi.CreateVolumeRequest) (bool, error) {
@@ -140,6 +141,14 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if err != nil {
 		return nil, err
 	}
+	// Once there is a mechanism in CDI to allow cloning from a PVC that is in use by a pod, we can remove this
+	sourcePVCName := ""
+	if source.PVC != nil {
+		// This is a CSI clone, unfortunately CDI doesn't allow cloning of PVCs that are
+		// in use by a pod. So we need to do a PVC csi clone instead
+		sourcePVCName = source.PVC.Name
+		source = nil
+	}
 
 	dv := &cdiv1.DataVolume{
 		TypeMeta: v1.TypeMeta{
@@ -163,6 +172,14 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 			},
 			Source: source,
 		},
+	}
+
+	// Once there is a mechanism in CDI to allow cloning from a PVC that is in use by a pod, we can remove this
+	if sourcePVCName != "" {
+		dv.Spec.Storage.DataSourceRef = &corev1.TypedObjectReference{
+			Kind: "PersistentVolumeClaim",
+			Name: sourcePVCName,
+		}
 	}
 
 	if isRWX {
@@ -229,6 +246,19 @@ func (c *ControllerService) determineDvSource(ctx context.Context, req *csi.Crea
 				if snapshotSource := source.GetSnapshot(); snapshotSource != nil {
 					res.Snapshot = &cdiv1.DataVolumeSourceSnapshot{
 						Name:      snapshot.Name,
+						Namespace: c.infraClusterNamespace,
+					}
+				}
+			}
+		case *csi.VolumeContentSource_Volume:
+			if volume, err := c.virtClient.GetDataVolume(ctx, c.infraClusterNamespace, source.GetVolume().GetVolumeId()); errors.IsNotFound(err) {
+				return nil, status.Errorf(codes.NotFound, "source volume content %s not found", source.GetVolume().GetVolumeId())
+			} else if err != nil {
+				return nil, err
+			} else if volume != nil {
+				if volumeSource := source.GetVolume(); volumeSource != nil {
+					res.PVC = &cdiv1.DataVolumeSourcePVC{
+						Name:      volume.Name,
 						Namespace: c.infraClusterNamespace,
 					}
 				}

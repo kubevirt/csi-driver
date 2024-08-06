@@ -15,6 +15,7 @@ DriverInfo:
     persistence: true
     singleNodeVolume: false
     snapshotDataSource: true
+    pvcDataSource: true
     topology: false
     capacity: false
     RWX: false
