@@ -447,6 +447,10 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 	// Get VM name
 	vmName, err := c.getVMNameByCSINodeID(ctx, req.NodeId)
 	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			klog.Infof("VM for node ID %s not found, assuming volume is already detached", req.NodeId)
+			return &csi.ControllerUnpublishVolumeResponse{}, nil
+		}
 		return nil, err
 	}
 

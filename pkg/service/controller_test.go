@@ -349,6 +349,13 @@ var _ = Describe("PublishUnPublish", func() {
 		_, err := controller.ControllerUnpublishVolume(context.TODO(), getUnpublishVolumeRequest())
 		Expect(err).ToNot(HaveOccurred())
 	})
+
+	It("should return success when unpublishing a volume from a VM that doesn't exist", func() {
+		req := getUnpublishVolumeRequest()
+		req.NodeId = "non-existent-node"
+		_, err := controller.ControllerUnpublishVolume(context.TODO(), req)
+		Expect(err).ToNot(HaveOccurred())
+	})
 })
 
 var _ = Describe("Snapshots", func() {
