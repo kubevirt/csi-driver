@@ -14,6 +14,7 @@ spec:
       labels:
         app: kubevirt-csi-driver
     spec:
+      enableServiceLinks: false
       serviceAccount: kubevirt-csi-controller-sa
       priorityClassName: system-cluster-critical
       nodeSelector:
