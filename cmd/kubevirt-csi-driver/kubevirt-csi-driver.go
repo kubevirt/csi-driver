@@ -105,7 +105,11 @@ func handle() {
 		klog.Fatal(err)
 	}
 
-	var nodeID string
+	var (
+		nodeID            string
+		allowedTopologies = map[string]string{}
+	)
+
 	if *nodeName != "" {
 		node, err := tenantClientSet.CoreV1().Nodes().Get(context.TODO(), *nodeName, v1.GetOptions{})
 		if err != nil {
@@ -117,6 +121,11 @@ func handle() {
 			klog.Fatal(err)
 		}
 		klog.Infof("Node name: %v, Node ID: %s", *nodeName, nodeID)
+		// systemUUID is the VM ID
+		nodeID = node.Status.NodeInfo.SystemUUID
+		allowedTopologies[service.WellKnownZoneTopologyKey] = node.Labels[service.WellKnownZoneTopologyKey]
+		allowedTopologies[service.WellKnownRegionTopologyKey] = node.Labels[service.WellKnownRegionTopologyKey]
+		klog.Infof("Node name: %v, Node ID: %s", nodeName, nodeID)
 	}
 
 	identityClientset = tenantClientSet
@@ -134,7 +143,8 @@ func handle() {
 		storageClassEnforcement,
 		nodeID,
 		*runNodeService,
-		*runControllerService)
+		*runControllerService,
+		allowedTopologies)
 
 	driver.Run(*endpoint)
 }
