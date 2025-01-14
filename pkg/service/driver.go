@@ -8,6 +8,11 @@ import (
 	"kubevirt.io/csi-driver/pkg/util"
 )
 
+const (
+	WellKnownRegionTopologyKey = "topology.kubernetes.io/region"
+	WellKnownZoneTopologyKey   = "topology.kubernetes.io/zone"
+)
+
 var (
 	// VendorVersion is the vendor version set by ldflags at build time
 	VendorVersion = "0.2.0"
@@ -30,7 +35,8 @@ func NewKubevirtCSIDriver(virtClient kubevirt.Client,
 	storageClassEnforcement util.StorageClassEnforcement,
 	nodeID string,
 	runNodeService bool,
-	runControllerService bool) *KubevirtCSIDriver {
+	runControllerService bool,
+	allowedTopologies map[string]string) *KubevirtCSIDriver {
 	d := KubevirtCSIDriver{
 		IdentityService: NewIdentityService(identityClientset),
 	}
@@ -45,7 +51,7 @@ func NewKubevirtCSIDriver(virtClient kubevirt.Client,
 	}
 
 	if runNodeService {
-		d.NodeService = NewNodeService(nodeID)
+		d.NodeService = NewNodeService(nodeID, allowedTopologies)
 	}
 
 	return &d
