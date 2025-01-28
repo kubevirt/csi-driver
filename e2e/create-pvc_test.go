@@ -110,7 +110,7 @@ var _ = Describe("CreatePVC", func() {
 		Entry("Block volume mode", Label("Block"), k8sv1.PersistentVolumeBlock, withBlock, blockAttachCommand),
 	)
 
-	It("should creates a RW-Many block pvc and attaches to pod", Label("pvcCreation", "RWX", "Block"), func() {
+	It("should create a RW-Many block pvc and attaches to pod", Label("pvcCreation", "RWX", "Block"), func() {
 		pvcName := "test-pvc"
 		storageClassName := "kubevirt"
 		pvc := pvcSpec(pvcName, storageClassName, "10Mi")
@@ -494,25 +494,8 @@ var _ = Describe("CreatePVC", func() {
 				}, 1*time.Minute, 2*time.Second).Should(BeTrue(), "tenant pvc should disappear")
 				tenantPVC = nil
 			}
-			if tenantPV != nil {
-				By("Ensuring volume attachments associated with the PV are deleted")
-				attachments, err := tenantClient.StorageV1().VolumeAttachments().List(context.Background(), metav1.ListOptions{})
-				Expect(err).ToNot(HaveOccurred())
-				for _, attachment := range attachments.Items {
-					if attachment.Spec.Source.PersistentVolumeName != nil && *attachment.Spec.Source.PersistentVolumeName == tenantPV.Name {
-						err = tenantClient.StorageV1().VolumeAttachments().Delete(context.Background(), attachment.Name, metav1.DeleteOptions{})
-						Expect(err).ToNot(HaveOccurred())
-					}
-				}
-				err = tenantClient.CoreV1().PersistentVolumes().Delete(context.Background(), tenantPV.Name, metav1.DeleteOptions{})
-				Expect(err).ToNot(HaveOccurred())
-				// For some reason this takes about 2 minutes.
-				Eventually(func() bool {
-					_, err := tenantClient.CoreV1().PersistentVolumes().Get(context.Background(), tenantPV.Name, metav1.GetOptions{})
-					return errors.IsNotFound(err)
-				}, 3*time.Minute, 2*time.Second).Should(BeTrue(), "tenant pv should disappear")
-				tenantPV = nil
-			}
+			// The tenant PV will not be able to be deleted because it can't find the matching
+			// infra PV (since that is invalid).
 			if infraDV != nil {
 				_, err := infraCdiClient.CdiV1beta1().DataVolumes(InfraClusterNamespace).Get(context.Background(), infraDV.Name, metav1.GetOptions{})
 				Expect(err).ToNot(HaveOccurred())
