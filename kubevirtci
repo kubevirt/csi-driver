@@ -4,6 +4,7 @@ set -e
 
 export KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-k8s-1.30}
 export CAPK_GUEST_K8S_VERSION=${CAPK_GUEST_K8S_VERSION:-v1.30.1}
+export CAPK_GUEST_NUM_WORKER_NODES=${CAPK_GUEST_NUM_WORKER_NODES:-1}
 export KUBEVIRTCI_TAG=${KUBEVIRTCI_TAG:-2405151527-09bcd71}
 export KUBECONFIG=$(cluster-up/cluster-up/kubeconfig.sh)
 export KUBEVIRT_DEPLOY_PROMETHEUS=false
@@ -177,7 +178,7 @@ function kubevirtci::create_cluster() {
 
 	echo "Using cluster template $template"
 
-	$CLUSTERCTL_PATH generate cluster ${TENANT_CLUSTER_NAME} --target-namespace ${TENANT_CLUSTER_NAMESPACE} --kubernetes-version ${CAPK_GUEST_K8S_VERSION} --control-plane-machine-count=1 --worker-machine-count=1 --from $template | ${_kubectl} apply -f -
+	$CLUSTERCTL_PATH generate cluster ${TENANT_CLUSTER_NAME} --target-namespace ${TENANT_CLUSTER_NAMESPACE} --kubernetes-version ${CAPK_GUEST_K8S_VERSION} --control-plane-machine-count=1 --worker-machine-count=${CAPK_GUEST_NUM_WORKER_NODES} --from $template | ${_kubectl} apply -f -
 
 	echo "Wait for tenant cluster to be ready"
 	${_kubectl} wait cluster -n ${TENANT_CLUSTER_NAMESPACE} kvcluster --for=condition=Ready --timeout=10m
