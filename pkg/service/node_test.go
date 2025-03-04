@@ -6,7 +6,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"golang.org/x/net/context"
-	"k8s.io/utils/mount"
+	mount "k8s.io/mount-utils"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -193,6 +193,22 @@ func (m successfulMounter) IsLikelyNotMountPoint(file string) (bool, error) {
 }
 
 func (m successfulMounter) GetMountRefs(pathname string) ([]string, error) {
+	panic("implement me")
+}
+
+func (m successfulMounter) CanSafelySkipMountPointCheck() bool {
+	panic("implement me")
+}
+
+func (m successfulMounter) IsMountPoint(file string) (bool, error) {
+	panic("implement me")
+}
+
+func (m successfulMounter) MountSensitiveWithoutSystemd(source string, target string, fstype string, options []string, sensitiveOptions []string) error {
+	panic("implement me")
+}
+
+func (m successfulMounter) MountSensitiveWithoutSystemdWithMountFlags(source string, target string, fstype string, options []string, sensitiveOptions []string, mountFlags []string) error {
 	panic("implement me")
 }
 

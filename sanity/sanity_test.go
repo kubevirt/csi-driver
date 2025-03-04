@@ -35,7 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	fakeclient "k8s.io/client-go/kubernetes/fake"
-	"k8s.io/utils/mount"
+	mount "k8s.io/mount-utils"
 	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/csi-driver/pkg/kubevirt"
@@ -306,7 +306,23 @@ func (m *fakeMounter) IsLikelyNotMountPoint(file string) (bool, error) {
 }
 
 func (m *fakeMounter) GetMountRefs(pathname string) ([]string, error) {
-	return nil, fmt.Errorf("Called GetMountRefs somewhere")
+	panic("shouldn't have called GetMountRefs")
+}
+
+func (m *fakeMounter) CanSafelySkipMountPointCheck() bool {
+	panic("shouldn't have called CanSafelySkipMountPointCheck")
+}
+
+func (m *fakeMounter) IsMountPoint(file string) (bool, error) {
+	panic("shouldn't have called IsMountPoint")
+}
+
+func (m *fakeMounter) MountSensitiveWithoutSystemd(source string, target string, fstype string, options []string, sensitiveOptions []string) error {
+	panic("shouldn't have called MountSensitiveWithoutSystemd")
+}
+
+func (m *fakeMounter) MountSensitiveWithoutSystemdWithMountFlags(source string, target string, fstype string, options []string, sensitiveOptions []string, mountFlags []string) error {
+	panic("shouldn't have called MountSensitiveWithoutSystemdWithMountFlags")
 }
 
 type fakeFsMaker struct{}
