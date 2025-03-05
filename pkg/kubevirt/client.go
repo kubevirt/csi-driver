@@ -10,6 +10,7 @@ import (
 	"time"
 
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	k8sv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -28,7 +29,7 @@ import (
 )
 
 const (
-	vmiSubresourceURL               = "/apis/subresources.kubevirt.io/%s/namespaces/%s/virtualmachineinstances/%s/%s"
+	vmSubresourceURL                = "/apis/subresources.kubevirt.io/%s/namespaces/%s/virtualmachines/%s/%s"
 	annDefaultSnapshotClass         = "snapshot.storage.kubernetes.io/is-default-class"
 	InfraStorageClassNameParameter  = "infraStorageClassName"
 	InfraSnapshotClassNameParameter = "infraSnapshotClassName"
@@ -89,6 +90,11 @@ func NewClient(infraConfig *rest.Config, infraClusterLabelMap map[string]string,
 	result := &client{}
 
 	Scheme := runtime.NewScheme()
+	// Could reduce this to just the metav1.Status{} type for error decoding
+	// But someone else will likely trip on another type in the future
+	if err := k8sv1.AddToScheme(Scheme); err != nil {
+		return nil, err
+	}
 	Codecs := serializer.NewCodecFactory(Scheme)
 
 	shallowCopy := *infraConfig
@@ -161,7 +167,7 @@ func (c *client) getStorageSnapshotMapping() ([]InfraTenantStorageSnapshotMappin
 
 // AddVolumeToVM performs a hotplug of a DataVolume to a VM
 func (c *client) AddVolumeToVM(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.AddVolumeOptions) error {
-	uri := fmt.Sprintf(vmiSubresourceURL, kubevirtv1.ApiStorageVersion, namespace, vmName, "addvolume")
+	uri := fmt.Sprintf(vmSubresourceURL, kubevirtv1.ApiStorageVersion, namespace, vmName, "addvolume")
 
 	JSON, err := json.Marshal(hotPlugRequest)
 
@@ -174,7 +180,7 @@ func (c *client) AddVolumeToVM(ctx context.Context, namespace string, vmName str
 
 // RemoveVolumeFromVM perform hotunplug of a DataVolume from a VM
 func (c *client) RemoveVolumeFromVM(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error {
-	uri := fmt.Sprintf(vmiSubresourceURL, kubevirtv1.ApiStorageVersion, namespace, vmName, "removevolume")
+	uri := fmt.Sprintf(vmSubresourceURL, kubevirtv1.ApiStorageVersion, namespace, vmName, "removevolume")
 
 	JSON, err := json.Marshal(hotPlugRequest)
 
