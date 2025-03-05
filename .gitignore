@@ -5,6 +5,8 @@
 *.so
 *.dylib
 kubevirt-csi-driver
+# don't ignore folder with the same name
+!kubevirt-csi-driver/
 *.code-workspace
 #k8s e2e suite
 .kvcluster-kubeconfig-e2e
