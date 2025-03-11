@@ -29,6 +29,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/kubernetes-csi/csi-test/v5/pkg/sanity"
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -64,6 +65,7 @@ func createIdentityClient() kubernetes.Interface {
 func createVirtClient() (kubevirt.Client, service.DeviceLister) {
 	client := &fakeKubeVirtClient{
 		dvMap:         make(map[string]*cdiv1.DataVolume),
+		vmMap:         make(map[string]*kubevirtv1.VirtualMachine),
 		vmiMap:        make(map[string]*kubevirtv1.VirtualMachineInstance),
 		hotpluggedMap: make(map[string]device),
 		snapshotMap:   make(map[string]*snapshotv1.VolumeSnapshot),
@@ -78,6 +80,19 @@ func createVirtClient() (kubevirt.Client, service.DeviceLister) {
 			Domain: kubevirtv1.DomainSpec{
 				Firmware: &kubevirtv1.Firmware{
 					UUID: nodeID,
+				},
+			},
+		},
+	}
+	client.vmMap[key] = &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      nodeID,
+			Namespace: infraClusterNamespace,
+		},
+		Spec: kubevirtv1.VirtualMachineSpec{
+			Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+				Spec: kubevirtv1.VirtualMachineInstanceSpec{
+					Volumes: make([]kubevirtv1.Volume, 0),
 				},
 			},
 		},
@@ -99,6 +114,7 @@ type device struct {
 type fakeKubeVirtClient struct {
 	dvMap         map[string]*cdiv1.DataVolume
 	vmiMap        map[string]*kubevirtv1.VirtualMachineInstance
+	vmMap         map[string]*kubevirtv1.VirtualMachine
 	hotpluggedMap map[string]device
 	snapshotMap   map[string]*snapshotv1.VolumeSnapshot
 }
@@ -119,6 +135,14 @@ func (k *fakeKubeVirtClient) ListVirtualMachines(_ context.Context, namespace st
 func (k *fakeKubeVirtClient) GetVirtualMachine(_ context.Context, namespace, vmName string) (*kubevirtv1.VirtualMachineInstance, error) {
 	vmKey := getKey(namespace, vmName)
 	return k.vmiMap[vmKey], nil
+}
+
+func (k *fakeKubeVirtClient) GetWorkloadManagingVirtualMachine(_ context.Context, namespace, vmName string) (*kubevirtv1.VirtualMachine, error) {
+	vmKey := getKey(namespace, vmName)
+	if k.vmMap[vmKey] == nil {
+		return nil, errors.NewNotFound(corev1.Resource("vm"), vmName)
+	}
+	return k.vmMap[vmKey], nil
 }
 
 func (k *fakeKubeVirtClient) DeleteDataVolume(_ context.Context, namespace string, name string) error {

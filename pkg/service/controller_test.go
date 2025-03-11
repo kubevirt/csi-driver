@@ -351,8 +351,9 @@ var _ = Describe("PublishUnPublish", func() {
 	})
 
 	It("should return success when unpublishing a volume from a VM that doesn't exist", func() {
+		client.ShouldReturnVMNotFound = true
 		req := getUnpublishVolumeRequest()
-		req.NodeId = "non-existent-node"
+		req.NodeId = getKey(testInfraNamespace, "non-existent-node")
 		_, err := controller.ControllerUnpublishVolume(context.TODO(), req)
 		Expect(err).ToNot(HaveOccurred())
 	})
@@ -665,9 +666,8 @@ var (
 	testInfraStorageClassName                     = "infra-storage"
 	testVolumeStorageSize     int64               = 1024 * 1024 * 1024 * 3
 	testInfraNamespace                            = "tenant-cluster-2"
-	testNodeID                                    = "6FC9C805-B3A0-570B-9D1B-3B8B9CFC9FB7"
+	testNodeID                                    = getKey(testInfraNamespace, testVMName)
 	testVMName                                    = "test-vm"
-	testVMUID                                     = "6fc9c805-b3a0-570b-9d1b-3b8b9cfc9fb7"
 	testDataVolumeUID                             = "2d0111d5-494f-4731-8f67-122b27d3c366"
 	testBusType               *kubevirtv1.DiskBus = nil // nil==do not pass bus type
 	testInfraLabels                               = map[string]string{"infra-label-name": "infra-label-value"}
@@ -762,6 +762,7 @@ type ControllerClientMock struct {
 	FailCreateSnapshot      bool
 	FailDeleteSnapshot      bool
 	FailListSnapshots       bool
+	ShouldReturnVMNotFound  bool
 	virtualMachineStatus    kubevirtv1.VirtualMachineInstanceStatus
 	snapshots               map[string]*snapshotv1.VolumeSnapshot
 	datavolumes             map[string]*cdiv1.DataVolume
@@ -790,13 +791,6 @@ func (c *ControllerClientMock) ListVirtualMachines(_ context.Context, namespace 
 				Name:      testVMName,
 				Namespace: namespace,
 			},
-			Spec: kubevirtv1.VirtualMachineInstanceSpec{
-				Domain: kubevirtv1.DomainSpec{
-					Firmware: &kubevirtv1.Firmware{
-						UUID: types.UID(testVMUID),
-					},
-				},
-			},
 		},
 	}, nil
 }
@@ -811,14 +805,28 @@ func (c *ControllerClientMock) GetVirtualMachine(_ context.Context, namespace, n
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: kubevirtv1.VirtualMachineInstanceSpec{
-			Domain: kubevirtv1.DomainSpec{
-				Firmware: &kubevirtv1.Firmware{
-					UUID: types.UID(testVMUID),
+		Spec:   kubevirtv1.VirtualMachineInstanceSpec{},
+		Status: c.virtualMachineStatus,
+	}, nil
+}
+
+func (c *ControllerClientMock) GetWorkloadManagingVirtualMachine(_ context.Context, namespace, name string) (*kubevirtv1.VirtualMachine, error) {
+	if c.ShouldReturnVMNotFound {
+		return nil, k8serrors.NewNotFound(corev1.Resource("vm"), name)
+	}
+
+	return &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: kubevirtv1.VirtualMachineSpec{
+			Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+				Spec: kubevirtv1.VirtualMachineInstanceSpec{
+					Volumes: make([]kubevirtv1.Volume, 0),
 				},
 			},
 		},
-		Status: c.virtualMachineStatus,
 	}, nil
 }
 

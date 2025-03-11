@@ -1,9 +1,7 @@
 package service
 
 import (
-	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -17,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
@@ -335,11 +334,18 @@ func (c *ControllerService) ControllerPublishVolume(
 
 	klog.V(3).Infof("Attaching DataVolume %s to Node ID %s", dvName, req.NodeId)
 
-	// Get VM name
-	vmName, err := c.getVMNameByCSINodeID(ctx, req.NodeId)
+	// Get VM name from node ID which is a namespace/name
+	_, vmName, err := cache.SplitMetaNamespaceKey(req.NodeId)
 	if err != nil {
 		klog.Error("failed getting VM Name for node ID " + req.NodeId)
 		return nil, err
+	}
+	_, err = c.virtClient.GetWorkloadManagingVirtualMachine(ctx, c.infraClusterNamespace, vmName)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return nil, err
+		}
+		return nil, status.Errorf(codes.NotFound, "vm %s not found", vmName)
 	}
 
 	// Determine serial number/string for the new disk
@@ -396,15 +402,22 @@ func (c *ControllerService) ControllerPublishVolume(
 }
 
 func (c *ControllerService) isVolumeAttached(ctx context.Context, dvName, vmName string) (bool, error) {
-	vm, err := c.virtClient.GetVirtualMachine(ctx, c.infraClusterNamespace, vmName)
+	vm, err := c.virtClient.GetWorkloadManagingVirtualMachine(ctx, c.infraClusterNamespace, vmName)
 	if err != nil {
-		return false, err
+		if !errors.IsNotFound(err) {
+			return false, err
+		}
+		return false, status.Errorf(codes.NotFound, "vm %s not found", vmName)
 	}
-	for _, volumeStatus := range vm.Status.VolumeStatus {
-		if volumeStatus.Name == dvName {
+	for _, volume := range vm.Spec.Template.Spec.Volumes {
+		if volume.DataVolume == nil {
+			continue
+		}
+		if volume.DataVolume.Hotpluggable && volume.Name == dvName {
 			return true, nil
 		}
 	}
+
 	return false, nil
 }
 
@@ -444,14 +457,19 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 	dvName := req.VolumeId
 	klog.V(3).Infof("Detaching DataVolume %s from Node ID %s", dvName, req.NodeId)
 
-	// Get VM name
-	vmName, err := c.getVMNameByCSINodeID(ctx, req.NodeId)
+	// Get VM name from node ID which is a namespace/name
+	_, vmName, err := cache.SplitMetaNamespaceKey(req.NodeId)
 	if err != nil {
-		if status.Code(err) == codes.NotFound {
-			klog.Infof("VM for node ID %s not found, assuming volume is already detached", req.NodeId)
-			return &csi.ControllerUnpublishVolumeResponse{}, nil
-		}
+		klog.Error("failed getting VM Name for node ID " + req.NodeId)
 		return nil, err
+	}
+	_, err = c.virtClient.GetWorkloadManagingVirtualMachine(ctx, c.infraClusterNamespace, vmName)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return nil, err
+		}
+		// VM removed, vacuously succeeded in unpublish
+		return nil, nil
 	}
 
 	if err := wait.ExponentialBackoff(wait.Backoff{
@@ -480,13 +498,20 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 }
 
 func (c *ControllerService) removeVolumeFromVm(ctx context.Context, dvName, vmName string) error {
-	vm, err := c.virtClient.GetVirtualMachine(ctx, c.infraClusterNamespace, vmName)
+	vm, err := c.virtClient.GetWorkloadManagingVirtualMachine(ctx, c.infraClusterNamespace, vmName)
 	if err != nil {
-		return err
+		if !errors.IsNotFound(err) {
+			return err
+		}
+		klog.V(3).Info("managing VM not found, remove succeeded")
+		return nil
 	}
 	removePossible := false
-	for _, volumeStatus := range vm.Status.VolumeStatus {
-		if volumeStatus.HotplugVolume != nil && volumeStatus.Name == dvName {
+	for _, volume := range vm.Spec.Template.Spec.Volumes {
+		if volume.DataVolume == nil {
+			continue
+		}
+		if volume.DataVolume.Hotpluggable && volume.Name == dvName {
 			removePossible = true
 		}
 	}
@@ -497,6 +522,7 @@ func (c *ControllerService) removeVolumeFromVm(ctx context.Context, dvName, vmNa
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -749,22 +775,4 @@ func (c *ControllerService) ControllerGetCapabilities(context.Context, *csi.Cont
 // ControllerGetVolume unimplemented
 func (c *ControllerService) ControllerGetVolume(_ context.Context, _ *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
-}
-
-// getVMNameByCSINodeID finds a VM in infra cluster by its firmware uuid. The uid is the ID that the CSI
-// node publishes in NodeGetInfo and then used by CSINode.spec.drivers[].nodeID
-func (c *ControllerService) getVMNameByCSINodeID(ctx context.Context, nodeID string) (string, error) {
-	list, err := c.virtClient.ListVirtualMachines(ctx, c.infraClusterNamespace)
-	if err != nil {
-		klog.Error("failed listing VMIs in infra cluster")
-		return "", status.Error(codes.NotFound, fmt.Sprintf("failed listing VMIs in infra cluster %v", err))
-	}
-
-	for _, vmi := range list {
-		if strings.EqualFold(string(vmi.Spec.Domain.Firmware.UUID), nodeID) {
-			return vmi.Name, nil
-		}
-	}
-
-	return "", status.Error(codes.NotFound, fmt.Sprintf("failed to find VM with domain.firmware.uuid %v", nodeID))
 }
