@@ -9,7 +9,7 @@ import (
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/mount"
+	mount "k8s.io/mount-utils"
 	"kubevirt.io/csi-driver/pkg/service"
 	"kubevirt.io/csi-driver/pkg/util"
 )

@@ -11,7 +11,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/utils/mount"
+	mount "k8s.io/mount-utils"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
