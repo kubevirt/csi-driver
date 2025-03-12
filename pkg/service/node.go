@@ -26,11 +26,12 @@ var nodeCaps = []csi.NodeServiceCapability_RPC_Type{
 // NodeService implements the CSI Driver node service
 type NodeService struct {
 	csi.UnimplementedNodeServer
-	nodeID       string
-	deviceLister DeviceLister
-	fsMaker      FsMaker
-	mounter      mount.Interface
-	dirMaker     dirMaker
+	nodeID            string
+	deviceLister      DeviceLister
+	fsMaker           FsMaker
+	mounter           mount.Interface
+	dirMaker          dirMaker
+	allowedTopologies map[string]string
 }
 
 type DeviceLister interface{ List() ([]byte, error) }
@@ -59,12 +60,13 @@ var NewFsMaker = func() FsMaker {
 	})
 }
 
-func NewNodeService(nodeId string) *NodeService {
+func NewNodeService(nodeId string, allowedTopologies map[string]string) *NodeService {
 	return &NodeService{
-		nodeID:       nodeId,
-		deviceLister: NewDeviceLister(),
-		fsMaker:      NewFsMaker(),
-		mounter:      NewMounter(),
+		nodeID:            nodeId,
+		deviceLister:      NewDeviceLister(),
+		fsMaker:           NewFsMaker(),
+		mounter:           NewMounter(),
+		allowedTopologies: allowedTopologies,
 		dirMaker: dirMakerFunc(func(path string, perm os.FileMode) error {
 			// MkdirAll returns nil if path already exists
 			return os.MkdirAll(path, perm)
@@ -334,7 +336,10 @@ func (n *NodeService) NodeExpandVolume(context.Context, *csi.NodeExpandVolumeReq
 // NodeGetInfo returns the node ID
 func (n *NodeService) NodeGetInfo(context.Context, *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	// the nodeID is the VM's ID in kubevirt or VMI.spec.domain.firmware.uuid
-	return &csi.NodeGetInfoResponse{NodeId: n.nodeID}, nil
+
+	return &csi.NodeGetInfoResponse{
+		NodeId:             n.nodeID,
+		AccessibleTopology: &csi.Topology{Segments: n.allowedTopologies}}, nil
 }
 
 // NodeGetCapabilities returns the supported capabilities of the node service
