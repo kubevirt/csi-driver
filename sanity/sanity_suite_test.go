@@ -51,7 +51,7 @@ var _ = ginkgo.BeforeSuite(func() {
 		infraClusterNamespace,
 		infraClusterLabelsMap,
 		storagClassEnforcement,
-		nodeID,
+		getKey(infraClusterNamespace, nodeID),
 		true,
 		true)
 	gomega.Expect(err).ToNot(gomega.HaveOccurred())

@@ -111,9 +111,16 @@ func handle() {
 		if err != nil {
 			klog.Fatal(fmt.Errorf("failed to find node by name %v: %v", nodeName, err))
 		}
-		// systemUUID is the VM ID
-		nodeID = node.Status.NodeInfo.SystemUUID
-		klog.Infof("Node name: %v, Node ID: %s", nodeName, nodeID)
+		if node.Spec.ProviderID == "" {
+			klog.Fatal("provider name missing from node, something's not right")
+		}
+		vmName := strings.TrimPrefix(node.Spec.ProviderID, `kubevirt://`)
+		vmNamespace, ok := node.Annotations["cluster.x-k8s.io/cluster-namespace"]
+		if !ok {
+			klog.Fatal("cannot infer infra vm namespace")
+		}
+		nodeID = fmt.Sprintf("%s/%s", vmNamespace, vmName)
+		klog.Infof("Node name: %v, Node ID: %s", *nodeName, nodeID)
 	}
 
 	identityClientset = tenantClientSet

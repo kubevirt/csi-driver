@@ -10,6 +10,7 @@ import (
 	"time"
 
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	k8sv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -28,7 +29,7 @@ import (
 )
 
 const (
-	vmiSubresourceURL               = "/apis/subresources.kubevirt.io/%s/namespaces/%s/virtualmachineinstances/%s/%s"
+	vmSubresourceURL                = "/apis/subresources.kubevirt.io/%s/namespaces/%s/virtualmachines/%s/%s"
 	annDefaultSnapshotClass         = "snapshot.storage.kubernetes.io/is-default-class"
 	InfraStorageClassNameParameter  = "infraStorageClassName"
 	InfraSnapshotClassNameParameter = "infraSnapshotClassName"
@@ -54,6 +55,7 @@ type Client interface {
 	Ping(ctx context.Context) error
 	ListVirtualMachines(ctx context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error)
 	GetVirtualMachine(ctx context.Context, namespace, name string) (*kubevirtv1.VirtualMachineInstance, error)
+	GetWorkloadManagingVirtualMachine(ctx context.Context, namespace, name string) (*kubevirtv1.VirtualMachine, error)
 	DeleteDataVolume(ctx context.Context, namespace string, name string) error
 	CreateDataVolume(ctx context.Context, namespace string, dataVolume *cdiv1.DataVolume) (*cdiv1.DataVolume, error)
 	GetDataVolume(ctx context.Context, namespace string, name string) (*cdiv1.DataVolume, error)
@@ -89,6 +91,11 @@ func NewClient(infraConfig *rest.Config, infraClusterLabelMap map[string]string,
 	result := &client{}
 
 	Scheme := runtime.NewScheme()
+	// Could reduce this to just the metav1.Status{} type for error decoding
+	// But someone else will likely trip on another type in the future
+	if err := k8sv1.AddToScheme(Scheme); err != nil {
+		return nil, err
+	}
 	Codecs := serializer.NewCodecFactory(Scheme)
 
 	shallowCopy := *infraConfig
@@ -161,7 +168,7 @@ func (c *client) getStorageSnapshotMapping() ([]InfraTenantStorageSnapshotMappin
 
 // AddVolumeToVM performs a hotplug of a DataVolume to a VM
 func (c *client) AddVolumeToVM(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.AddVolumeOptions) error {
-	uri := fmt.Sprintf(vmiSubresourceURL, kubevirtv1.ApiStorageVersion, namespace, vmName, "addvolume")
+	uri := fmt.Sprintf(vmSubresourceURL, kubevirtv1.ApiStorageVersion, namespace, vmName, "addvolume")
 
 	JSON, err := json.Marshal(hotPlugRequest)
 
@@ -174,7 +181,7 @@ func (c *client) AddVolumeToVM(ctx context.Context, namespace string, vmName str
 
 // RemoveVolumeFromVM perform hotunplug of a DataVolume from a VM
 func (c *client) RemoveVolumeFromVM(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error {
-	uri := fmt.Sprintf(vmiSubresourceURL, kubevirtv1.ApiStorageVersion, namespace, vmName, "removevolume")
+	uri := fmt.Sprintf(vmSubresourceURL, kubevirtv1.ApiStorageVersion, namespace, vmName, "removevolume")
 
 	JSON, err := json.Marshal(hotPlugRequest)
 
@@ -194,10 +201,10 @@ func (c *client) EnsureVolumeAvailable(ctx context.Context, namespace, vmName, v
 		}
 		for _, volume := range vmi.Status.VolumeStatus {
 			if volume.Name == volumeName && volume.Phase == kubevirtv1.VolumeReady {
-				return true, nil
+				return ensureVolumeAvailableVM(ctx, c, namespace, vmName, volumeName)
 			}
 		}
-		// Have not found the ready hotplugged volume
+
 		return false, nil
 	})
 }
@@ -207,15 +214,19 @@ func (c *client) EnsureVolumeRemoved(ctx context.Context, namespace, vmName, vol
 	return wait.PollUntilContextTimeout(ctx, time.Second, timeout, true, func(ctx context.Context) (done bool, err error) {
 		vmi, err := c.GetVirtualMachine(ctx, namespace, vmName)
 		if err != nil {
-			return false, err
+			if !errors.IsNotFound(err) {
+				return false, err
+			}
+			// No VMI, volume considered removed if it's not on the VM
+			return ensureVolumeRemovedVM(ctx, c, namespace, vmName, volumeName)
 		}
 		for _, volume := range vmi.Status.VolumeStatus {
 			if volume.Name == volumeName {
 				return false, nil
 			}
 		}
-		// Have not found the hotplugged volume
-		return true, nil
+
+		return ensureVolumeRemovedVM(ctx, c, namespace, vmName, volumeName)
 	})
 }
 
@@ -245,6 +256,11 @@ func (c *client) ListVirtualMachines(ctx context.Context, namespace string) ([]k
 // GetVirtualMachine gets a VMIs from the passed in namespace
 func (c *client) GetVirtualMachine(ctx context.Context, namespace, name string) (*kubevirtv1.VirtualMachineInstance, error) {
 	return c.virtClient.KubevirtV1().VirtualMachineInstances(namespace).Get(ctx, name, metav1.GetOptions{})
+}
+
+// GetWorkloadManagingVirtualMachine gets a VM from the passed in namespace
+func (c *client) GetWorkloadManagingVirtualMachine(ctx context.Context, namespace, name string) (*kubevirtv1.VirtualMachine, error) {
+	return c.virtClient.KubevirtV1().VirtualMachines(namespace).Get(ctx, name, metav1.GetOptions{})
 }
 
 // CreateDataVolume creates a new DataVolume under a namespace
@@ -484,6 +500,50 @@ func appendVolumeSnapshotInfraTenantMapping(mapping *InfraTenantStorageSnapshotM
 		})
 	}
 	return mapping
+}
+
+func ensureVolumeRemovedVM(ctx context.Context, c *client, namespace, name, volumeName string) (bool, error) {
+	vm, err := c.virtClient.KubevirtV1().VirtualMachines(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return false, err
+		}
+		// No VM, vacuously removed
+		return true, nil
+	}
+
+	for _, volume := range vm.Spec.Template.Spec.Volumes {
+		if volume.PersistentVolumeClaim == nil && volume.DataVolume == nil {
+			continue
+		}
+		if volume.Name == volumeName {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+func ensureVolumeAvailableVM(ctx context.Context, c *client, namespace, name, volumeName string) (bool, error) {
+	vm, err := c.virtClient.KubevirtV1().VirtualMachines(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return false, err
+		}
+		// No VM, something's not right, can't assume availability
+		return false, nil
+	}
+
+	for _, volume := range vm.Spec.Template.Spec.Volumes {
+		if volume.PersistentVolumeClaim == nil && volume.DataVolume == nil {
+			continue
+		}
+		if volume.Name == volumeName {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 var ErrInvalidSnapshot = goerrors.New("invalid snapshot name")
