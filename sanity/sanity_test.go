@@ -354,3 +354,21 @@ type fakeFsMaker struct{}
 func (fm *fakeFsMaker) Make(device string, fsType string) error {
 	return nil
 }
+
+type fakeResizer struct {
+	resizedMap map[string]struct{}
+}
+
+func (r *fakeResizer) Resize(devicePath, deviceMountPath string) (bool, error) {
+	if r.resizedMap == nil {
+		r.resizedMap = map[string]struct{}{}
+	}
+	key := fmt.Sprintf("%s:%s", devicePath, deviceMountPath)
+	r.resizedMap[key] = struct{}{}
+
+	return true, nil
+}
+
+func (r *fakeResizer) NeedResize(devicePath string, deviceMountPath string) (bool, error) {
+	return true, nil
+}
