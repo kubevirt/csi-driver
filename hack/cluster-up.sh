@@ -23,7 +23,7 @@ echo "Installing networking (calico)"
 
 echo "Enable hotplug"
 #Add the feature gate to the resource of type Kubevirt.
-./kubevirtci kubectl patch -n kubevirt kubevirt.kubevirt.io kubevirt  -p '{"spec":  { "configuration": { "developerConfiguration": { "featureGates": ["HotplugVolumes" ] }}}}' -o json --type merge
+./kubevirtci kubectl patch -n kubevirt kubevirt.kubevirt.io kubevirt  -p '{"spec":  { "configuration": { "developerConfiguration": { "featureGates": ["HotplugVolumes", "ExpandDisks"] }}}}' -o json --type merge
 
 for vmi in $(./kubevirtci kubectl get vmi -A --no-headers | awk '{ print $2 }')
 do
