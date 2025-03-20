@@ -33,6 +33,9 @@ var _ = ginkgo.BeforeSuite(func() {
 			values: make([]mountArgs, 0),
 		}
 	}
+	service.NewResizer = func() service.ResizerInterface {
+		return &fakeResizer{}
+	}
 	service.NewDeviceLister = func() service.DeviceLister {
 		return deviceLister
 	}
