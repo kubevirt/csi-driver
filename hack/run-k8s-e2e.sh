@@ -103,6 +103,7 @@ spec:
       ./e2e.test -kubeconfig \${KUBECONFIG} \
             -kubectl-path ./kubectl \
             -ginkgo.v \
+            -ginkgo.no-color \
             -ginkgo.timeout=2h \
             -ginkgo.focus='External.Storage.*csi.kubevirt.io.*' \
             -ginkgo.skip='CSI Ephemeral-volume*' \
@@ -117,6 +118,7 @@ spec:
       ./e2e.test -kubeconfig \${KUBECONFIG} \
             -kubectl-path ./kubectl \
             -ginkgo.v \
+            -ginkgo.no-color \
             -ginkgo.timeout=2h \
             -ginkgo.focus='External.Storage.*csi.kubevirt.io.*should concurrently access the single volume from pods on different node.*' \
             -ginkgo.skip='CSI Ephemeral-volume*' \
@@ -178,6 +180,16 @@ make_control_plane_schedulable
 create_test_driver_cm
 create_capk_secret
 patch_local_storage_profile
+# DEBUG
+echo "Printing debugging manifests PRE run"
+./kubevirtci kubectl get nodes -o yaml
+./kubevirtci kubectl-tenant get nodes -o yaml
+./kubevirtci kubectl get vm -A -o yaml
+./kubevirtci kubectl get vmi -A -o yaml
+./kubevirtci kubectl-tenant get clusterrole snapshot-controller-runner -o yaml
+./kubevirtci kubectl-tenant get clusterrolebinding snapshot-controller-role -o yaml
+./kubevirtci kubectl-tenant get sa -n kube-system snapshot-controller -o yaml
+# DEBUG
 start_test_pod
 # Wait for pod to be ready before getting logs
 ./kubevirtci kubectl wait pods -n $TENANT_CLUSTER_NAMESPACE ${test_pod} --for condition=Ready --timeout=180s
@@ -203,4 +215,15 @@ sleep 5
 exit_code=$(./kubevirtci kubectl get pod -n $TENANT_CLUSTER_NAMESPACE ${test_pod} --output="jsonpath={.status.containerStatuses[].state.terminated.exitCode}")
 # Make sure its a number
 exit_code=$(($exit_code + 0))
+if [[ $exit_code -ne 0 ]]; then
+  # debug failing run
+  echo "Printing debugging manifests POST run"
+  ./kubevirtci kubectl get nodes -o yaml
+  ./kubevirtci kubectl-tenant get nodes -o yaml
+  ./kubevirtci kubectl get vm -A -o yaml
+  ./kubevirtci kubectl get vmi -A -o yaml
+  ./kubevirtci kubectl-tenant get clusterrole snapshot-controller-runner -o yaml
+  ./kubevirtci kubectl-tenant get clusterrolebinding snapshot-controller-role -o yaml
+  ./kubevirtci kubectl-tenant get sa -n kube-system snapshot-controller -o yaml
+fi
 exit $exit_code
