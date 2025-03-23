@@ -1,9 +1,4 @@
 commonLabels:
   app: kubevirt-csi-driver
 resources:
-- rbac-snapshot-controller.yaml
-- setup-snapshot-controller.yaml
-- snapshot.storage.k8s.io_volumesnapshotclasses.yaml
-- snapshot.storage.k8s.io_volumesnapshotcontents.yaml
-- snapshot.storage.k8s.io_volumesnapshots.yaml
 - deploy.yaml
