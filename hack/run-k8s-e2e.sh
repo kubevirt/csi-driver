@@ -108,7 +108,6 @@ spec:
             -ginkgo.focus='External.Storage.*csi.kubevirt.io.*' \
             -ginkgo.skip='CSI Ephemeral-volume*' \
             -ginkgo.skip='SELinuxMountReadWriteOncePod.*' \
-            -ginkgo.skip='should provision correct filesystem size when restoring snapshot to larger size pvc' \
             -storage.testdriver=\${TEST_DRIVER_PATH}/test-driver.yaml \
             -provider=local -report-dir=/tmp
       ret1=\$?

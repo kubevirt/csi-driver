@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	mount "k8s.io/mount-utils"
+	utilexec "k8s.io/utils/exec"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
@@ -30,6 +31,7 @@ type NodeService struct {
 	deviceLister DeviceLister
 	fsMaker      FsMaker
 	mounter      mount.Interface
+	resizer      ResizerInterface
 	dirMaker     dirMaker
 }
 
@@ -41,8 +43,17 @@ type dirMaker interface {
 	Make(path string, perm os.FileMode) error
 }
 
+type ResizerInterface interface {
+	NeedResize(devicePath string, deviceMountPath string) (bool, error)
+	Resize(devicePath, deviceMountPath string) (bool, error)
+}
+
 var NewMounter = func() mount.Interface {
 	return mount.New("")
+}
+
+var NewResizer = func() ResizerInterface {
+	return mount.NewResizeFs(utilexec.New())
 }
 
 var NewDeviceLister = func() DeviceLister {
@@ -65,6 +76,7 @@ func NewNodeService(nodeId string) *NodeService {
 		deviceLister: NewDeviceLister(),
 		fsMaker:      NewFsMaker(),
 		mounter:      NewMounter(),
+		resizer:      NewResizer(),
 		dirMaker: dirMakerFunc(func(path string, perm os.FileMode) error {
 			// MkdirAll returns nil if path already exists
 			return os.MkdirAll(path, perm)
@@ -114,31 +126,34 @@ func (n *NodeService) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 	}
 	klog.V(3).Infof("Staging volume %s", req.VolumeId)
 
-	if req.VolumeCapability.GetMount() != nil {
-		// Filesystem volume mode, create FS if needed
-		// get the VMI volumes which are under VMI.spec.volumes
-		// serialID = kubevirt's DataVolume.UID
-		device, err := getDeviceBySerialID(req.VolumeContext[serialParameter], n.deviceLister)
-		if err != nil {
-			klog.Errorf("Failed to fetch device by serialID %s", req.VolumeId)
-			return nil, err
-		}
-
-		// is there a filesystem on this device?
-		if device.Fstype != "" {
-			klog.V(3).Infof("Detected fs %s", device.Fstype)
-			return &csi.NodeStageVolumeResponse{}, nil
-		}
-
-		fsType := req.VolumeCapability.GetMount().FsType
-		// no filesystem - create it
-		klog.V(3).Infof("Creating FS %s on device %s", fsType, device)
-		err = n.fsMaker.Make(device.Path, fsType)
-		if err != nil {
-			klog.Errorf("Could not create filesystem %s on %s", fsType, device)
-			return nil, err
-		}
+	if req.VolumeCapability.GetMount() == nil {
+		return &csi.NodeStageVolumeResponse{}, nil
 	}
+
+	// Filesystem volume mode, create FS if needed
+	// get the VMI volumes which are under VMI.spec.volumes
+	// serialID = kubevirt's DataVolume.UID
+	device, err := getDeviceBySerialID(req.VolumeContext[serialParameter], n.deviceLister)
+	if err != nil {
+		klog.Errorf("Failed to fetch device by serialID %s", req.VolumeId)
+		return nil, err
+	}
+
+	// is there a filesystem on this device?
+	if device.Fstype != "" {
+		klog.V(3).Infof("Detected fs %s", device.Fstype)
+		return &csi.NodeStageVolumeResponse{}, nil
+	}
+
+	fsType := req.VolumeCapability.GetMount().FsType
+	// no filesystem - create it
+	klog.V(3).Infof("Creating FS %s on device %s", fsType, device)
+	err = n.fsMaker.Make(device.Path, fsType)
+	if err != nil {
+		klog.Errorf("Could not create filesystem %s on %s", fsType, device)
+		return nil, err
+	}
+
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
@@ -236,34 +251,64 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if err != nil && !os.IsNotExist(err) {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	if !notMnt {
-		klog.V(3).Infof("Volume %s already mounted on %s", req.GetVolumeId(), targetPath)
-		return &csi.NodePublishVolumeResponse{}, nil
+	if notMnt {
+		if err := n.mountToTargetPath(req, block, targetPath, device, fsType, mountOptions); err != nil {
+			return nil, err
+		}
 	}
 
-	if block {
-		err = n.ensureMountFileExists(targetPath)
-		if err != nil {
+	if !block {
+		if err := n.resizeFs(device, targetPath); err != nil {
 			return nil, err
+		}
+	}
+
+	return &csi.NodePublishVolumeResponse{}, nil
+}
+
+func (n *NodeService) resizeFs(device device, targetPath string) error {
+	ok, err := n.resizer.NeedResize(device.Path, targetPath)
+	if err != nil {
+		return status.Errorf(codes.Internal,
+			"need resize check failed on devicePath %s and targetPath %s, error: %v",
+			device.Path,
+			targetPath,
+			err)
+	}
+	if !ok {
+		// no resize is required
+		return nil
+	}
+	ok, err = n.resizer.Resize(device.Path, targetPath)
+	if !ok || err != nil {
+		return status.Errorf(codes.Internal,
+			"resize failed on path %s, error: %v", targetPath, err)
+	}
+
+	return nil
+}
+
+func (n *NodeService) mountToTargetPath(req *csi.NodePublishVolumeRequest, isBlock bool, targetPath string, device device, fsType string, mountOptions []string) error {
+	if isBlock {
+		if err := n.ensureMountFileExists(targetPath); err != nil {
+			return err
 		}
 	} else {
 		// MkdirAll returns nil if path already exists
-		err = n.dirMaker.Make(targetPath, 0750)
-		if err != nil {
-			return nil, err
+		if err := n.dirMaker.Make(targetPath, 0750); err != nil {
+			return err
 		}
 		klog.V(3).Infof("GetMount() %v", req.VolumeCapability.GetMount())
 		klog.V(3).Infof("Mounting devicePath %s, on targetPath: %s with FS type: %s",
 			device, targetPath, fsType)
 	}
 
-	err = n.mounter.Mount(device.Path, targetPath, fsType, mountOptions)
-	if err != nil {
+	if err := n.mounter.Mount(device.Path, targetPath, fsType, mountOptions); err != nil {
 		klog.Errorf("failed mounting %v", err)
-		return nil, err
+		return err
 	}
 
-	return &csi.NodePublishVolumeResponse{}, nil
+	return nil
 }
 
 // Make sure target file exists for bind mount

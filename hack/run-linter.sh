@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -e
 
+GOLANGCI_VERSION="${GOLANGCI_VERSION:-v1.64.8}"
+
 if [ ! -f "$(go env GOPATH)/bin/golangci-lint" ]; then
   # install golangci-lint
-  curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$(go env GOPATH)/bin"
+  go install "github.com/golangci/golangci-lint/cmd/golangci-lint@${GOLANGCI_VERSION}"
 fi
 
 golangci-lint run --verbose --timeout=10m
