@@ -82,6 +82,7 @@ spec:
             - "--v=5"
             - "--timeout=3m"
             - "--retry-interval-max=1m"
+            - "--feature-gates=Topology=true"
           env:
             - name: ADDRESS
               value: /var/lib/csi/sockets/pluginproxy/csi.sock
