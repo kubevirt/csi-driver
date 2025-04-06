@@ -269,3 +269,17 @@ func (mr *MockClientMockRecorder) RemoveVolumeFromVM(ctx, namespace, vmName, hot
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveVolumeFromVM", reflect.TypeOf((*MockClient)(nil).RemoveVolumeFromVM), ctx, namespace, vmName, hotPlugRequest)
 }
+
+// RemoveVolumeFromVMI mocks base method.
+func (m *MockClient) RemoveVolumeFromVMI(ctx context.Context, namespace, vmName string, hotPlugRequest *v10.RemoveVolumeOptions) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RemoveVolumeFromVMI", ctx, namespace, vmName, hotPlugRequest)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RemoveVolumeFromVMI indicates an expected call of RemoveVolumeFromVMI.
+func (mr *MockClientMockRecorder) RemoveVolumeFromVMI(ctx, namespace, vmName, hotPlugRequest interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveVolumeFromVMI", reflect.TypeOf((*MockClient)(nil).RemoveVolumeFromVMI), ctx, namespace, vmName, hotPlugRequest)
+}

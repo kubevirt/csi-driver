@@ -190,6 +190,10 @@ func (k *fakeKubeVirtClient) RemoveVolumeFromVM(_ context.Context, namespace str
 	return nil
 }
 
+func (k *fakeKubeVirtClient) RemoveVolumeFromVMI(_ context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error {
+	return nil
+}
+
 func (k *fakeKubeVirtClient) EnsureVolumeAvailable(_ context.Context, namespace, vmName, volumeName string, timeout time.Duration) error {
 	return nil
 }

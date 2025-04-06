@@ -61,6 +61,7 @@ type Client interface {
 	GetDataVolume(ctx context.Context, namespace string, name string) (*cdiv1.DataVolume, error)
 	AddVolumeToVM(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.AddVolumeOptions) error
 	RemoveVolumeFromVM(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error
+	RemoveVolumeFromVMI(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error
 	EnsureVolumeAvailable(ctx context.Context, namespace, vmName, volumeName string, timeout time.Duration) error
 	EnsureVolumeRemoved(ctx context.Context, namespace, vmName, volumeName string, timeout time.Duration) error
 	EnsureSnapshotReady(ctx context.Context, namespace, name string, timeout time.Duration) error
@@ -182,6 +183,20 @@ func (c *client) AddVolumeToVM(ctx context.Context, namespace string, vmName str
 // RemoveVolumeFromVM perform hotunplug of a DataVolume from a VM
 func (c *client) RemoveVolumeFromVM(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error {
 	uri := fmt.Sprintf(vmSubresourceURL, kubevirtv1.ApiStorageVersion, namespace, vmName, "removevolume")
+
+	JSON, err := json.Marshal(hotPlugRequest)
+
+	if err != nil {
+		return err
+	}
+
+	return c.restClient.Put().AbsPath(uri).Body([]byte(JSON)).Do(ctx).Error()
+}
+
+// RemoveVolumeFromVMI perform hotunplug of a DataVolume from a VMI
+func (c *client) RemoveVolumeFromVMI(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error {
+	vmiSubresourceURL := "/apis/subresources.kubevirt.io/%s/namespaces/%s/virtualmachineinstances/%s/%s"
+	uri := fmt.Sprintf(vmiSubresourceURL, kubevirtv1.ApiStorageVersion, namespace, vmName, "removevolume")
 
 	JSON, err := json.Marshal(hotPlugRequest)
 
