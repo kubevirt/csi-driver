@@ -506,18 +506,40 @@ func (c *ControllerService) removeVolumeFromVm(ctx context.Context, dvName, vmNa
 		klog.V(3).Info("managing VM not found, remove succeeded")
 		return nil
 	}
-	removePossible := false
+	removePossibleVM := false
 	for _, volume := range vm.Spec.Template.Spec.Volumes {
 		if volume.DataVolume == nil {
 			continue
 		}
 		if volume.DataVolume.Hotpluggable && volume.Name == dvName {
-			removePossible = true
+			removePossibleVM = true
 		}
 	}
-	if removePossible {
+	if removePossibleVM {
 		// Detach DataVolume from VM
 		err = c.virtClient.RemoveVolumeFromVM(ctx, c.infraClusterNamespace, vmName, &kubevirtv1.RemoveVolumeOptions{Name: dvName})
+		if err != nil {
+			return err
+		}
+		// We're done
+		return nil
+	}
+
+	// Keep this for a few releases for upgrade handling
+	// from versions where VMI-level hotplug was being done
+	vmi, err := c.virtClient.GetVirtualMachine(ctx, c.infraClusterNamespace, vmName)
+	if err != nil {
+		return err
+	}
+	removePossibleVMI := false
+	for _, volumeStatus := range vmi.Status.VolumeStatus {
+		if volumeStatus.HotplugVolume != nil && volumeStatus.Name == dvName {
+			removePossibleVMI = true
+		}
+	}
+	if removePossibleVMI {
+		// Detach DataVolume from VMI
+		err = c.virtClient.RemoveVolumeFromVMI(ctx, c.infraClusterNamespace, vmName, &kubevirtv1.RemoveVolumeOptions{Name: dvName})
 		if err != nil {
 			return err
 		}
