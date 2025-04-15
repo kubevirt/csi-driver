@@ -145,6 +145,27 @@ spec:
             requests:
               memory: 20Mi
               cpu: 10m
+        - name: csi-resizer
+          image: registry.k8s.io/sig-storage/csi-resizer:v1.13.1
+          args:
+            - "-csi-address=/csi/csi.sock"
+            - "-kubeconfig=/var/run/secrets/tenantcluster/value"
+            - "-v=5"
+            - "-timeout=3m"
+            - '-handle-volume-inuse-error=false'
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+            - name: tenantcluster
+              mountPath: "/var/run/secrets/tenantcluster"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 20Mi
+          securityContext:
+            capabilities:
+              drop:
+                - ALL
       volumes:
         - name: socket-dir
           emptyDir: {}
