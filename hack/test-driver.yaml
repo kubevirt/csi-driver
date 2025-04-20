@@ -7,11 +7,14 @@ DriverInfo:
   Name: csi.kubevirt.io
   Capabilities:
     block: true
-    controllerExpansion: false
+    controllerExpansion: true
     exec: true
     fsGroup: true
     multipods: true
-    nodeExpansion: false
+    nodeExpansion: true
+    # we use this to skip fs volume offline expansion which is by definition
+    # a limitation for ALL block providers that put a filesystem on top
+    offlineExpansion: false
     persistence: true
     singleNodeVolume: false
     snapshotDataSource: true
