@@ -37,6 +37,9 @@ var _ = Describe("NodeService", func() {
 		underTest.dirMaker = dirMakerFunc(func(string, os.FileMode) error {
 			return nil
 		})
+		underTest.devicePathGetter = devicePathGetterFunc(func(mountPath string) (string, error) {
+			return "/dev/sdc", nil
+		})
 		underTest.mounter = &successfulMounter{}
 		underTest.resizer = noopResizer{}
 	})
@@ -172,6 +175,47 @@ var _ = Describe("NodeService", func() {
 		})
 	})
 
+	Context("Node expanding a volume", func() {
+		It("should resize fs volume", func() {
+			resizer := &successfulResizer{}
+			underTest.resizer = resizer
+			res, err := underTest.NodeExpandVolume(context.TODO(),
+				&csi.NodeExpandVolumeRequest{
+					VolumeId: "pvc-123",
+					VolumeCapability: &csi.VolumeCapability{
+						AccessType: &csi.VolumeCapability_Mount{
+							Mount: &csi.VolumeCapability_MountVolume{
+								FsType: "ext4",
+							},
+						},
+					},
+					VolumePath: "/target/path",
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(res).ToNot(BeNil())
+			Expect(resizer.resizeOccured).To(BeTrue())
+		})
+
+		It("should not resize block volume", func() {
+			resizer := &successfulResizer{}
+			underTest.resizer = resizer
+			res, err := underTest.NodeExpandVolume(context.TODO(),
+				&csi.NodeExpandVolumeRequest{
+					VolumeId: "pvc-123",
+					VolumeCapability: &csi.VolumeCapability{
+						AccessType: &csi.VolumeCapability_Block{
+							Block: &csi.VolumeCapability_BlockVolume{},
+						},
+					},
+					VolumePath: "/target/path",
+				},
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(res).ToNot(BeNil())
+			Expect(resizer.resizeOccured).To(BeFalse())
+		})
+	})
 })
 
 func newPublishRequest() *csi.NodePublishVolumeRequest {

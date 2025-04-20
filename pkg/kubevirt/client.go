@@ -12,10 +12,12 @@ import (
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	k8sv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -59,12 +61,15 @@ type Client interface {
 	DeleteDataVolume(ctx context.Context, namespace string, name string) error
 	CreateDataVolume(ctx context.Context, namespace string, dataVolume *cdiv1.DataVolume) (*cdiv1.DataVolume, error)
 	GetDataVolume(ctx context.Context, namespace string, name string) (*cdiv1.DataVolume, error)
+	GetPersistentVolumeClaim(ctx context.Context, namespace string, claimName string) (*k8sv1.PersistentVolumeClaim, error)
+	ExpandPersistentVolumeClaim(ctx context.Context, namespace string, claimName string, size int64) error
 	AddVolumeToVM(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.AddVolumeOptions) error
 	RemoveVolumeFromVM(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error
 	RemoveVolumeFromVMI(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error
 	EnsureVolumeAvailable(ctx context.Context, namespace, vmName, volumeName string, timeout time.Duration) error
 	EnsureVolumeRemoved(ctx context.Context, namespace, vmName, volumeName string, timeout time.Duration) error
 	EnsureSnapshotReady(ctx context.Context, namespace, name string, timeout time.Duration) error
+	EnsureControllerResize(ctx context.Context, namespace, claimName string, timeout time.Duration) error
 	CreateVolumeSnapshot(ctx context.Context, namespace, name, claimName, snapshotClassName string) (*snapshotv1.VolumeSnapshot, error)
 	GetVolumeSnapshot(ctx context.Context, namespace, name string) (*snapshotv1.VolumeSnapshot, error)
 	DeleteVolumeSnapshot(ctx context.Context, namespace, name string) error
@@ -259,6 +264,30 @@ func (c *client) EnsureSnapshotReady(ctx context.Context, namespace, name string
 	})
 }
 
+// EnsureControllerResize checks that a ControllerExpandVolume is finished on the infra storage, checks for 2 minutes
+func (c *client) EnsureControllerResize(ctx context.Context, namespace, claimName string, timeout time.Duration) error {
+	pvc, err := c.GetPersistentVolumeClaim(ctx, namespace, claimName)
+	if err != nil {
+		return err
+	}
+	pvName := pvc.Spec.VolumeName
+	return wait.PollUntilContextTimeout(ctx, time.Second, timeout, true, func(ctx context.Context) (done bool, err error) {
+		pvcSize := pvc.Spec.Resources.Requests[k8sv1.ResourceStorage]
+		pv, err := c.infraKubernetesClient.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
+		if err != nil {
+			return false, fmt.Errorf("error fetching pv %q for resizing %v", pvName, err)
+		}
+		pvSize := pv.Spec.Capacity[k8sv1.ResourceStorage]
+		// If pv size is greater or equal to requested size that means controller resize is finished
+		// https://github.com/kubernetes/kubernetes/blob/6a17858ff9be5601149ded54eb33280adc2783b3/test/e2e/storage/testsuites/volume_expand.go#L419
+		if pvSize.Cmp(pvcSize) >= 0 {
+			return true, nil
+		}
+
+		return false, nil
+	})
+}
+
 // ListVirtualMachines fetches a list of VMIs from the passed in namespace
 func (c *client) ListVirtualMachines(ctx context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
 	list, err := c.virtClient.KubevirtV1().VirtualMachineInstances(namespace).List(ctx, metav1.ListOptions{})
@@ -316,6 +345,41 @@ func (c *client) GetDataVolume(ctx context.Context, namespace string, name strin
 		}
 	}
 	return dv, nil
+}
+
+func (c *client) GetPersistentVolumeClaim(ctx context.Context, namespace string, claimName string) (*k8sv1.PersistentVolumeClaim, error) {
+	pvc, err := c.infraKubernetesClient.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, claimName, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("Error getting volume claim %s in namespace %s: %v", claimName, namespace, err)
+		return nil, err
+	}
+	if pvc != nil {
+		if !containsLabels(pvc.Labels, c.infraLabelMap) || !strings.HasPrefix(pvc.GetName(), c.volumePrefix) {
+			return nil, ErrInvalidVolume
+		}
+	}
+	return pvc, nil
+}
+
+func (c *client) ExpandPersistentVolumeClaim(ctx context.Context, namespace string, claimName string, desiredSize int64) error {
+	currentPVC, err := c.GetPersistentVolumeClaim(ctx, namespace, claimName)
+	if err != nil {
+		return err
+	}
+	desiredQuantity := *resource.NewQuantity(desiredSize, resource.DecimalSI)
+	currentQuantity := currentPVC.Spec.Resources.Requests.Storage()
+	if currentQuantity.Cmp(desiredQuantity) >= 0 {
+		klog.V(5).Infof("Volume %s of quantity %v is larger than requested quantity %v, no need to expand", claimName, *currentQuantity, desiredQuantity)
+		return nil
+	}
+
+	patchData := fmt.Sprintf(`[{"op":"add","path":"/spec/resources/requests/storage","value":"%d" }]`, desiredSize)
+	_, err = c.infraKubernetesClient.CoreV1().PersistentVolumeClaims(namespace).Patch(ctx, claimName, types.JSONPatchType, []byte(patchData), metav1.PatchOptions{})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (c *client) CreateVolumeSnapshot(ctx context.Context, namespace, name, claimName, snapshotClassName string) (*snapshotv1.VolumeSnapshot, error) {

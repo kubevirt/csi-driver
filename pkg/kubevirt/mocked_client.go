@@ -11,7 +11,8 @@ import (
 
 	gomock "github.com/golang/mock/gomock"
 	v1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
-	v10 "kubevirt.io/api/core/v1"
+	v10 "k8s.io/api/core/v1"
+	v11 "kubevirt.io/api/core/v1"
 	v1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 )
 
@@ -39,7 +40,7 @@ func (m *MockClient) EXPECT() *MockClientMockRecorder {
 }
 
 // AddVolumeToVM mocks base method.
-func (m *MockClient) AddVolumeToVM(ctx context.Context, namespace, vmName string, hotPlugRequest *v10.AddVolumeOptions) error {
+func (m *MockClient) AddVolumeToVM(ctx context.Context, namespace, vmName string, hotPlugRequest *v11.AddVolumeOptions) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AddVolumeToVM", ctx, namespace, vmName, hotPlugRequest)
 	ret0, _ := ret[0].(error)
@@ -110,6 +111,20 @@ func (mr *MockClientMockRecorder) DeleteVolumeSnapshot(ctx, namespace, name inte
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteVolumeSnapshot", reflect.TypeOf((*MockClient)(nil).DeleteVolumeSnapshot), ctx, namespace, name)
 }
 
+// EnsureControllerResize mocks base method.
+func (m *MockClient) EnsureControllerResize(ctx context.Context, namespace, claimName string, timeout time.Duration) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnsureControllerResize", ctx, namespace, claimName, timeout)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EnsureControllerResize indicates an expected call of EnsureControllerResize.
+func (mr *MockClientMockRecorder) EnsureControllerResize(ctx, namespace, claimName, timeout interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureControllerResize", reflect.TypeOf((*MockClient)(nil).EnsureControllerResize), ctx, namespace, claimName, timeout)
+}
+
 // EnsureSnapshotReady mocks base method.
 func (m *MockClient) EnsureSnapshotReady(ctx context.Context, namespace, name string, timeout time.Duration) error {
 	m.ctrl.T.Helper()
@@ -152,6 +167,20 @@ func (mr *MockClientMockRecorder) EnsureVolumeRemoved(ctx, namespace, vmName, vo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureVolumeRemoved", reflect.TypeOf((*MockClient)(nil).EnsureVolumeRemoved), ctx, namespace, vmName, volumeName, timeout)
 }
 
+// ExpandPersistentVolumeClaim mocks base method.
+func (m *MockClient) ExpandPersistentVolumeClaim(ctx context.Context, namespace, claimName string, size int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExpandPersistentVolumeClaim", ctx, namespace, claimName, size)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ExpandPersistentVolumeClaim indicates an expected call of ExpandPersistentVolumeClaim.
+func (mr *MockClientMockRecorder) ExpandPersistentVolumeClaim(ctx, namespace, claimName, size interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExpandPersistentVolumeClaim", reflect.TypeOf((*MockClient)(nil).ExpandPersistentVolumeClaim), ctx, namespace, claimName, size)
+}
+
 // GetDataVolume mocks base method.
 func (m *MockClient) GetDataVolume(ctx context.Context, namespace, name string) (*v1beta1.DataVolume, error) {
 	m.ctrl.T.Helper()
@@ -167,11 +196,26 @@ func (mr *MockClientMockRecorder) GetDataVolume(ctx, namespace, name interface{}
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDataVolume", reflect.TypeOf((*MockClient)(nil).GetDataVolume), ctx, namespace, name)
 }
 
+// GetPersistentVolumeClaim mocks base method.
+func (m *MockClient) GetPersistentVolumeClaim(ctx context.Context, namespace, claimName string) (*v10.PersistentVolumeClaim, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPersistentVolumeClaim", ctx, namespace, claimName)
+	ret0, _ := ret[0].(*v10.PersistentVolumeClaim)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPersistentVolumeClaim indicates an expected call of GetPersistentVolumeClaim.
+func (mr *MockClientMockRecorder) GetPersistentVolumeClaim(ctx, namespace, claimName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPersistentVolumeClaim", reflect.TypeOf((*MockClient)(nil).GetPersistentVolumeClaim), ctx, namespace, claimName)
+}
+
 // GetVirtualMachine mocks base method.
-func (m *MockClient) GetVirtualMachine(ctx context.Context, namespace, name string) (*v10.VirtualMachineInstance, error) {
+func (m *MockClient) GetVirtualMachine(ctx context.Context, namespace, name string) (*v11.VirtualMachineInstance, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetVirtualMachine", ctx, namespace, name)
-	ret0, _ := ret[0].(*v10.VirtualMachineInstance)
+	ret0, _ := ret[0].(*v11.VirtualMachineInstance)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -198,10 +242,10 @@ func (mr *MockClientMockRecorder) GetVolumeSnapshot(ctx, namespace, name interfa
 }
 
 // GetWorkloadManagingVirtualMachine mocks base method.
-func (m *MockClient) GetWorkloadManagingVirtualMachine(ctx context.Context, namespace, name string) (*v10.VirtualMachine, error) {
+func (m *MockClient) GetWorkloadManagingVirtualMachine(ctx context.Context, namespace, name string) (*v11.VirtualMachine, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetWorkloadManagingVirtualMachine", ctx, namespace, name)
-	ret0, _ := ret[0].(*v10.VirtualMachine)
+	ret0, _ := ret[0].(*v11.VirtualMachine)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -213,10 +257,10 @@ func (mr *MockClientMockRecorder) GetWorkloadManagingVirtualMachine(ctx, namespa
 }
 
 // ListVirtualMachines mocks base method.
-func (m *MockClient) ListVirtualMachines(ctx context.Context, namespace string) ([]v10.VirtualMachineInstance, error) {
+func (m *MockClient) ListVirtualMachines(ctx context.Context, namespace string) ([]v11.VirtualMachineInstance, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListVirtualMachines", ctx, namespace)
-	ret0, _ := ret[0].([]v10.VirtualMachineInstance)
+	ret0, _ := ret[0].([]v11.VirtualMachineInstance)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -257,7 +301,7 @@ func (mr *MockClientMockRecorder) Ping(ctx interface{}) *gomock.Call {
 }
 
 // RemoveVolumeFromVM mocks base method.
-func (m *MockClient) RemoveVolumeFromVM(ctx context.Context, namespace, vmName string, hotPlugRequest *v10.RemoveVolumeOptions) error {
+func (m *MockClient) RemoveVolumeFromVM(ctx context.Context, namespace, vmName string, hotPlugRequest *v11.RemoveVolumeOptions) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RemoveVolumeFromVM", ctx, namespace, vmName, hotPlugRequest)
 	ret0, _ := ret[0].(error)
@@ -271,7 +315,7 @@ func (mr *MockClientMockRecorder) RemoveVolumeFromVM(ctx, namespace, vmName, hot
 }
 
 // RemoveVolumeFromVMI mocks base method.
-func (m *MockClient) RemoveVolumeFromVMI(ctx context.Context, namespace, vmName string, hotPlugRequest *v10.RemoveVolumeOptions) error {
+func (m *MockClient) RemoveVolumeFromVMI(ctx context.Context, namespace, vmName string, hotPlugRequest *v11.RemoveVolumeOptions) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RemoveVolumeFromVMI", ctx, namespace, vmName, hotPlugRequest)
 	ret0, _ := ret[0].(error)
