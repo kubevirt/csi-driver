@@ -10,6 +10,7 @@ kind: StorageClass
 metadata:
   name: infra-fs
 provisioner: csi.kubevirt.io
+allowVolumeExpansion: true
 parameters:
   infraStorageClassName: nfs-csi
   bus: scsi

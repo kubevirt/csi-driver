@@ -25,12 +25,19 @@ var _ = ginkgo.BeforeSuite(func() {
 	gomega.Expect(err).ToNot(gomega.HaveOccurred())
 	// Test labels
 	infraClusterLabelsMap := map[string]string{}
+	hotpluggedMap := map[string]device{}
 	identityClientset := createIdentityClient()
-	virtClient, deviceLister := createVirtClient()
+	virtClient := createVirtClient(hotpluggedMap)
+	deviceLister := &fakeDeviceLister{
+		hotpluggedMap: hotpluggedMap,
+	}
+	// needs to be pointer otherwise each append() assignment
+	// changes the slice header in just one of them
+	mountValues := &[]mountArgs{}
 
 	service.NewMounter = func() mount.Interface {
 		return &fakeMounter{
-			values: make([]mountArgs, 0),
+			values: mountValues,
 		}
 	}
 	service.NewResizer = func() service.ResizerInterface {
@@ -39,7 +46,11 @@ var _ = ginkgo.BeforeSuite(func() {
 	service.NewDeviceLister = func() service.DeviceLister {
 		return deviceLister
 	}
-
+	service.NewDevicePathGetter = func() service.DevicePathGetter {
+		return &fakeDevicePathGetter{
+			mountArgs: mountValues,
+		}
+	}
 	service.NewFsMaker = func() service.FsMaker {
 		return &fakeFsMaker{}
 	}

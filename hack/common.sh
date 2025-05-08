@@ -80,6 +80,7 @@ metadata:
   annotations:
     storageclass.kubernetes.io/is-default-class: "true"
 provisioner: csi.kubevirt.io
+allowVolumeExpansion: true
 parameters:
   infraStorageClassName: $2
   bus: scsi

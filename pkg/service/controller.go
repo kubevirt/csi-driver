@@ -49,6 +49,7 @@ var controllerCaps = []csi.ControllerServiceCapability_RPC_Type{
 	csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
 	csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
 	csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
+	csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 }
 
 func (c *ControllerService) validateCreateVolumeRequest(req *csi.CreateVolumeRequest) (bool, error) {
@@ -771,9 +772,40 @@ func createSnapshotResponseFromItems(req *csi.ListSnapshotsRequest, items []snap
 	return snapshotRes, nil
 }
 
-// ControllerExpandVolume unimplemented
-func (c *ControllerService) ControllerExpandVolume(context.Context, *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+// ControllerExpandVolume propagates an expansion request to the underlying infra volume (PVC on infra cluster)
+func (c *ControllerService) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
+	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID not provided")
+	}
+	capRange := req.GetCapacityRange()
+	if capRange == nil {
+		return nil, status.Error(codes.InvalidArgument, "Capacity range not provided")
+	}
+	newSize := capRange.GetRequiredBytes()
+	isBlock := req.GetVolumeCapability().GetBlock() != nil
+
+	err := c.virtClient.ExpandPersistentVolumeClaim(ctx, c.infraClusterNamespace, volumeID, newSize)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return nil, status.Errorf(codes.Internal, "Failed to expand PVC %s: %v", volumeID, err)
+		}
+		return nil, status.Errorf(codes.NotFound, "volume %s not found", volumeID)
+	}
+
+	err = c.virtClient.EnsureControllerResize(ctx, c.infraClusterNamespace, volumeID, time.Minute*2)
+	if err != nil {
+		klog.Errorf("controller resize for volume %s failed to be completed in time (2m) %v", volumeID, err)
+		return nil, err
+	}
+
+	klog.V(3).Infof("Successfully resized backing volume %s", volumeID)
+
+	return &csi.ControllerExpandVolumeResponse{
+		CapacityBytes: newSize,
+		// Expansion on node only required for filesystem volumes
+		NodeExpansionRequired: !isBlock,
+	}, nil
 }
 
 // ControllerGetCapabilities returns the driver's controller capabilities

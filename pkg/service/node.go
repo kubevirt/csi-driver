@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"google.golang.org/grpc/codes"
@@ -20,22 +21,32 @@ import (
 	klog "k8s.io/klog/v2"
 )
 
-var nodeCaps = []csi.NodeServiceCapability_RPC_Type{
-	csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
-}
+var (
+	nodeCaps = []csi.NodeServiceCapability_RPC_Type{
+		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
+		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
+	}
+	ErrMountDeviceNotFound = errors.New("could not find device path for mount")
+)
 
 // NodeService implements the CSI Driver node service
 type NodeService struct {
 	csi.UnimplementedNodeServer
-	nodeID       string
-	deviceLister DeviceLister
-	fsMaker      FsMaker
-	mounter      mount.Interface
-	resizer      ResizerInterface
-	dirMaker     dirMaker
+	nodeID           string
+	deviceLister     DeviceLister
+	fsMaker          FsMaker
+	mounter          mount.Interface
+	resizer          ResizerInterface
+	devicePathGetter DevicePathGetter
+	dirMaker         dirMaker
 }
 
-type DeviceLister interface{ List() ([]byte, error) }
+type DeviceLister interface {
+	List() ([]byte, error)
+}
+type DevicePathGetter interface {
+	Get(mountPath string) (string, error)
+}
 type FsMaker interface {
 	Make(device string, fsType string) error
 }
@@ -64,6 +75,25 @@ var NewDeviceLister = func() DeviceLister {
 	})
 }
 
+var NewDevicePathGetter = func() DevicePathGetter {
+	return devicePathGetterFunc(func(mountPath string) (string, error) {
+		args := []string{"-o", "source", "--nofsroot", "--noheadings", "--target", mountPath}
+		klog.V(5).Info(args)
+		out, err := exec.Command("findmnt", args...).Output()
+		if err != nil {
+			return "", err
+		}
+		devicePath := strings.TrimSpace(string(out))
+		klog.V(5).Info(devicePath)
+		if filepath.IsAbs(devicePath) {
+			// sanity check output
+			return devicePath, nil
+		}
+
+		return "", ErrMountDeviceNotFound
+	})
+}
+
 var NewFsMaker = func() FsMaker {
 	return fsMakerFunc(func(device, fsType string) error {
 		return makeFS(device, fsType)
@@ -72,11 +102,12 @@ var NewFsMaker = func() FsMaker {
 
 func NewNodeService(nodeId string) *NodeService {
 	return &NodeService{
-		nodeID:       nodeId,
-		deviceLister: NewDeviceLister(),
-		fsMaker:      NewFsMaker(),
-		mounter:      NewMounter(),
-		resizer:      NewResizer(),
+		nodeID:           nodeId,
+		deviceLister:     NewDeviceLister(),
+		devicePathGetter: NewDevicePathGetter(),
+		fsMaker:          NewFsMaker(),
+		mounter:          NewMounter(),
+		resizer:          NewResizer(),
 		dirMaker: dirMakerFunc(func(path string, perm os.FileMode) error {
 			// MkdirAll returns nil if path already exists
 			return os.MkdirAll(path, perm)
@@ -88,6 +119,12 @@ type deviceListerFunc func() ([]byte, error)
 
 func (d deviceListerFunc) List() ([]byte, error) {
 	return d()
+}
+
+type devicePathGetterFunc func(mountPath string) (string, error)
+
+func (d devicePathGetterFunc) Get(mountPath string) (string, error) {
+	return d(mountPath)
 }
 
 type fsMakerFunc func(device, fsType string) error
@@ -258,7 +295,7 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	if !block {
-		if err := n.resizeFs(device, targetPath); err != nil {
+		if err := n.resizeFs(device.Path, targetPath); err != nil {
 			return nil, err
 		}
 	}
@@ -266,12 +303,12 @@ func (n *NodeService) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
-func (n *NodeService) resizeFs(device device, targetPath string) error {
-	ok, err := n.resizer.NeedResize(device.Path, targetPath)
+func (n *NodeService) resizeFs(devicePath, targetPath string) error {
+	ok, err := n.resizer.NeedResize(devicePath, targetPath)
 	if err != nil {
 		return status.Errorf(codes.Internal,
 			"need resize check failed on devicePath %s and targetPath %s, error: %v",
-			device.Path,
+			devicePath,
 			targetPath,
 			err)
 	}
@@ -279,7 +316,7 @@ func (n *NodeService) resizeFs(device device, targetPath string) error {
 		// no resize is required
 		return nil
 	}
-	ok, err = n.resizer.Resize(device.Path, targetPath)
+	ok, err = n.resizer.Resize(devicePath, targetPath)
 	if !ok || err != nil {
 		return status.Errorf(codes.Internal,
 			"resize failed on path %s, error: %v", targetPath, err)
@@ -371,9 +408,37 @@ func (n *NodeService) NodeGetVolumeStats(context.Context, *csi.NodeGetVolumeStat
 	panic("implement me")
 }
 
-// NodeExpandVolume unimplemented
-func (n *NodeService) NodeExpandVolume(context.Context, *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
-	panic("implement me")
+// NodeExpandVolume only gets invoked for filesystem volumes and takes care of expanding the filesystem
+func (n *NodeService) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
+	volumeID := req.GetVolumeId()
+	volumePath := req.GetVolumePath()
+
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "no volume_id is provided")
+	}
+	if len(volumePath) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "no volume_path is provided")
+	}
+
+	block := req.GetVolumeCapability().GetBlock() != nil
+	if block {
+		klog.V(2).Infof("NodeExpandVolume is not needed for block volume %s", volumeID)
+		return &csi.NodeExpandVolumeResponse{}, nil
+	}
+
+	devicePath, err := n.devicePathGetter.Get(volumePath)
+	if err != nil {
+		if !errors.Is(err, ErrMountDeviceNotFound) {
+			return nil, err
+		}
+		return nil, status.Errorf(codes.NotFound, "device path for %s not found", volumePath)
+	}
+
+	if err := n.resizeFs(devicePath, volumePath); err != nil {
+		return nil, err
+	}
+
+	return &csi.NodeExpandVolumeResponse{}, nil
 }
 
 // NodeGetInfo returns the node ID

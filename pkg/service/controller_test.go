@@ -681,6 +681,46 @@ var _ = Describe("Snapshots", func() {
 	})
 })
 
+var _ = Describe("Expand", func() {
+	var (
+		client     *ControllerClientMock
+		controller *ControllerService
+	)
+	BeforeEach(func() {
+		client = &ControllerClientMock{}
+		controller = &ControllerService{
+			virtClient:              client,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
+	})
+
+	It("should successfully expand", func() {
+		size := int64(1 * 1024 * 1024 * 1024)
+		res, err := controller.ControllerExpandVolume(context.TODO(), &csi.ControllerExpandVolumeRequest{
+			VolumeId: testVolumeName,
+			VolumeCapability: &csi.VolumeCapability{
+				AccessType: &csi.VolumeCapability_Mount{
+					Mount: &csi.VolumeCapability_MountVolume{
+						FsType: "ext4",
+					},
+				},
+			},
+			CapacityRange: &csi.CapacityRange{
+				RequiredBytes: size,
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(res).To(HaveValue(Equal(csi.ControllerExpandVolumeResponse{
+			CapacityBytes:         size,
+			NodeExpansionRequired: true,
+		})))
+		Expect(client.ExpansionOccured).To(BeTrue())
+		Expect(client.ExpansionVerified).To(BeTrue())
+	})
+})
+
 //
 // The rest of the file is code used by the tests and tests infrastructure
 //
@@ -787,6 +827,8 @@ type ControllerClientMock struct {
 	FailDeleteSnapshot      bool
 	FailListSnapshots       bool
 	ShouldReturnVMNotFound  bool
+	ExpansionOccured        bool
+	ExpansionVerified       bool
 	virtualMachineStatus    kubevirtv1.VirtualMachineInstanceStatus
 	vmVolumes               []kubevirtv1.Volume
 	snapshots               map[string]*snapshotv1.VolumeSnapshot
@@ -905,6 +947,13 @@ func (c *ControllerClientMock) GetDataVolume(_ context.Context, namespace string
 	}
 	return dv, nil
 }
+func (c *ControllerClientMock) GetPersistentVolumeClaim(_ context.Context, namespace string, claimName string) (*corev1.PersistentVolumeClaim, error) {
+	return nil, errors.New("Not implemented")
+}
+func (c *ControllerClientMock) ExpandPersistentVolumeClaim(_ context.Context, namespace string, claimName string, size int64) error {
+	c.ExpansionOccured = true
+	return nil
+}
 func (c *ControllerClientMock) ListDataVolumes(_ context.Context, namespace string) ([]cdiv1.DataVolume, error) {
 	return nil, errors.New("Not implemented")
 }
@@ -949,6 +998,11 @@ func (c *ControllerClientMock) EnsureVolumeRemoved(_ context.Context, namespace,
 }
 
 func (c *ControllerClientMock) EnsureSnapshotReady(_ context.Context, namespace, name string, timeout time.Duration) error {
+	return nil
+}
+
+func (c *ControllerClientMock) EnsureControllerResize(_ context.Context, namespace, claimName string, timeout time.Duration) error {
+	c.ExpansionVerified = true
 	return nil
 }
 
