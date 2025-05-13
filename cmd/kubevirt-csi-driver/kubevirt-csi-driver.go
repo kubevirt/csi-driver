@@ -126,7 +126,7 @@ func handle() {
 		nodeID = fmt.Sprintf("%s/%s", vmNamespace, vmName)
 		klog.Infof("Node name: %v, Node ID: %s", *nodeName, nodeID)
 		// systemUUID is the VM ID
-		nodeID = node.Status.NodeInfo.SystemUUID
+		//nodeID = node.Status.NodeInfo.SystemUUID
 		allowedTopologies[service.WellKnownZoneTopologyKey] = node.Labels[service.WellKnownZoneTopologyKey]
 		allowedTopologies[service.WellKnownRegionTopologyKey] = node.Labels[service.WellKnownRegionTopologyKey]
 		klog.Infof("Node name: %v, Node ID: %s", nodeName, nodeID)
