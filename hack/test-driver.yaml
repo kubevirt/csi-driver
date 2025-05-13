@@ -19,7 +19,7 @@ DriverInfo:
     singleNodeVolume: false
     snapshotDataSource: true
     pvcDataSource: true
-    topology: false
+    topology: true
     capacity: false
     RWX: false
   SupportedFsType:
