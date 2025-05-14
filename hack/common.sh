@@ -80,6 +80,14 @@ metadata:
   annotations:
     storageclass.kubernetes.io/is-default-class: "true"
 provisioner: csi.kubevirt.io
+allowedTopologies:
+- matchLabelExpressions:
+  - key: topology.kubernetes.io/zone
+    values:
+    - az-1
+  - key: topology.kubernetes.io/region
+    values:
+    - eu-central
 allowVolumeExpansion: true
 parameters:
   infraStorageClassName: $2
