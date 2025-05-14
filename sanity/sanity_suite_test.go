@@ -67,7 +67,11 @@ var _ = ginkgo.BeforeSuite(func() {
 		storagClassEnforcement,
 		getKey(infraClusterNamespace, nodeID),
 		true,
-		true)
+		true,
+		map[string]string{
+			service.WellKnownRegionTopologyKey: "eu-central-1",
+			service.WellKnownZoneTopologyKey:   "eu-central-1a",
+		})
 	gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 	go func() {
