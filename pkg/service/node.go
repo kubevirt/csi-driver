@@ -19,12 +19,15 @@ import (
 
 	"golang.org/x/net/context"
 	klog "k8s.io/klog/v2"
+
+	"kubevirt.io/csi-driver/pkg/mounter"
 )
 
 var (
 	nodeCaps = []csi.NodeServiceCapability_RPC_Type{
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
+		csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
 	}
 	ErrMountDeviceNotFound = errors.New("could not find device path for mount")
 )
@@ -35,7 +38,7 @@ type NodeService struct {
 	nodeID           string
 	deviceLister     DeviceLister
 	fsMaker          FsMaker
-	mounter          mount.Interface
+	mounter          mounter.Mounter
 	resizer          ResizerInterface
 	devicePathGetter DevicePathGetter
 	dirMaker         dirMaker
@@ -57,10 +60,6 @@ type dirMaker interface {
 type ResizerInterface interface {
 	NeedResize(devicePath string, deviceMountPath string) (bool, error)
 	Resize(devicePath, deviceMountPath string) (bool, error)
-}
-
-var NewMounter = func() mount.Interface {
-	return mount.New("")
 }
 
 var NewResizer = func() ResizerInterface {
@@ -106,7 +105,7 @@ func NewNodeService(nodeId string) *NodeService {
 		deviceLister:     NewDeviceLister(),
 		devicePathGetter: NewDevicePathGetter(),
 		fsMaker:          NewFsMaker(),
-		mounter:          NewMounter(),
+		mounter:          mounter.NewNodeMounter(),
 		resizer:          NewResizer(),
 		dirMaker: dirMakerFunc(func(path string, perm os.FileMode) error {
 			// MkdirAll returns nil if path already exists
@@ -404,8 +403,68 @@ func (n *NodeService) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 }
 
 // NodeGetVolumeStats unimplemented
-func (n *NodeService) NodeGetVolumeStats(context.Context, *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
-	panic("implement me")
+func (n *NodeService) NodeGetVolumeStats(_ context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	klog.V(4).InfoS("NodeGetVolumeStats: called", "args", req)
+	if len(req.GetVolumeId()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume ID was empty")
+	}
+	if len(req.GetVolumePath()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume path was empty")
+	}
+
+	exists, err := mount.PathExists(req.GetVolumePath())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "unknown error when stat on %s: %v", req.GetVolumePath(), err)
+	}
+	if !exists {
+		return nil, status.Errorf(codes.NotFound, "path %s does not exist", req.GetVolumePath())
+	}
+
+	isBlock, err := n.mounter.IsBlockDevice(req.GetVolumePath())
+
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to determine whether %s is block device: %v", req.GetVolumePath(), err)
+	}
+	if isBlock {
+		bcap, blockErr := n.mounter.GetBlockSizeBytes(req.GetVolumePath())
+		if blockErr != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get block capacity on path %s: %v", req.GetVolumePath(), blockErr)
+		}
+		return &csi.NodeGetVolumeStatsResponse{
+			Usage: []*csi.VolumeUsage{
+				{
+					Unit:  csi.VolumeUsage_BYTES,
+					Total: bcap,
+				},
+			},
+		}, nil
+	}
+
+	stats, err := n.mounter.GetVolumeStats(req.GetVolumePath())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get fs info on path %s: %v", req.GetVolumePath(), err)
+	}
+
+	usage := []*csi.VolumeUsage{
+		{
+			Unit:      csi.VolumeUsage_BYTES,
+			Available: stats.AvailableBytes,
+			Total:     stats.TotalBytes,
+			Used:      stats.UsedBytes,
+		},
+	}
+	if stats.TotalInodes != 0 {
+		usage = append(usage, &csi.VolumeUsage{
+			Unit:      csi.VolumeUsage_INODES,
+			Available: stats.AvailableInodes,
+			Total:     stats.TotalInodes,
+			Used:      stats.UsedInodes,
+		})
+	}
+
+	return &csi.NodeGetVolumeStatsResponse{
+		Usage: usage,
+	}, nil
 }
 
 // NodeExpandVolume only gets invoked for filesystem volumes and takes care of expanding the filesystem
