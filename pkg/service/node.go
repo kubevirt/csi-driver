@@ -402,7 +402,6 @@ func (n *NodeService) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 
-// NodeGetVolumeStats unimplemented
 func (n *NodeService) NodeGetVolumeStats(_ context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
 	klog.V(4).InfoS("NodeGetVolumeStats: called", "args", req)
 	if len(req.GetVolumeId()) == 0 {
