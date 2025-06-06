@@ -233,7 +233,7 @@ var _ = Describe("NodeService", func() {
 					VolumePath: tmpDir,
 				},
 			)
-			Expect(len(res.GetUsage())).To(Equal(1))
+			Expect(res.GetUsage()).To(HaveLen(1))
 			Expect(res.GetUsage()[0].GetTotal()).To(Equal(int64(2048)))
 			Expect(err).ToNot(HaveOccurred())
 			Expect(res).ToNot(BeNil())
@@ -252,7 +252,7 @@ var _ = Describe("NodeService", func() {
 					VolumePath: tmpDir,
 				},
 			)
-			Expect(len(res.GetUsage())).To(Equal(2))
+			Expect(res.GetUsage()).To(HaveLen(2))
 			Expect(res.GetUsage()[0].GetTotal()).To(Equal(int64(2048)))
 			Expect(res.GetUsage()[0].GetAvailable()).To(Equal(int64(1024)))
 			Expect(res.GetUsage()[0].GetUsed()).To(Equal(int64(1024)))
