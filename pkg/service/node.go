@@ -93,6 +93,10 @@ var NewDevicePathGetter = func() DevicePathGetter {
 	})
 }
 
+var NewNodeMounter = func() mounter.Mounter {
+	return mounter.NewNodeMounter()
+}
+
 var NewFsMaker = func() FsMaker {
 	return fsMakerFunc(func(device, fsType string) error {
 		return makeFS(device, fsType)
@@ -105,7 +109,7 @@ func NewNodeService(nodeId string) *NodeService {
 		deviceLister:     NewDeviceLister(),
 		devicePathGetter: NewDevicePathGetter(),
 		fsMaker:          NewFsMaker(),
-		mounter:          mounter.NewNodeMounter(),
+		mounter:          NewNodeMounter(),
 		resizer:          NewResizer(),
 		dirMaker: dirMakerFunc(func(path string, perm os.FileMode) error {
 			// MkdirAll returns nil if path already exists
