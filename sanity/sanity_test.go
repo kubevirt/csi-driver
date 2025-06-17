@@ -40,6 +40,7 @@ import (
 	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/csi-driver/pkg/kubevirt"
+	"kubevirt.io/csi-driver/pkg/mounter"
 	"kubevirt.io/csi-driver/pkg/service"
 
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
@@ -369,6 +370,35 @@ func (m *fakeMounter) MountSensitiveWithoutSystemd(source string, target string,
 
 func (m *fakeMounter) MountSensitiveWithoutSystemdWithMountFlags(source string, target string, fstype string, options []string, sensitiveOptions []string, mountFlags []string) error {
 	panic("shouldn't have called MountSensitiveWithoutSystemdWithMountFlags")
+}
+
+func (m *fakeMounter) IsBlockDevice(fullPath string) (bool, error) {
+	return false, nil
+}
+
+func (m *fakeMounter) GetBlockSizeBytes(devicePath string) (int64, error) {
+	return 0, nil
+}
+
+func (m *fakeMounter) GetVolumeStats(volumePath string) (mounter.VolumeStats, error) {
+	return mounter.VolumeStats{
+		AvailableBytes:  0,
+		TotalBytes:      0,
+		UsedBytes:       0,
+		AvailableInodes: 0,
+		TotalInodes:     0,
+		UsedInodes:      0,
+	}, nil
+}
+
+func (m *fakeMounter) PathExists(path string) (bool, error) {
+	for _, val := range *m.values {
+		if val.target == path {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 type fakeFsMaker struct{}

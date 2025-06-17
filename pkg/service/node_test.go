@@ -10,6 +10,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"kubevirt.io/csi-driver/pkg/mounter"
 )
 
 const serialID = "4b13cebc-7406-4c19-8832-7fcb1d4ac8c5"
@@ -216,6 +218,52 @@ var _ = Describe("NodeService", func() {
 			Expect(resizer.resizeOccured).To(BeFalse())
 		})
 	})
+
+	Context("Get node volume stats", func() {
+		It("should get node volume stats metrics for block devices", func() {
+			tmpDir := GinkgoT().TempDir()
+
+			sMounter := &successfulMounter{
+				isBlock: true,
+			}
+			underTest.mounter = sMounter
+			res, err := underTest.NodeGetVolumeStats(context.TODO(),
+				&csi.NodeGetVolumeStatsRequest{
+					VolumeId:   "pvc-123",
+					VolumePath: tmpDir,
+				},
+			)
+			Expect(res.GetUsage()).To(HaveLen(1))
+			Expect(res.GetUsage()[0].GetTotal()).To(Equal(int64(2048)))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(res).ToNot(BeNil())
+		})
+
+		It("should get node volume stats metrics for non block devices", func() {
+			tmpDir := GinkgoT().TempDir()
+
+			sMounter := &successfulMounter{
+				isBlock: false,
+			}
+			underTest.mounter = sMounter
+			res, err := underTest.NodeGetVolumeStats(context.TODO(),
+				&csi.NodeGetVolumeStatsRequest{
+					VolumeId:   "pvc-123",
+					VolumePath: tmpDir,
+				},
+			)
+			Expect(res.GetUsage()).To(HaveLen(2))
+			Expect(res.GetUsage()[0].GetTotal()).To(Equal(int64(2048)))
+			Expect(res.GetUsage()[0].GetAvailable()).To(Equal(int64(1024)))
+			Expect(res.GetUsage()[0].GetUsed()).To(Equal(int64(1024)))
+
+			Expect(res.GetUsage()[1].GetTotal()).To(Equal(int64(6)))
+			Expect(res.GetUsage()[1].GetAvailable()).To(Equal(int64(3)))
+			Expect(res.GetUsage()[1].GetUsed()).To(Equal(int64(3)))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(res).ToNot(BeNil())
+		})
+	})
 })
 
 func newPublishRequest() *csi.NodePublishVolumeRequest {
@@ -266,10 +314,34 @@ func (m *noopMounter) IsLikelyNotMountPoint(file string) (bool, error) {
 
 type successfulMounter struct {
 	mountOccured bool
+	isBlock      bool
 }
 
 type failingMounter struct {
 	successfulMounter
+}
+
+func (s *successfulMounter) PathExists(path string) (bool, error) {
+	return true, nil
+}
+
+func (s *successfulMounter) IsBlockDevice(fullPath string) (bool, error) {
+	return s.isBlock, nil
+}
+
+func (s *successfulMounter) GetBlockSizeBytes(devicePath string) (int64, error) {
+	return 2048, nil
+}
+
+func (s *successfulMounter) GetVolumeStats(volumePath string) (mounter.VolumeStats, error) {
+	return mounter.VolumeStats{
+		AvailableBytes:  1024,
+		TotalBytes:      2048,
+		UsedBytes:       1024,
+		AvailableInodes: 3,
+		TotalInodes:     6,
+		UsedInodes:      3,
+	}, nil
 }
 
 func (m *successfulMounter) Mount(source string, target string, fstype string, options []string) error {
