@@ -110,7 +110,7 @@ spec:
       containers:
         - name: csi-driver
           imagePullPolicy: Always
-          image: quay.io/kubevirt/csi-driver:latest
+          image: quay.io/kubevirt/kubevirt-csi-driver:latest
           args:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--infra-cluster-namespace=$(INFRACLUSTER_NAMESPACE)"
@@ -379,7 +379,7 @@ spec:
       containers:
         - name: csi-driver
           imagePullPolicy: Always
-          image: quay.io/kubevirt/csi-driver:latest
+          image: quay.io/kubevirt/kubevirt-csi-driver:latest
           args:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--infra-cluster-namespace=$(INFRACLUSTER_NAMESPACE)"
@@ -1065,7 +1065,7 @@ spec:
             privileged: true
             allowPrivilegeEscalation: true
           imagePullPolicy: Always
-          image: quay.io/kubevirt/csi-driver:latest
+          image: quay.io/kubevirt/kubevirt-csi-driver:latest
           args:
             - "--endpoint=unix:/csi/csi.sock"
             - "--node-name=$(KUBE_NODE_NAME)"
