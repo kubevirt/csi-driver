@@ -381,7 +381,60 @@ var _ = Describe("PublishUnPublish", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(capturingClient.hotunplugForVMIOccured).To(BeTrue())
 	})
+
+	It("retries until EnsureVolumeRemoved returns nil", func() {
+		retryCli := &detachRetryClient{
+			ControllerClientMock: &ControllerClientMock{},
+			ensureFailLeft:       1, // first check fails, second succeeds
+		}
+		retryCli.vmVolumes = []kubevirtv1.Volume{{
+			Name: testVolumeName,
+			VolumeSource: kubevirtv1.VolumeSource{
+				DataVolume: &kubevirtv1.DataVolumeSource{
+					Name:         testVolumeName,
+					Hotpluggable: true,
+				},
+			},
+		}}
+
+		ctrl := &ControllerService{
+			virtClient:              retryCli,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
+
+		_, err := ctrl.ControllerUnpublishVolume(context.TODO(), getUnpublishVolumeRequest())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(retryCli.removeCnt).To(Equal(2)) // 1 busy + 1 success
+		Expect(retryCli.ensureCnt).To(Equal(2))
+	})
 })
+
+type detachRetryClient struct {
+	*ControllerClientMock
+	removeCnt      int
+	ensureCnt      int
+	ensureFailLeft int
+}
+
+func (c *detachRetryClient) RemoveVolumeFromVM(_ context.Context,
+	_, _ string, _ *kubevirtv1.RemoveVolumeOptions) error {
+
+	c.removeCnt++
+	return nil
+}
+
+func (c *detachRetryClient) EnsureVolumeRemoved(_ context.Context,
+	_, _, _ string, _ time.Duration) error {
+
+	c.ensureCnt++
+	if c.ensureFailLeft > 0 {
+		c.ensureFailLeft--
+		return fmt.Errorf("still attached")
+	}
+	return nil
+}
 
 var _ = Describe("Snapshots", func() {
 	var (
