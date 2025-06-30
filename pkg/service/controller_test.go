@@ -1006,6 +1006,14 @@ func (c *ControllerClientMock) EnsureControllerResize(_ context.Context, namespa
 	return nil
 }
 
+func (c *ControllerClientMock) EnsureVolumeAvailableVM(_ context.Context, namespace, vmName, volName string) (bool, error) {
+	return false, nil
+}
+
+func (c *ControllerClientMock) EnsureVolumeRemovedVM(_ context.Context, namespace, vmName, volName string) (bool, error) {
+	return false, nil
+}
+
 func (c *ControllerClientMock) CreateVolumeSnapshot(ctx context.Context, namespace, name, claimName, snapshotClassName string) (*snapshotv1.VolumeSnapshot, error) {
 	if c.FailCreateSnapshot {
 		return nil, errors.New("CreateVolumeSnapshot failed")
@@ -1083,4 +1091,97 @@ func (c *vmiUnplugCapturingClient) RemoveVolumeFromVMI(_ context.Context, namesp
 
 func getKey(namespace, name string) string {
 	return fmt.Sprintf("%s/%s", namespace, name)
+}
+
+var _ = Describe("Fast-path publish / unpublish", func() {
+	It("should skip hot-plug when the disk is already attached", func() {
+		cli := &attachSkipClient{ControllerClientMock: &ControllerClientMock{}}
+
+		// fake DataVolume so GetDataVolume succeeds
+		cli.datavolumes = map[string]*cdiv1.DataVolume{
+			getKey(testInfraNamespace, testVolumeName): {
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testVolumeName,
+					Namespace: testInfraNamespace,
+				},
+			},
+		}
+
+		ctrl := &ControllerService{
+			virtClient:              cli,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
+
+		_, err := ctrl.ControllerPublishVolume(
+			context.TODO(), getPublishVolumeRequest())
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(cli.addCnt).To(Equal(0))    // hot-plug was skipped
+		Expect(cli.ensureCnt).To(Equal(1)) // fast-path check executed
+	})
+
+	It("should skip hot-unplug when the disk is already detached", func() {
+		cli := &detachSkipClient{ControllerClientMock: &ControllerClientMock{}}
+
+		ctrl := &ControllerService{
+			virtClient:              cli,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
+
+		_, err := ctrl.ControllerUnpublishVolume(
+			context.TODO(), getUnpublishVolumeRequest())
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(cli.removeCnt).To(Equal(0)) // unplug skipped
+		Expect(cli.ensureCnt).To(Equal(1)) // fast-path check executed
+	})
+})
+
+// returns "already attached", records calls
+type attachSkipClient struct {
+	*ControllerClientMock
+	addCnt    int // AddVolumeToVM called
+	ensureCnt int // EnsureVolumeAvailable(VM) called
+}
+
+// the driver never calls AddVolumeToVM when it detects an
+// already-attached disk, but we still implement it for safety.
+func (c *attachSkipClient) AddVolumeToVM(_ context.Context,
+	ns, vm string, opts *kubevirtv1.AddVolumeOptions) error {
+
+	c.addCnt++
+	return nil
+}
+
+// EnsureVolumeAvailableVM is the test hook for fast-path detection.
+// Return (true,nil) to say "already attached".
+func (c *attachSkipClient) EnsureVolumeAvailableVM(_ context.Context,
+	ns, vm, dv string) (bool, error) {
+
+	c.ensureCnt++
+	return true, nil
+}
+
+type detachSkipClient struct {
+	*ControllerClientMock
+	removeCnt int // RemoveVolumeFromVM called
+	ensureCnt int // EnsureVolumeRemoved(VM) called
+}
+
+func (c *detachSkipClient) RemoveVolumeFromVM(_ context.Context,
+	ns, vm string, opts *kubevirtv1.RemoveVolumeOptions) error {
+
+	c.removeCnt++
+	return nil
+}
+
+func (c *detachSkipClient) EnsureVolumeRemovedVM(_ context.Context,
+	ns, vm, dv string) (bool, error) {
+
+	c.ensureCnt++
+	return true, nil // volume absent
 }
