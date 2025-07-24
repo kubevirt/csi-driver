@@ -114,7 +114,15 @@ func handle() {
 		if node.Spec.ProviderID == "" {
 			klog.Fatal("provider name missing from node, something's not right")
 		}
-		vmName := strings.TrimPrefix(node.Spec.ProviderID, `kubevirt://`)
+		// Update nodeID detection to work for things other than kubevirt://
+		providerID := node.Spec.ProviderID
+		schemeSepIdx := strings.Index(providerID, "://")
+	        var vmName string
+		if schemeSepIdx >= 0 {
+			vmName = providerID[schemeSepIdx+3:]  // Skip past "://"
+		} else {
+			vmName = providerID  // No scheme present, use as-is
+		}
 		vmNamespace, ok := node.Annotations["cluster.x-k8s.io/cluster-namespace"]
 		if !ok {
 			klog.Fatal("cannot infer infra vm namespace")
