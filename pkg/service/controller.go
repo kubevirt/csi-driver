@@ -355,6 +355,16 @@ func (c *ControllerService) ControllerPublishVolume(
 	// Determine BUS type
 	bus := req.VolumeContext[busParameter]
 
+	// Fast-path: nothing to do if the volume is already attached
+	attached, err := c.virtClient.EnsureVolumeAvailableVM(ctx, c.infraClusterNamespace, vmName, dvName)
+	if err != nil {
+		return nil, err
+	}
+	if attached {
+		klog.V(3).Infof("Volume %s already attached to VM %s - skipping hot-plug", dvName, vmName)
+		return &csi.ControllerPublishVolumeResponse{}, nil
+	}
+
 	// hotplug DataVolume to VM
 	klog.V(3).Infof("Start attaching DataVolume %s to VM %s. Volume name: %s. Serial: %s. Bus: %s", dvName, vmName, dvName, serial, bus)
 
@@ -471,6 +481,16 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 		}
 		// VM removed, vacuously succeeded in unpublish
 		return nil, nil
+	}
+
+	// Fast-path: if the disk is no longer on the VM, succeed immediately
+	notPresent, err := c.virtClient.EnsureVolumeRemovedVM(ctx, c.infraClusterNamespace, vmName, dvName)
+	if err != nil {
+		return nil, err
+	}
+	if notPresent {
+		klog.V(3).Infof("Volume %s already detached from VM %s – skipping hot-unplug", dvName, vmName)
+		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
 
 	if err := wait.ExponentialBackoff(wait.Backoff{

@@ -190,7 +190,7 @@ Running the functional tests will use an existing cluster (looks for `KUBECONFIG
 and will deploy the CSI driver on it, and a test pod that consumes a dynamically provisioned volume.
 
 ```shell
-make test-functional IMG=quay.io/kubevirt/csi-driver:latest
+make test-functional IMG=quay.io/kubevirt/kubevirt-csi-driver:latest
 ```
 
 You can choose to run the tests on a specific namespace. That namespace will not be terminated in the end of the run.

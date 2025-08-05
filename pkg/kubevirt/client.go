@@ -67,7 +67,9 @@ type Client interface {
 	RemoveVolumeFromVM(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error
 	RemoveVolumeFromVMI(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error
 	EnsureVolumeAvailable(ctx context.Context, namespace, vmName, volumeName string, timeout time.Duration) error
+	EnsureVolumeAvailableVM(ctx context.Context, namespace, name, volumeName string) (bool, error)
 	EnsureVolumeRemoved(ctx context.Context, namespace, vmName, volumeName string, timeout time.Duration) error
+	EnsureVolumeRemovedVM(ctx context.Context, namespace, name, volumeName string) (bool, error)
 	EnsureSnapshotReady(ctx context.Context, namespace, name string, timeout time.Duration) error
 	EnsureControllerResize(ctx context.Context, namespace, claimName string, timeout time.Duration) error
 	CreateVolumeSnapshot(ctx context.Context, namespace, name, claimName, snapshotClassName string) (*snapshotv1.VolumeSnapshot, error)
@@ -221,7 +223,7 @@ func (c *client) EnsureVolumeAvailable(ctx context.Context, namespace, vmName, v
 		}
 		for _, volume := range vmi.Status.VolumeStatus {
 			if volume.Name == volumeName && volume.Phase == kubevirtv1.VolumeReady {
-				return ensureVolumeAvailableVM(ctx, c, namespace, vmName, volumeName)
+				return c.EnsureVolumeAvailableVM(ctx, namespace, vmName, volumeName)
 			}
 		}
 
@@ -238,7 +240,7 @@ func (c *client) EnsureVolumeRemoved(ctx context.Context, namespace, vmName, vol
 				return false, err
 			}
 			// No VMI, volume considered removed if it's not on the VM
-			return ensureVolumeRemovedVM(ctx, c, namespace, vmName, volumeName)
+			return c.EnsureVolumeRemovedVM(ctx, namespace, vmName, volumeName)
 		}
 		for _, volume := range vmi.Status.VolumeStatus {
 			if volume.Name == volumeName {
@@ -246,7 +248,7 @@ func (c *client) EnsureVolumeRemoved(ctx context.Context, namespace, vmName, vol
 			}
 		}
 
-		return ensureVolumeRemovedVM(ctx, c, namespace, vmName, volumeName)
+		return c.EnsureVolumeRemovedVM(ctx, namespace, vmName, volumeName)
 	})
 }
 
@@ -581,7 +583,7 @@ func appendVolumeSnapshotInfraTenantMapping(mapping *InfraTenantStorageSnapshotM
 	return mapping
 }
 
-func ensureVolumeRemovedVM(ctx context.Context, c *client, namespace, name, volumeName string) (bool, error) {
+func (c *client) EnsureVolumeRemovedVM(ctx context.Context, namespace, name, volumeName string) (bool, error) {
 	vm, err := c.virtClient.KubevirtV1().VirtualMachines(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if !errors.IsNotFound(err) {
@@ -603,7 +605,7 @@ func ensureVolumeRemovedVM(ctx context.Context, c *client, namespace, name, volu
 	return true, nil
 }
 
-func ensureVolumeAvailableVM(ctx context.Context, c *client, namespace, name, volumeName string) (bool, error) {
+func (c *client) EnsureVolumeAvailableVM(ctx context.Context, namespace, name, volumeName string) (bool, error) {
 	vm, err := c.virtClient.KubevirtV1().VirtualMachines(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if !errors.IsNotFound(err) {
