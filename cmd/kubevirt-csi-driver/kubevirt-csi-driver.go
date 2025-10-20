@@ -68,16 +68,17 @@ func prechecks() {
 
 // handle will instantiate a KubeVirtCSIDriver and start running it.
 func handle() {
+	ctx := context.Background()
 	klog.V(2).Infof("Driver vendor %v %v", service.VendorName, service.VendorVersion)
 
 	driver := service.NewKubevirtCSIDriver()
 
 	if *runControllerService {
-		driver = configureControllerService(driver)
+		driver = configureControllerService(ctx, driver)
 	}
 
 	if *runNodeService {
-		driver = configureNodeService(driver)
+		driver = configureNodeService(ctx, driver)
 	}
 
 	driver.Run(*endpoint)
@@ -91,7 +92,7 @@ func handle() {
 //
 // Returns:
 //   - KubeVirtCSIDriver: A pointer to the passed driver.
-func configureControllerService(driver *service.KubevirtCSIDriver) *service.KubevirtCSIDriver {
+func configureControllerService(ctx context.Context, driver *service.KubevirtCSIDriver) *service.KubevirtCSIDriver {
 	// Configure labels and storage class enforcement.
 	infraClusterLabelsMap := parseLabels()
 	klog.V(5).Infof("Storage class enforcement string: \n%s", infraStorageClassEnforcement)
@@ -117,8 +118,10 @@ func configureControllerService(driver *service.KubevirtCSIDriver) *service.Kube
 
 	// Initialize virt client.
 	virtClient, err := kubevirt.NewClient(
+		ctx,
 		infraRestConfig,
 		infraClusterLabelsMap,
+		*infraClusterNamespace,
 		tenantClientSet,
 		tenantSnapshotClientSet,
 		storageClassEnforcement,
@@ -148,7 +151,7 @@ func configureControllerService(driver *service.KubevirtCSIDriver) *service.Kube
 //
 // Returns:
 //   - KubeVirtCSIDriver: A pointer to the passed driver.
-func configureNodeService(driver *service.KubevirtCSIDriver) *service.KubevirtCSIDriver {
+func configureNodeService(ctx context.Context, driver *service.KubevirtCSIDriver) *service.KubevirtCSIDriver {
 	var err error
 
 	// Generate tenant clientset.
@@ -159,7 +162,7 @@ func configureNodeService(driver *service.KubevirtCSIDriver) *service.KubevirtCS
 	}
 
 	// Get node ID.
-	node, err := tenantClientSet.CoreV1().Nodes().Get(context.Background(), *nodeName, v1.GetOptions{})
+	node, err := tenantClientSet.CoreV1().Nodes().Get(ctx, *nodeName, v1.GetOptions{})
 	if err != nil {
 		klog.Fatalf("failed to find node by name %v: %v", *nodeName, err)
 	}
