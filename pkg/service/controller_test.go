@@ -459,6 +459,34 @@ var _ = Describe("PublishUnPublish", func() {
 		))
 		Expect(err).ToNot(HaveOccurred())
 	})
+
+	It("should not publish a volume with unknown access mode", func() {
+		dv, err := client.CreateDataVolume(context.TODO(), controller.infraClusterNamespace, &cdiv1.DataVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   testVolumeName,
+				Labels: testInfraLabels,
+			},
+			Spec: cdiv1.DataVolumeSpec{
+				Storage: &cdiv1.StorageSpec{
+					StorageClassName: &testInfraStorageClassName,
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceStorage: resource.MustParse("3Gi"),
+						},
+					},
+				},
+			},
+		})
+		Expect(err).ToNot(HaveOccurred())
+		client.datavolumes = make(map[string]*cdiv1.DataVolume)
+		client.datavolumes[getKey(testInfraNamespace, testVolumeName)] = dv
+		_, err = controller.ControllerPublishVolume(context.TODO(), genPublishVolumeRequest(
+			testVolumeName,
+			getKey(testInfraNamespace, testVMName),
+			&csi.VolumeCapability{},
+		))
+		Expect(err).To(HaveOccurred())
+	})
 })
 
 var _ = Describe("Snapshots", func() {
@@ -888,7 +916,11 @@ func genPublishVolumeRequest(volumeName, nodeID string, capabilty *csi.VolumeCap
 }
 
 func getPublishVolumeRequest() *csi.ControllerPublishVolumeRequest {
-	return genPublishVolumeRequest(testVolumeName, testNodeID, &csi.VolumeCapability{})
+	return genPublishVolumeRequest(testVolumeName, testNodeID, &csi.VolumeCapability{
+		AccessMode: &csi.VolumeCapability_AccessMode{
+			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+		},
+	})
 }
 
 func getUnpublishVolumeRequest() *csi.ControllerUnpublishVolumeRequest {

@@ -67,7 +67,10 @@ func (c *ControllerService) validateCreateVolumeRequest(req *csi.CreateVolumeReq
 		return false, status.Error(codes.InvalidArgument, "volume capabilities missing in request")
 	}
 
-	isBlock, isRWX := getAccessMode(caps)
+	isBlock, isRWX, err := getAccessMode(caps)
+	if err != nil {
+		return false, err
+	}
 
 	if isRWX && !isBlock {
 		return false, status.Error(codes.InvalidArgument, "non-block volume with RWX access mode is not supported")
@@ -92,10 +95,7 @@ func (c *ControllerService) validateCreateVolumeRequest(req *csi.CreateVolumeReq
 	return isRWX, nil
 }
 
-func getAccessMode(caps []*csi.VolumeCapability) (bool, bool) {
-	isBlock := false
-	isRWX := false
-
+func getAccessMode(caps []*csi.VolumeCapability) (isBlock, isRWX bool, err error) {
 	for _, capability := range caps {
 		if capability != nil {
 			if capability.GetBlock() != nil {
@@ -103,14 +103,38 @@ func getAccessMode(caps []*csi.VolumeCapability) (bool, bool) {
 			}
 
 			if am := capability.GetAccessMode(); am != nil {
-				if am.Mode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER {
-					isRWX = true
-				}
+				isRWX, err = hasRWXCapabiltyAccessMode(am)
 			}
 		}
 	}
 
-	return isBlock, isRWX
+	return isBlock, isRWX, err
+}
+
+// hasRWXCapabiltyAccessMode will return whether a volume is RWX. It may also
+// return an error if the received access mode is unknown.
+//
+// Parameters:
+//   - cap: Volume Capability AccessMode.
+//
+// Returns:
+//   - bool: True if the capability represents an RWX volume.
+//   - error: Unsupported capability.
+func hasRWXCapabiltyAccessMode(cap *csi.VolumeCapability_AccessMode) (bool, error) {
+	switch cap.GetMode() {
+	case
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER,
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER:
+		return false, nil
+	case
+		csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+		csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER,
+		csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER:
+		return true, nil
+	}
+	return false, fmt.Errorf("unknown volume capability")
 }
 
 // CreateVolume Create a new DataVolume.
@@ -337,8 +361,11 @@ func (c *ControllerService) ControllerPublishVolume(
 		return nil, err
 	}
 
-	// Check if the volume is not RWX, and if it is, check if its in a different Virtual Machine Instance.
-	_, isRWX := getAccessMode([]*csi.VolumeCapability{req.GetVolumeCapability()})
+	// Check if the volume is RWO, and if it is, check if its in a different Virtual Machine Instance.
+	isRWX, err := hasRWXCapabiltyAccessMode(req.GetVolumeCapability().GetAccessMode())
+	if err != nil {
+		return nil, fmt.Errorf("error checking access mode: %w", err)
+	}
 	if !isRWX {
 		alreadyAttached, err := c.IsVolumeAttachedToOtherVMI(ctx, dvName, c.infraClusterNamespace, vmName)
 		if err != nil {
