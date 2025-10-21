@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -326,7 +327,28 @@ func (c *ControllerService) ControllerPublishVolume(
 	if err := c.validateControllerPublishVolumeRequest(req); err != nil {
 		return nil, err
 	}
+
 	dvName := req.GetVolumeId()
+
+	// Get VM name from node ID which is a namespace/name
+	_, vmName, err := cache.SplitMetaNamespaceKey(req.NodeId)
+	if err != nil {
+		klog.Error("failed getting VM Name for node ID " + req.NodeId)
+		return nil, err
+	}
+
+	// Check if the volume is not RWX, and if it is, check if its in a different Virtual Machine Instance.
+	_, isRWX := getAccessMode([]*csi.VolumeCapability{req.GetVolumeCapability()})
+	if !isRWX {
+		alreadyAttached, err := c.IsVolumeAttachedToOtherVMI(ctx, dvName, c.infraClusterNamespace, vmName)
+		if err != nil {
+			return nil, status.Errorf(codes.FailedPrecondition, "failed to check if volume is already attached: %s", err)
+		}
+		if alreadyAttached {
+			return nil, status.Errorf(codes.FailedPrecondition, "volume is attached to another VM")
+		}
+	}
+
 	if _, err := c.virtClient.GetDataVolume(ctx, c.infraClusterNamespace, dvName); errors.IsNotFound(err) {
 		return nil, status.Errorf(codes.NotFound, "volume %s not found", req.GetVolumeId())
 	} else if err != nil {
@@ -335,12 +357,6 @@ func (c *ControllerService) ControllerPublishVolume(
 
 	klog.V(3).Infof("Attaching DataVolume %s to Node ID %s", dvName, req.NodeId)
 
-	// Get VM name from node ID which is a namespace/name
-	_, vmName, err := cache.SplitMetaNamespaceKey(req.NodeId)
-	if err != nil {
-		klog.Error("failed getting VM Name for node ID " + req.NodeId)
-		return nil, err
-	}
 	_, err = c.virtClient.GetWorkloadManagingVirtualMachine(ctx, c.infraClusterNamespace, vmName)
 	if err != nil {
 		if !errors.IsNotFound(err) {
@@ -849,4 +865,56 @@ func (c *ControllerService) ControllerGetCapabilities(context.Context, *csi.Cont
 // ControllerGetVolume unimplemented
 func (c *ControllerService) ControllerGetVolume(_ context.Context, _ *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
+}
+
+// IsVolumeAttachedToOtherVMI checks if a PVC is actively
+// used by any VirtualMachineInstance other than the current one.
+//
+// NOTE: This function uses vmi.Status.VolumeStatus as the source of truth for
+// what is currently attached. It directly compares the volume name in the status
+// with the target PVC name.
+//
+// Parameters:
+//   - ctx: The context for cancellation.
+//   - dvName: The name of the PersistentVolumeClaim to check for.
+//   - infraNamespace: The namespace of the PersistentVolumeClaim.
+//   - currentVMIName: The name of the VMI for the current ControllerPublishVolume
+//     request. We want to ignore this VMI in our check.
+//
+// Returns:
+//   - bool: True if the volume is attached to another VMI.
+//   - error: An error if listing VMIs fails.
+func (c *ControllerService) IsVolumeAttachedToOtherVMI(
+	ctx context.Context,
+	dvName string,
+	infraNamespace string,
+	currentVMIName string,
+) (bool, error) {
+	vmis, err := c.virtClient.ListVirtualMachines(ctx, infraNamespace)
+	if err != nil {
+		return false, fmt.Errorf("failed to list Virtual Machine Instances in namespace %s: %w", infraNamespace, err)
+	}
+
+	for _, vmi := range vmis {
+		// Skip the VMI that the volume is intended for.
+		if vmi.Name == currentVMIName {
+			continue
+		}
+
+		// The source of truth is the VMI's status. We iterate through the volumes
+		// that are reported as active in the status.
+		for _, volumeStatus := range vmi.Status.VolumeStatus {
+			// If the name in the status matches our PVC name, it means the volume
+			// is actively attached to this other VMI.
+			if volumeStatus.Name == dvName {
+				klog.Infof(
+					"CONFLICT: PVC %s/%s is in use by VMI %s/%s",
+					infraNamespace, dvName, vmi.Namespace, vmi.Name,
+				)
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
 }
