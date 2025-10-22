@@ -847,12 +847,12 @@ func (c *ControllerClientMock) ListNamespace(ctx context.Context) (*corev1.Names
 func (c *ControllerClientMock) GetStorageClass(ctx context.Context, name string) (*storagev1.StorageClass, error) {
 	return nil, errors.New("Not implemented")
 }
-func (c *ControllerClientMock) ListVirtualMachines(_ context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
+func (c *ControllerClientMock) ListVirtualMachines(_ context.Context, namespace string) ([]*kubevirtv1.VirtualMachineInstance, error) {
 	if c.FailListVirtualMachines {
 		return nil, errors.New("ListVirtualMachines failed")
 	}
 
-	return []kubevirtv1.VirtualMachineInstance{
+	return []*kubevirtv1.VirtualMachineInstance{
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      testVMName,

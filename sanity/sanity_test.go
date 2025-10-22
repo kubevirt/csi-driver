@@ -123,11 +123,11 @@ type fakeKubeVirtClient struct {
 func (k *fakeKubeVirtClient) Ping(ctx context.Context) error {
 	return nil
 }
-func (k *fakeKubeVirtClient) ListVirtualMachines(_ context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
-	var res []kubevirtv1.VirtualMachineInstance
+func (k *fakeKubeVirtClient) ListVirtualMachines(_ context.Context, namespace string) ([]*kubevirtv1.VirtualMachineInstance, error) {
+	var res []*kubevirtv1.VirtualMachineInstance
 	for _, v := range k.vmiMap {
 		if v != nil {
-			res = append(res, *v)
+			res = append(res, v)
 		}
 	}
 	return res, nil

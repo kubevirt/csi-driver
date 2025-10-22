@@ -21,12 +21,15 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	cdicli "kubevirt.io/csi-driver/pkg/generated/containerized-data-importer/client-go/clientset/versioned"
 	snapcli "kubevirt.io/csi-driver/pkg/generated/external-snapshotter/client-go/clientset/versioned"
 	kubecli "kubevirt.io/csi-driver/pkg/generated/kubevirt/client-go/clientset/versioned"
+	kubeinformers "kubevirt.io/csi-driver/pkg/generated/kubevirt/client-go/informers/externalversions"
+	kubelisters "kubevirt.io/csi-driver/pkg/generated/kubevirt/client-go/listers/core/v1"
 	"kubevirt.io/csi-driver/pkg/util"
 )
 
@@ -55,7 +58,7 @@ type ClientBuilderFuncType func(kubeconfig string) (Client, error)
 // Client is a wrapper object for actual infra-cluster clients: kubernetes and the kubevirt
 type Client interface {
 	Ping(ctx context.Context) error
-	ListVirtualMachines(ctx context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error)
+	ListVirtualMachines(ctx context.Context, namespace string) ([]*kubevirtv1.VirtualMachineInstance, error)
 	GetVirtualMachine(ctx context.Context, namespace, name string) (*kubevirtv1.VirtualMachineInstance, error)
 	GetWorkloadManagingVirtualMachine(ctx context.Context, namespace, name string) (*kubevirtv1.VirtualMachine, error)
 	DeleteDataVolume(ctx context.Context, namespace string, name string) error
@@ -91,11 +94,21 @@ type client struct {
 	volumePrefix                               string
 	infraTenantStorageSnapshotMapping          []InfraTenantStorageSnapshotMapping
 	infraTenantStorageSnapshotMappingPopulated bool
+	vmiLister                                  kubelisters.VirtualMachineInstanceLister
 	mu                                         sync.Mutex
 }
 
 // NewClient New creates our client wrapper object for the actual kubeVirt and kubernetes clients we use.
-func NewClient(infraConfig *rest.Config, infraClusterLabelMap map[string]string, tenantKubernetesClient kubernetes.Interface, tenantSnapshotClient snapcli.Interface, storageClassEnforcement util.StorageClassEnforcement, prefix string) (Client, error) {
+func NewClient(
+	ctx context.Context,
+	infraConfig *rest.Config,
+	infraClusterLabelMap map[string]string,
+	infraClusterNamespace string,
+	tenantKubernetesClient kubernetes.Interface,
+	tenantSnapshotClient snapcli.Interface,
+	storageClassEnforcement util.StorageClassEnforcement,
+	prefix string,
+) (Client, error) {
 	result := &client{}
 
 	Scheme := runtime.NewScheme()
@@ -137,6 +150,25 @@ func NewClient(infraConfig *rest.Config, infraClusterLabelMap map[string]string,
 	if err != nil {
 		return nil, err
 	}
+
+	// Generate a KubeVirt Informer Factory.
+	kubevirtInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(
+		kubevirtClient,
+		time.Minute*10,
+		kubeinformers.WithNamespace(infraClusterNamespace),
+	)
+	// Generate informer and lister for VirtualMachineInstances.
+	vmiInformer := kubevirtInformerFactory.Kubevirt().V1().VirtualMachineInstances()
+	vmiLister := vmiInformer.Lister()
+
+	// Start the factory.
+	kubevirtInformerFactory.Start(ctx.Done())
+	if !cache.WaitForCacheSync(ctx.Done(), vmiInformer.Informer().HasSynced) {
+		return nil, fmt.Errorf("VirtualMachineInstance informer cache is not ready")
+	}
+
+	// Store the lister in the struct.
+	result.vmiLister = vmiLister
 
 	result.virtClient = kubevirtClient
 	result.cdiClient = cdiClient
@@ -291,17 +323,17 @@ func (c *client) EnsureControllerResize(ctx context.Context, namespace, claimNam
 }
 
 // ListVirtualMachines fetches a list of VMIs from the passed in namespace
-func (c *client) ListVirtualMachines(ctx context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
-	list, err := c.virtClient.KubevirtV1().VirtualMachineInstances(namespace).List(ctx, metav1.ListOptions{})
+func (c *client) ListVirtualMachines(ctx context.Context, namespace string) ([]*kubevirtv1.VirtualMachineInstance, error) {
+	vmiList, err := c.vmiLister.VirtualMachineInstances(namespace).List(labels.Everything())
 	if err != nil {
 		return nil, err
 	}
-	return list.Items, nil
+	return vmiList, nil
 }
 
 // GetVirtualMachine gets a VMIs from the passed in namespace
 func (c *client) GetVirtualMachine(ctx context.Context, namespace, name string) (*kubevirtv1.VirtualMachineInstance, error) {
-	return c.virtClient.KubevirtV1().VirtualMachineInstances(namespace).Get(ctx, name, metav1.GetOptions{})
+	return c.vmiLister.VirtualMachineInstances(namespace).Get(name)
 }
 
 // GetWorkloadManagingVirtualMachine gets a VM from the passed in namespace
