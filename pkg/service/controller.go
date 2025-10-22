@@ -21,6 +21,7 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
+	"kubevirt.io/csi-driver/pkg/kubevirt"
 	client "kubevirt.io/csi-driver/pkg/kubevirt"
 	"kubevirt.io/csi-driver/pkg/util"
 )
@@ -44,6 +45,21 @@ type ControllerService struct {
 	infraClusterNamespace   string
 	infraClusterLabels      map[string]string
 	storageClassEnforcement util.StorageClassEnforcement
+}
+
+// NewControllerService creates a new instance of ControllerService.
+func NewControllerService(
+	virtClient kubevirt.Client,
+	infraClusterNamespace string,
+	infraClusterLabels map[string]string,
+	storageClassEnforcement util.StorageClassEnforcement,
+) *ControllerService {
+	return &ControllerService{
+		virtClient:              virtClient,
+		infraClusterNamespace:   infraClusterNamespace,
+		infraClusterLabels:      infraClusterLabels,
+		storageClassEnforcement: storageClassEnforcement,
+	}
 }
 
 var controllerCaps = []csi.ControllerServiceCapability_RPC_Type{
