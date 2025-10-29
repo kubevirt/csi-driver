@@ -391,9 +391,9 @@ func (n *NodeService) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 
 	targetPath := req.GetTargetPath()
 	klog.V(5).Infof("Unmounting %s", targetPath)
-	err := n.mounter.Unmount(targetPath)
+	err := mount.CleanupMountPoint(targetPath, n.mounter, false /* extensive mount point checks not needed, no bind mounts within same mount point */)
 	if err != nil {
-		klog.Errorf("failed to unmount %v", err)
+		klog.Errorf("failed to cleanup mount point %v", err)
 		return nil, err
 	}
 
