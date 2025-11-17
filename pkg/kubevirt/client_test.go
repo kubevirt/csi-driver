@@ -2,6 +2,7 @@ package kubevirt
 
 import (
 	"context"
+	"fmt"
 
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	. "github.com/onsi/ginkgo/v2"
@@ -13,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	testing "k8s.io/client-go/testing"
 	"k8s.io/utils/ptr"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	cdicli "kubevirt.io/csi-driver/pkg/generated/containerized-data-importer/client-go/clientset/versioned/fake"
@@ -105,6 +107,40 @@ var _ = Describe("Client", func() {
 			dataVolume.Name = "test"
 			_, err := c.CreateDataVolume(context.Background(), testNamespace, dataVolume)
 			Expect(err).To(Equal(ErrInvalidVolume))
+		})
+
+		It("CreateDataVolume should add the DataVolumeFinalizer finalizer to the DataVolume", func() {
+			dataVolume := createValidDataVolume()
+			dataVolume.Name = "pvc-test3"
+			_, err := c.CreateDataVolume(context.Background(), testNamespace, dataVolume)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(dataVolume.ObjectMeta.Finalizers).To(ContainElement(DataVolumeFinalizerName))
+		})
+
+		It("DeleteDataVolume should successfully remove finalizer and call delete", func() {
+			dataVolume := createValidDataVolume()
+			dataVolume.Name = "pvc-test4"
+			_, err := c.CreateDataVolume(context.Background(), testNamespace, dataVolume)
+			err = c.DeleteDataVolume(context.Background(), testNamespace, dataVolume.Name)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = c.GetDataVolume(context.Background(), testNamespace, dataVolume.Name)
+			Expect(errors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("DeleteDataVolume should return an error if patch DataVolume to remove finalizer returns an error", func() {
+			dataVolume := createValidDataVolume()
+			dataVolume.Name = "pvc-test5"
+			_, err := c.CreateDataVolume(context.Background(), testNamespace, dataVolume)
+			// Set up a custom client that returns an error on Patch
+			mockCdiClient := cdicli.NewSimpleClientset(dataVolume)
+			mockCdiClient.PrependReactor("patch", "datavolumes", func(action testing.Action) (handled bool, ret runtime.Object, err error) {
+				return true, nil, errors.NewInternalError(fmt.Errorf("simulated patch API error"))
+			})
+			c = NewFakeClient()
+			c.cdiClient = mockCdiClient
+			err = c.DeleteDataVolume(context.Background(), testNamespace, dataVolume.Name)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to patch DataVolume"))
 		})
 	})
 
