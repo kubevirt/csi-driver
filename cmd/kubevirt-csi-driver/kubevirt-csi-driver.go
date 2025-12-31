@@ -111,15 +111,11 @@ func handle() {
 		if err != nil {
 			klog.Fatal(fmt.Errorf("failed to find node by name %v: %v", nodeName, err))
 		}
-		if node.Spec.ProviderID == "" {
-			klog.Fatal("provider name missing from node, something's not right")
+
+		nodeID, err = resolveNodeID(*nodeName, node.Spec.ProviderID, node.Annotations)
+		if err != nil {
+			klog.Fatal(err)
 		}
-		vmName := strings.TrimPrefix(node.Spec.ProviderID, `kubevirt://`)
-		vmNamespace, ok := node.Annotations["cluster.x-k8s.io/cluster-namespace"]
-		if !ok {
-			klog.Fatal("cannot infer infra vm namespace")
-		}
-		nodeID = fmt.Sprintf("%s/%s", vmNamespace, vmName)
 		klog.Infof("Node name: %v, Node ID: %s", *nodeName, nodeID)
 	}
 
@@ -183,4 +179,32 @@ func parseLabels() map[string]string {
 	}
 
 	return infraClusterLabelsMap
+}
+
+// resolveNodeID resolves the infra cluster VM name and namespace from the node's providerID or annotations.
+// It returns the nodeID in the format "namespace/name" or an error if resolution fails.
+func resolveNodeID(nodeName, providerID string, annotations map[string]string) (string, error) {
+	var vmName, vmNamespace string
+
+	if strings.HasPrefix(providerID, "kubevirt://") {
+		vmName = strings.TrimPrefix(providerID, "kubevirt://")
+		if annotations != nil {
+			vmNamespace = annotations["cluster.x-k8s.io/cluster-namespace"]
+		}
+	} else {
+		// Fallback to annotations if providerID is empty or not kubevirt://
+		if annotations != nil {
+			vmName = annotations["csi.kubevirt.io/infra-vm-name"]
+			vmNamespace = annotations["csi.kubevirt.io/infra-vm-namespace"]
+		}
+	}
+
+	if vmName == "" || vmNamespace == "" {
+		return "", fmt.Errorf("failed to resolve infra VM for node %s: vmName or vmNamespace not found. "+
+			"Ensure the node has a valid providerID (kubevirt://) with annotation 'cluster.x-k8s.io/cluster-namespace', "+
+			"or set annotations 'csi.kubevirt.io/infra-vm-name' and 'csi.kubevirt.io/infra-vm-namespace' on the node. "+
+			"After setting the annotations, restart the kubevirt-csi-node pod on this node for the changes to take effect", nodeName)
+	}
+
+	return fmt.Sprintf("%s/%s", vmNamespace, vmName), nil
 }
