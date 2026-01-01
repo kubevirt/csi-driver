@@ -65,12 +65,7 @@ func (c *ControllerService) validateCreateVolumeRequest(req *csi.CreateVolumeReq
 	if caps == nil {
 		return false, status.Error(codes.InvalidArgument, "volume capabilities missing in request")
 	}
-
-	isBlock, isRWX := getAccessMode(caps)
-
-	if isRWX && !isBlock {
-		return false, status.Error(codes.InvalidArgument, "non-block volume with RWX access mode is not supported")
-	}
+	_, isRWX := getAccessMode(caps)
 
 	if c.storageClassEnforcement.AllowAll {
 		return isRWX, nil
@@ -849,4 +844,14 @@ func (c *ControllerService) ControllerGetCapabilities(context.Context, *csi.Cont
 // ControllerGetVolume unimplemented
 func (c *ControllerService) ControllerGetVolume(_ context.Context, _ *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
+}
+
+func isMultiNodeMultiWriter(cap *csi.VolumeCapability) bool {
+	if cap == nil {
+		return false
+	}
+	if am := cap.GetAccessMode(); am != nil {
+		return am.GetMode() == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER
+	}
+	return false
 }

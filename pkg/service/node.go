@@ -170,27 +170,41 @@ func (n *NodeService) NodeStageVolume(_ context.Context, req *csi.NodeStageVolum
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
-	// Filesystem volume mode, create FS if needed
-	// get the VMI volumes which are under VMI.spec.volumes
-	// serialID = kubevirt's DataVolume.UID
+	// Filesystem mode
+	capability := req.GetVolumeCapability()
+	if capability.GetMount() == nil {
+		return nil, status.Error(codes.InvalidArgument, "filesystem volume but no mount capability")
+	}
+
+	isRWX := isMultiNodeMultiWriter(capability)
+
+	// Get device by serial (DataVolume UID)
 	device, err := getDeviceBySerialID(req.VolumeContext[serialParameter], n.deviceLister)
 	if err != nil {
-		klog.Errorf("Failed to fetch device by serialID %s", req.VolumeId)
+		klog.Errorf("Failed to fetch device by serialID %s: %v", req.VolumeId, err)
 		return nil, err
 	}
 
-	// is there a filesystem on this device?
+	// Check existing filesystem
 	if device.Fstype != "" {
-		klog.V(3).Infof("Detected fs %s", device.Fstype)
+		klog.V(3).Infof("Detected existing fs %s on device %s", device.Fstype, device.Path)
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
-	fsType := req.VolumeCapability.GetMount().FsType
-	// no filesystem - create it
-	klog.V(3).Infof("Creating FS %s on device %s", fsType, device)
-	err = n.fsMaker.Make(device.Path, fsType)
-	if err != nil {
-		klog.Errorf("Could not create filesystem %s on %s", fsType, device)
+	// No filesystem detected
+	if isRWX {
+		return nil, status.Errorf(codes.FailedPrecondition,
+			"RWX filesystem volume has no detected filesystem; requires pre-formatted volume from infra StorageClass (blank RWX filesystem not supported to avoid races)")
+	}
+
+	// Non-RWX filesystem: safe to format (single-node staging)
+	fsType := capability.GetMount().FsType
+	if fsType == "" {
+		fsType = "ext4"
+	}
+	klog.V(3).Infof("Creating FS %s on blank device %s (non-RWX)", fsType, device.Path)
+	if err := n.fsMaker.Make(device.Path, fsType); err != nil {
+		klog.Errorf("Failed to create filesystem %s on %s: %v", fsType, device.Path, err)
 		return nil, err
 	}
 
