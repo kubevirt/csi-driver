@@ -48,6 +48,12 @@ data:
 END
 }
 
+function tenant::label_all_nodes_with_allowed_topologies() {
+  for node in $(_kubectl get nodes -o name); do
+    _kubectl label $node topology.kubernetes.io/region=eu-central topology.kubernetes.io/zone=az-1 --overwrite
+  done
+}
+
 function cluster::generate_tenant_controller_overlay() {
   cat <<- END > ./deploy/controller-tenant/dev-overlay/controller.yaml
 kind: Deployment
@@ -102,6 +108,7 @@ _kubectl -n $TENANT_CLUSTER_NAMESPACE apply -f ./deploy/infra-cluster-service-ac
 # Generate kustomize overlay for development environment
 # ******************************************************
 tenant::deploy_kubeconfig_secret
+tenant::label_all_nodes_with_allowed_topologies
 cluster::generate_driver_configmap_overlay "tenant"
 cluster::generate_tenant_controller_overlay
 cluster::generate_node_overlay
