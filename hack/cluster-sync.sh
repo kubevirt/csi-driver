@@ -48,12 +48,6 @@ data:
 END
 }
 
-function tenant::label_all_nodes_with_allowed_topologies() {
-  for node in $(_kubectl get nodes -o name); do
-    _kubectl label $node topology.kubernetes.io/region=eu-central topology.kubernetes.io/zone=az-1 --overwrite
-  done
-}
-
 function cluster::generate_tenant_controller_overlay() {
   cat <<- END > ./deploy/controller-tenant/dev-overlay/controller.yaml
 kind: Deployment

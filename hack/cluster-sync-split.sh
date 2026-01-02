@@ -75,6 +75,7 @@ _kubectl -n $TENANT_CLUSTER_NAMESPACE apply -f ./deploy/infra-cluster-service-ac
 # ******************************************************
 # Generate kustomize overlay for development environment
 # ******************************************************
+tenant::label_all_nodes_with_allowed_topologies
 cluster::generate_driver_configmap_overlay "tenant"
 cluster::generate_driver_configmap_overlay "controller-infra"
 cluster::generate_infra_controller_overlay

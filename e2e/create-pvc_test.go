@@ -432,12 +432,9 @@ var _ = Describe("CreatePVC", func() {
 		pvc := pvcSpec(pvcName, storageClassName, "10Mi")
 		pvc.Spec.VolumeMode = &volumeMode
 		By("creating a pvc")
+		// The pvc could be either bound or pending, depending on the storage class volume binding mode.
 		pvc, err := tenantClient.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
-		Eventually(func() k8sv1.PersistentVolumeClaimPhase {
-			pvc, err = tenantClient.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), pvc.Name, metav1.GetOptions{})
-			return pvc.Status.Phase
-		}, time.Second*30, time.Second).Should(Equal(k8sv1.ClaimBound))
 		volumeName := pvc.Spec.VolumeName
 
 		podSpec := createPod("test-pod",
