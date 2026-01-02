@@ -286,15 +286,22 @@ func (c *ControllerService) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	if err := c.validateDeleteVolumeRequest(req); err != nil {
 		return nil, err
 	}
+
 	dvName := req.VolumeId
 	klog.V(3).Infof("Removing data volume with %s", dvName)
 
 	err := c.virtClient.DeleteDataVolume(ctx, c.infraClusterNamespace, dvName)
 	if err != nil {
-		klog.Error("failed deleting DataVolume " + dvName)
+		if errors.IsNotFound(err) {
+			// Already deleted – idempotent success
+			klog.V(4).Infof("DataVolume %s already deleted (NotFound), treating as success", dvName)
+			return &csi.DeleteVolumeResponse{}, nil
+		}
+		klog.Errorf("failed deleting DataVolume %s: %v", dvName, err)
 		return nil, err
 	}
 
+	klog.V(4).Infof("Successfully deleted DataVolume %s", dvName)
 	return &csi.DeleteVolumeResponse{}, nil
 }
 
@@ -708,9 +715,22 @@ func (c *ControllerService) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 	if len(req.GetSnapshotId()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "snapshot id missing in request")
 	}
-	if err := c.virtClient.DeleteVolumeSnapshot(ctx, c.infraClusterNamespace, req.GetSnapshotId()); err != nil {
+
+	snapshotName := req.GetSnapshotId()
+	klog.V(3).Infof("Deleting VolumeSnapshot %s", snapshotName)
+
+	err := c.virtClient.DeleteVolumeSnapshot(ctx, c.infraClusterNamespace, snapshotName)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Already deleted – idempotent success
+			klog.V(4).Infof("VolumeSnapshot %s already deleted (NotFound), treating as success", snapshotName)
+			return &csi.DeleteSnapshotResponse{}, nil
+		}
+		klog.Errorf("failed deleting VolumeSnapshot %s: %v", snapshotName, err)
 		return nil, err
 	}
+
+	klog.V(4).Infof("Successfully deleted VolumeSnapshot %s", snapshotName)
 	return &csi.DeleteSnapshotResponse{}, nil
 }
 
