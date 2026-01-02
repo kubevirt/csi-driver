@@ -1,15 +1,19 @@
 package service
 
 import (
+	"bytes"
+	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"golang.org/x/net/context"
-	mount "k8s.io/mount-utils"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"golang.org/x/net/context"
+	"k8s.io/klog/v2"
+	mount "k8s.io/mount-utils"
 
 	"kubevirt.io/csi-driver/pkg/mounter"
 )
@@ -27,13 +31,16 @@ func (m *fakeProber) Probe() error {
 var _ = Describe("NodeService", func() {
 	var (
 		underTest NodeService
+		logOutput *bytes.Buffer
+		argsFile  string
 	)
+
 	BeforeEach(func() {
 		underTest = NodeService{
 			nodeID: "vm-worker-0-0",
 		}
 		underTest.deviceLister = deviceListerFunc(func() ([]byte, error) {
-			json := fmt.Sprintf("{\"blockdevices\": [{\"serial\":\"%s\", \"path\":\"%s\", \"fstype\":null}]}", serialID, "/dev/sdc")
+			json := fmt.Sprintf("{\"blockdevices\": [{\"serial\":\"%s\", \"name\":\"%s\", \"fstype\":null}]}", serialID, "sdc")
 			return []byte(json), nil
 		})
 		underTest.dirMaker = dirMakerFunc(func(string, os.FileMode) error {
@@ -44,6 +51,8 @@ var _ = Describe("NodeService", func() {
 		})
 		underTest.mounter = &successfulMounter{}
 		underTest.resizer = noopResizer{}
+
+		logOutput, argsFile = setupFakeUdevadm()
 	})
 
 	Context("Staging a volume", func() {
@@ -107,6 +116,118 @@ var _ = Describe("NodeService", func() {
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(res).ToNot(BeNil())
+		})
+
+		It("should call udevadm with correct arguments", func() {
+			underTest.deviceLister = deviceListerFunc(func() ([]byte, error) {
+				json := fmt.Sprintf("{\"blockdevices\": [{\"name\":\"%s\", \"fstype\":null}]}", "sdc")
+				return []byte(json), nil
+			})
+
+			if err := os.Setenv("MOCK_UDEVADM_EXIT_CODE", "0"); err != nil {
+				Fail(err.Error())
+			}
+
+			res, err := underTest.NodeStageVolume(context.TODO(), &csi.NodeStageVolumeRequest{
+				VolumeId: "pvc-123",
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{
+							FsType: "ext4",
+						},
+					},
+				},
+				VolumeContext:     map[string]string{serialParameter: serialID},
+				StagingTargetPath: "/invalid/staging",
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(res).To(BeNil())
+
+			klog.Flush()
+
+			logs := logOutput.String()
+			argsData, err := os.ReadFile(argsFile)
+			if err != nil {
+				Fail(err.Error())
+			}
+
+			Expect(string(argsData)).To(Equal("trigger --action=change --name-match=/dev/sdc"))
+			Expect(logs).ToNot(ContainSubstring("failed"))
+			Expect(logs).To(ContainSubstring("stdout: test stdout"))
+		})
+
+		It("should add udevadm verbose flag if klog verbosity is high", func() {
+			underTest.deviceLister = deviceListerFunc(func() ([]byte, error) {
+				json := fmt.Sprintf("{\"blockdevices\": [{\"name\":\"%s\", \"fstype\":null}]}", "sdc")
+				return []byte(json), nil
+			})
+
+			if err := os.Setenv("MOCK_UDEVADM_EXIT_CODE", "0"); err != nil {
+				Fail(err.Error())
+			}
+
+			// Set verbosity level for this test
+			var fs flag.FlagSet
+			klog.InitFlags(&fs)
+			if err := fs.Set("v", "5"); err != nil {
+				Fail(err.Error())
+			}
+
+			res, err := underTest.NodeStageVolume(context.TODO(), &csi.NodeStageVolumeRequest{
+				VolumeId: "pvc-123",
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{
+							FsType: "ext4",
+						},
+					},
+				},
+				VolumeContext:     map[string]string{serialParameter: serialID},
+				StagingTargetPath: "/invalid/staging",
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(res).To(BeNil())
+
+			klog.Flush()
+
+			logs := logOutput.String()
+			argsData, err := os.ReadFile(argsFile)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(strings.TrimSpace(string(argsData))).To(Equal("trigger --action=change --name-match=/dev/sdc --verbose"))
+			Expect(logs).To(ContainSubstring("stdout: test stdout"))
+		})
+
+		It("should log udevadm error and stderr on command failure", func() {
+			underTest.deviceLister = deviceListerFunc(func() ([]byte, error) {
+				json := fmt.Sprintf("{\"blockdevices\": [{\"name\":\"%s\", \"fstype\":null}]}", "sdc")
+				return []byte(json), nil
+			})
+
+			if err := os.Setenv("MOCK_UDEVADM_EXIT_CODE", "1"); err != nil {
+				Fail(err.Error())
+			}
+
+			res, err := underTest.NodeStageVolume(context.TODO(), &csi.NodeStageVolumeRequest{
+				VolumeId: "pvc-123",
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{
+							FsType: "ext4",
+						},
+					},
+				},
+				VolumeContext:     map[string]string{serialParameter: serialID},
+				StagingTargetPath: "/invalid/staging",
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(res).To(BeNil())
+
+			klog.Flush()
+
+			logs := logOutput.String()
+			Expect(logs).To(ContainSubstring("stdout: test stdout"))
+			Expect(logs).To(ContainSubstring("stderr: test stderr"))
+			Expect(logs).To(ContainSubstring("udev rescan for device /dev/sdc failed: exit status 1"))
 		})
 	})
 
@@ -265,6 +386,64 @@ var _ = Describe("NodeService", func() {
 		})
 	})
 })
+
+func setupFakeUdevadm() (*bytes.Buffer, string) {
+	// Create temp directory for udevadm output
+	var err error
+	tmpDir, err := os.MkdirTemp("", "rescan-test")
+	if err != nil {
+		Fail(err.Error())
+	}
+
+	// Create file to capture udevadm input and output
+	argsFile := filepath.Join(tmpDir, "args.txt")
+
+	// Create udevadm script to preempt udevadm cli commands
+	script := fmt.Sprintf(`#!/bin/bash
+			echo -n "$@" > %s
+			echo "test stdout"
+			echo "test stderr" >&2
+			exit $MOCK_UDEVADM_EXIT_CODE`,
+		argsFile)
+	if err := os.WriteFile(filepath.Join(tmpDir, "udevadm"), []byte(script), 0700); err != nil {
+		Fail(err.Error())
+	}
+
+	// Add fake udevadm script to PATH to execute instead of OS package
+	originalPath := os.Getenv("PATH")
+	if err := os.Setenv("PATH", tmpDir+":"+originalPath); err != nil {
+		Fail(err.Error())
+	}
+
+	// Return PATH after test
+	DeferCleanup(func() {
+		if err := os.Setenv("PATH", originalPath); err != nil {
+			Fail(err.Error())
+		}
+
+		if err := os.RemoveAll(tmpDir); err != nil {
+			Fail(err.Error())
+		}
+	})
+
+	// Correctly configure klog to write to a buffer for testing
+	logOutput := &bytes.Buffer{}
+	fs := flag.NewFlagSet("klog", flag.ExitOnError)
+	klog.InitFlags(fs)
+	if err := fs.Set("logtostderr", "false"); err != nil {
+		Fail(err.Error())
+	}
+	klog.SetOutput(logOutput)
+
+	// Restore default klog settings after test
+	DeferCleanup(func() {
+		klog.SetOutput(os.Stderr)
+		fs := flag.NewFlagSet("klog", flag.ExitOnError)
+		klog.InitFlags(fs) // Re-init to get defaults
+	})
+
+	return logOutput, argsFile
+}
 
 func newPublishRequest() *csi.NodePublishVolumeRequest {
 	return &csi.NodePublishVolumeRequest{

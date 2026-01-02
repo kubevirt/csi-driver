@@ -13,7 +13,7 @@ LABEL maintainers="The KubeVirt Project <kubevirt-dev@googlegroups.com>" \
 
 ENTRYPOINT ["./kubevirt-csi-driver"]
 
-RUN dnf install -y e2fsprogs xfsprogs && dnf clean all
+RUN dnf install -y e2fsprogs xfsprogs systemd-udevd && dnf clean all
 
 ARG git_sha=NONE
 LABEL multi.GIT_SHA=${git_sha}
