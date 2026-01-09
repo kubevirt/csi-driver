@@ -23,32 +23,69 @@ type KubevirtCSIDriver struct {
 	Client kubevirt.Client
 }
 
-func NewKubevirtCSIDriver(virtClient kubevirt.Client,
+// NewKubevirtCSIDriver returns a new unconfigured KubeVirtCSIDriver.
+//
+// Returns:
+//   - KubevirtCSIDriver: Pointer to itself.
+func NewKubevirtCSIDriver() *KubevirtCSIDriver {
+	return &KubevirtCSIDriver{}
+}
+
+// WithIdentityService will configure the Identity Service of the KubeVirtCSIDriver
+// with the provided clientset and provisioner name.
+//
+// Parameters:
+//   - identityClientset: Clientset we will connect to.
+//
+// Returns:
+//   - KubevirtCSIDriver: Pointer to itself.
+func (d *KubevirtCSIDriver) WithIdentityService(
 	identityClientset kubernetes.Interface,
+) *KubevirtCSIDriver {
+	d.IdentityService = NewIdentityService(identityClientset)
+	return d
+}
+
+// WithControllerService will create a ControllerService and store it in the
+// KubeVirtCSIDriver with the provided parameters.
+//
+// Parameters:
+//   - virtClient: KubeVirt client to interact with the Infra cluster
+//   - infraClusterNamespace: Namespace in the Infra cluster where the
+//     KubeVirtCSIDriver will create and manage DataVolumes, VirtualMachines
+//     and VirtualMachineInstances.
+//   - infraClusterLabels: Labels to add and filter to Infra resources.
+//   - storageClassEnforcement: Storage and Volume Snapshot classes enabled.
+//
+// Returns:
+//   - KubevirtCSIDriver: Pointer to itself.
+func (d *KubevirtCSIDriver) WithControllerService(
+	virtClient kubevirt.Client,
 	infraClusterNamespace string,
 	infraClusterLabels map[string]string,
 	storageClassEnforcement util.StorageClassEnforcement,
+) *KubevirtCSIDriver {
+	d.ControllerService = &ControllerService{
+		virtClient:              virtClient,
+		infraClusterNamespace:   infraClusterNamespace,
+		infraClusterLabels:      infraClusterLabels,
+		storageClassEnforcement: storageClassEnforcement,
+	}
+	return d
+}
+
+// WithNodeService will create a NodeService targetting the provided node.
+//
+// Parameters:
+//   - nodeID: Name of the node
+//
+// Returns:
+//   - KubevirtCSIDriver: Pointer to itself.
+func (d *KubevirtCSIDriver) WithNodeService(
 	nodeID string,
-	runNodeService bool,
-	runControllerService bool) *KubevirtCSIDriver {
-	d := KubevirtCSIDriver{
-		IdentityService: NewIdentityService(identityClientset),
-	}
-
-	if runControllerService {
-		d.ControllerService = &ControllerService{
-			virtClient:              virtClient,
-			infraClusterNamespace:   infraClusterNamespace,
-			infraClusterLabels:      infraClusterLabels,
-			storageClassEnforcement: storageClassEnforcement,
-		}
-	}
-
-	if runNodeService {
-		d.NodeService = NewNodeService(nodeID)
-	}
-
-	return &d
+) *KubevirtCSIDriver {
+	d.NodeService = NewNodeService(nodeID)
+	return d
 }
 
 // Run will initiate the grpc services Identity, Controller, and Node.
