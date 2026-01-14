@@ -408,6 +408,7 @@ var _ = Describe("PublishUnPublish", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Attempt to attach the volume to VM 2.
+		client.expectedVMName = testVMName2
 		client.ListVirtualMachineWithStatus = true
 		_, err = controller.ControllerPublishVolume(context.TODO(), genPublishVolumeRequest(
 			testVolumeName,
@@ -447,6 +448,7 @@ var _ = Describe("PublishUnPublish", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Attempt to attach the volume to VM 2.
+		client.expectedVMName = testVMName2
 		client.ListVirtualMachineWithStatus = true
 		_, err = controller.ControllerPublishVolume(context.TODO(), genPublishVolumeRequest(
 			testVolumeName,
@@ -949,6 +951,7 @@ type ControllerClientMock struct {
 	vmVolumes                    []kubevirtv1.Volume
 	snapshots                    map[string]*snapshotv1.VolumeSnapshot
 	datavolumes                  map[string]*cdiv1.DataVolume
+	expectedVMName               string
 }
 
 func (c *ControllerClientMock) Ping(ctx context.Context) error {
@@ -1099,7 +1102,14 @@ func (c *ControllerClientMock) AddVolumeToVM(_ context.Context, namespace string
 		return errors.New("AddVolumeToVM failed")
 	}
 
+	// Use default VM name unless one was provided.
+	expectedVMName := testVMName
+	if c.expectedVMName != "" {
+		expectedVMName = c.expectedVMName
+	}
+
 	// Test input
+	Expect(expectedVMName).To(Equal(vmName))
 	Expect(testVolumeName).To(Equal(addVolumeOptions.Name))
 	Expect(testVolumeName).To(Equal(addVolumeOptions.VolumeSource.DataVolume.Name))
 	Expect(getBusType()).To(Equal(addVolumeOptions.Disk.DiskDevice.Disk.Bus))
