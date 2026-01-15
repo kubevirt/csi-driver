@@ -10,31 +10,11 @@ import (
 
 	"gopkg.in/yaml.v2"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	klog "k8s.io/klog/v2"
 
-	snapcli "kubevirt.io/csi-driver/pkg/generated/external-snapshotter/client-go/clientset/versioned"
-	"kubevirt.io/csi-driver/pkg/kubevirt"
 	"kubevirt.io/csi-driver/pkg/service"
 	"kubevirt.io/csi-driver/pkg/util"
 )
-
-type config struct {
-	endpoint                     string
-	nodeName                     string
-	infraClusterNamespace        string
-	infraClusterKubeconfig       string
-	infraClusterLabels           string
-	volumePrefix                 string
-	infraStorageClassEnforcement string
-
-	tenantClusterKubeconfig string
-
-	runNodeService       bool
-	runControllerService bool
-}
 
 func main() {
 	// Pass arguments to parseConfig skipping the binary name.
@@ -131,44 +111,14 @@ func configureControllerService(cfg *config, driver *service.KubevirtCSIDriver) 
 		return nil, fmt.Errorf("failed to configure storage class enforcement: %w", err)
 	}
 
-	// Get rest configs.
-	infraRestConfig, err := getConfigOrInCluster(cfg.infraClusterKubeconfig)
+	identityClientset, err := cfg.getInfraClientset()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get infra rest config: %w", err)
-	}
-	tenantRestConfig, err := getConfigOrInCluster(cfg.tenantClusterKubeconfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get tenant rest config: %w", err)
+		return nil, err
 	}
 
-	// Generate required clientsets.
-	tenantClientset, err := kubernetes.NewForConfig(tenantRestConfig)
+	virtClient, err := cfg.getVirtClient(infraClusterLabelsMap, storageClassEnforcement)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build tenant client set: %w", err)
-	}
-	tenantSnapshotClientset, err := snapcli.NewForConfig(tenantRestConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build tenant snapshot client set: %w", err)
-	}
-	identityClientset, err := kubernetes.NewForConfig(infraRestConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build infra client set: %w", err)
-	}
-
-	// Initialize virt client.
-	if cfg.volumePrefix == "" {
-		return nil, errors.New("volume-prefix must be set when deploying the controller")
-	}
-	virtClient, err := kubevirt.NewClient(
-		infraRestConfig,
-		infraClusterLabelsMap,
-		tenantClientset,
-		tenantSnapshotClientset,
-		storageClassEnforcement,
-		cfg.volumePrefix,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize virt client: %w", err)
+		return nil, err
 	}
 
 	return driver.
@@ -186,14 +136,10 @@ func configureControllerService(cfg *config, driver *service.KubevirtCSIDriver) 
 // configureNodeService prepares the required clients and configuration for a
 // KubeVirtCSIDriver with node service.
 func configureNodeService(cfg *config, driver *service.KubevirtCSIDriver) (*service.KubevirtCSIDriver, error) {
-	// Generate tenant clientset.
-	tenantRestConfig, err := getConfigOrInCluster(cfg.tenantClusterKubeconfig)
+	// Get tenant clientset.
+	tenantClientset, err := cfg.getTenantClientset()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get tenant rest config: %w", err)
-	}
-	tenantClientset, err := kubernetes.NewForConfig(tenantRestConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build tenant client set: %w", err)
+		return nil, err
 	}
 
 	// Get node ID.
@@ -281,23 +227,4 @@ func resolveNodeID(providerID string, annotations map[string]string) (string, er
 	}
 
 	return fmt.Sprintf("%s/%s", vmNamespace, vmName), nil
-}
-
-// getConfigOrInCluster loads the Kubernetes REST config.
-// If the kubeconfig path is empty, it attempts to load the in-cluster configuration.
-func getConfigOrInCluster(kubeconfig string) (*rest.Config, error) {
-	if kubeconfig == "" {
-		// Fallback to in cluster config.
-		inClusterConfig, err := rest.InClusterConfig()
-		if err != nil {
-			return nil, fmt.Errorf("failed to build in cluster config: %w", err)
-		}
-		return inClusterConfig, nil
-	}
-
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build cluster config: %w", err)
-	}
-	return config, nil
 }
