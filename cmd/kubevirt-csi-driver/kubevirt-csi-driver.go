@@ -43,7 +43,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := prechecks(cfg); err != nil {
+	if err := prechecks(); err != nil {
 		klog.Fatalf("Prechecks failed: %s", err)
 	}
 
@@ -85,22 +85,9 @@ func parseConfig(args []string) (*config, error) {
 }
 
 // prechecks performs validation checks on the configuration provided.
-// prechecks will log any error and exit.
-func prechecks(cfg *config) error {
+func prechecks() error {
 	if service.VendorVersion == "" {
 		return errors.New("VendorVersion must be set at compile time")
-	}
-
-	if cfg.infraClusterLabels == "" && !cfg.runNodeService {
-		return errors.New("infra-cluster-labels must be set")
-	}
-
-	if cfg.runControllerService && cfg.volumePrefix == "" {
-		return errors.New("volume-prefix must be set when deploying the controller")
-	}
-
-	if cfg.runNodeService && cfg.nodeName == "" {
-		return errors.New("cannot start NodeService without a node name.")
 	}
 
 	return nil
@@ -169,6 +156,9 @@ func configureControllerService(cfg *config, driver *service.KubevirtCSIDriver) 
 	}
 
 	// Initialize virt client.
+	if cfg.volumePrefix == "" {
+		return nil, errors.New("volume-prefix must be set when deploying the controller")
+	}
 	virtClient, err := kubevirt.NewClient(
 		infraRestConfig,
 		infraClusterLabelsMap,
@@ -207,6 +197,9 @@ func configureNodeService(cfg *config, driver *service.KubevirtCSIDriver) (*serv
 	}
 
 	// Get node ID.
+	if cfg.nodeName == "" {
+		return nil, errors.New("cannot start NodeService without a node name.")
+	}
 	node, err := tenantClientset.CoreV1().Nodes().Get(context.Background(), cfg.nodeName, v1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to find node by name %v: %w", cfg.nodeName, err)
@@ -247,7 +240,7 @@ func parseLabels(cfg *config) (map[string]string, error) {
 	infraClusterLabelsMap := map[string]string{}
 
 	if cfg.infraClusterLabels == "" {
-		return infraClusterLabelsMap, nil
+		return nil, errors.New("infra-cluster-labels must be set")
 	}
 
 	labelStrings := strings.Split(cfg.infraClusterLabels, ",")
