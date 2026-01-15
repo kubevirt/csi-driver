@@ -160,7 +160,12 @@ func (k *fakeKubeVirtClient) GetDataVolume(_ context.Context, namespace string, 
 	return k.dvMap[key], nil
 }
 
-func (k *fakeKubeVirtClient) GetPersistentVolumeClaim(_ context.Context, namespace string, claimName string) (*corev1.PersistentVolumeClaim, error) {
+func (k *fakeKubeVirtClient) GetTenantPersistentVolumeClaim(_ context.Context, namespace string, claimName string) (*corev1.PersistentVolumeClaim, error) {
+	// Figure out correct impl. for sanity
+	return nil, nil
+}
+
+func (k *fakeKubeVirtClient) GetInfraPersistentVolumeClaim(_ context.Context, namespace string, claimName string) (*corev1.PersistentVolumeClaim, error) {
 	// Figure out correct impl. for sanity
 	return nil, nil
 }

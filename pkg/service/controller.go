@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -37,10 +38,11 @@ var (
 // ControllerService implements the controller interface. See README for details.
 type ControllerService struct {
 	csi.UnimplementedControllerServer
-	virtClient              client.Client
-	infraClusterNamespace   string
-	infraClusterLabels      map[string]string
-	storageClassEnforcement util.StorageClassEnforcement
+	virtClient               client.Client
+	infraClusterNamespace    string
+	infraClusterLabels       map[string]string
+	storageClassEnforcement  util.StorageClassEnforcement
+	annotationsAllowlistPath string
 }
 
 var controllerCaps = []csi.ControllerServiceCapability_RPC_Type{
@@ -150,18 +152,33 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 		source = nil
 	}
 
+	annotations := map[string]string{
+		"cdi.kubevirt.io/storage.deleteAfterCompletion": "false",
+	}
+
+	if c.annotationsAllowlistPath != "" {
+		// Get the PVC if the value is set in the request.
+		pvcName := req.Parameters["csi.storage.k8s.io/pvc/name"]
+		pvcNamespace := req.Parameters["csi.storage.k8s.io/pvc/namespace"]
+		if pvcName != "" {
+			pvc, err := c.virtClient.GetTenantPersistentVolumeClaim(ctx, pvcNamespace, pvcName)
+			if err != nil {
+				return nil, fmt.Errorf("get PVC: %w", err)
+			}
+			annotations = util.FilterAndMergeAnnotations(pvc.GetAnnotations(), annotations, c.annotationsAllowlistPath)
+		}
+	}
+
 	dv := &cdiv1.DataVolume{
 		TypeMeta: v1.TypeMeta{
 			Kind:       "DataVolume",
 			APIVersion: cdiv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: v1.ObjectMeta{
-			Name:      dvName,
-			Namespace: c.infraClusterNamespace,
-			Labels:    c.infraClusterLabels,
-			Annotations: map[string]string{
-				"cdi.kubevirt.io/storage.deleteAfterCompletion": "false",
-			},
+			Name:        dvName,
+			Namespace:   c.infraClusterNamespace,
+			Labels:      c.infraClusterLabels,
+			Annotations: annotations,
 		},
 		Spec: cdiv1.DataVolumeSpec{
 			Storage: &cdiv1.StorageSpec{

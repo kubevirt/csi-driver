@@ -61,7 +61,8 @@ type Client interface {
 	DeleteDataVolume(ctx context.Context, namespace string, name string) error
 	CreateDataVolume(ctx context.Context, namespace string, dataVolume *cdiv1.DataVolume) (*cdiv1.DataVolume, error)
 	GetDataVolume(ctx context.Context, namespace string, name string) (*cdiv1.DataVolume, error)
-	GetPersistentVolumeClaim(ctx context.Context, namespace string, claimName string) (*k8sv1.PersistentVolumeClaim, error)
+	GetTenantPersistentVolumeClaim(ctx context.Context, namespace string, claimName string) (*k8sv1.PersistentVolumeClaim, error)
+	GetInfraPersistentVolumeClaim(ctx context.Context, namespace string, claimName string) (*k8sv1.PersistentVolumeClaim, error)
 	ExpandPersistentVolumeClaim(ctx context.Context, namespace string, claimName string, size int64) error
 	AddVolumeToVM(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.AddVolumeOptions) error
 	RemoveVolumeFromVM(ctx context.Context, namespace string, vmName string, hotPlugRequest *kubevirtv1.RemoveVolumeOptions) error
@@ -268,7 +269,7 @@ func (c *client) EnsureSnapshotReady(ctx context.Context, namespace, name string
 
 // EnsureControllerResize checks that a ControllerExpandVolume is finished on the infra storage, checks for 2 minutes
 func (c *client) EnsureControllerResize(ctx context.Context, namespace, claimName string, timeout time.Duration) error {
-	pvc, err := c.GetPersistentVolumeClaim(ctx, namespace, claimName)
+	pvc, err := c.GetInfraPersistentVolumeClaim(ctx, namespace, claimName)
 	if err != nil {
 		return err
 	}
@@ -349,8 +350,8 @@ func (c *client) GetDataVolume(ctx context.Context, namespace string, name strin
 	return dv, nil
 }
 
-func (c *client) GetPersistentVolumeClaim(ctx context.Context, namespace string, claimName string) (*k8sv1.PersistentVolumeClaim, error) {
-	pvc, err := c.infraKubernetesClient.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, claimName, metav1.GetOptions{})
+func (c *client) getPersistentVolumeClaim(ctx context.Context, namespace string, claimName string, client kubernetes.Interface) (*k8sv1.PersistentVolumeClaim, error) {
+	pvc, err := client.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, claimName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("Error getting volume claim %s in namespace %s: %v", claimName, namespace, err)
 		return nil, err
@@ -363,8 +364,16 @@ func (c *client) GetPersistentVolumeClaim(ctx context.Context, namespace string,
 	return pvc, nil
 }
 
+func (c *client) GetTenantPersistentVolumeClaim(ctx context.Context, namespace string, claimName string) (*k8sv1.PersistentVolumeClaim, error) {
+	return c.getPersistentVolumeClaim(ctx, namespace, claimName, c.tenantKubernetesClient)
+}
+
+func (c *client) GetInfraPersistentVolumeClaim(ctx context.Context, namespace string, claimName string) (*k8sv1.PersistentVolumeClaim, error) {
+	return c.getPersistentVolumeClaim(ctx, namespace, claimName, c.infraKubernetesClient)
+}
+
 func (c *client) ExpandPersistentVolumeClaim(ctx context.Context, namespace string, claimName string, desiredSize int64) error {
-	currentPVC, err := c.GetPersistentVolumeClaim(ctx, namespace, claimName)
+	currentPVC, err := c.GetInfraPersistentVolumeClaim(ctx, namespace, claimName)
 	if err != nil {
 		return err
 	}
