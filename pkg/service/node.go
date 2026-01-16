@@ -390,20 +390,45 @@ func (n *NodeService) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	}
 
 	targetPath := req.GetTargetPath()
-	klog.V(5).Infof("Unmounting %s", targetPath)
-	err := n.mounter.Unmount(targetPath)
+
+	mountExists, err := checkIfMountExists(targetPath)
 	if err != nil {
-		klog.Errorf("failed to unmount %v", err)
+		klog.Errorf("failed to check if mount exists %v", err)
 		return nil, err
+	}
+
+	if mountExists {
+		klog.V(5).Infof("Unmounting %s", targetPath)
+		err = n.mounter.Unmount(targetPath)
+		if err != nil {
+			klog.Errorf("failed to unmount %v", err)
+			return nil, err
+		}
 	}
 
 	if err = os.RemoveAll(targetPath); err != nil {
 		klog.Errorf("failed to remove %s, %v", targetPath, err)
 		return nil, fmt.Errorf("remove target path: %w", err)
 	}
-	klog.V(3).Info("Validate Node unpublish completed")
+	klog.V(3).Info("Node unpublish completed")
 
 	return &csi.NodeUnpublishVolumeResponse{}, nil
+}
+
+func checkIfMountExists(target string) (bool, error) {
+	klog.V(4).Infof("Checking if mount exists for %s", target)
+	command := exec.Command("mountpoint", target)
+	cmdOutput, err := command.CombinedOutput()
+	if err != nil {
+		output := string(cmdOutput)
+
+		if strings.Contains(output, "is not a mountpoint") ||
+			strings.Contains(output, "No such file or directory") {
+			return false, nil
+		}
+		return false, fmt.Errorf("mountpoint check failed: %v\nmountpoint arguments: %s\nOutput: %s", err, target, output)
+	}
+	return true, nil
 }
 
 func (n *NodeService) NodeGetVolumeStats(_ context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
