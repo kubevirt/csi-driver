@@ -902,17 +902,6 @@ func (c *ControllerService) ControllerGetVolume(_ context.Context, _ *csi.Contro
 // NOTE: This function uses vmi.Status.VolumeStatus as the source of truth for
 // what is currently attached. It directly compares the volume name in the status
 // with the target PVC name.
-//
-// Parameters:
-//   - ctx: The context for cancellation.
-//   - dvName: The name of the PersistentVolumeClaim to check for.
-//   - infraNamespace: The namespace of the PersistentVolumeClaim.
-//   - currentVMIName: The name of the VMI for the current ControllerPublishVolume
-//     request. We want to ignore this VMI in our check.
-//
-// Returns:
-//   - bool: True if the volume is attached to another VMI.
-//   - error: An error if listing VMIs fails.
 func (c *ControllerService) IsVolumeAttachedToOtherVMI(
 	ctx context.Context,
 	dvName string,
