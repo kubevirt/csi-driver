@@ -382,112 +382,81 @@ var _ = Describe("PublishUnPublish", func() {
 		Expect(capturingClient.hotunplugForVMIOccured).To(BeTrue())
 	})
 
-	It("should not publish an RWO volume that is not yet released by another VMI", func() {
-		// Create the DataVolume we will use.
-		dv, err := client.CreateDataVolume(context.TODO(), controller.infraClusterNamespace, &cdiv1.DataVolume{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   testVolumeName,
-				Labels: testInfraLabels,
-			},
-			Spec: cdiv1.DataVolumeSpec{
-				Storage: &cdiv1.StorageSpec{
-					StorageClassName: &testInfraStorageClassName,
-					Resources: corev1.ResourceRequirements{
-						Requests: corev1.ResourceList{
-							corev1.ResourceStorage: resource.MustParse("3Gi"),
+	Context("Multi-attach", func() {
+
+		BeforeEach(func() {
+			By("Creating a DataVolume")
+			dv, err := client.CreateDataVolume(context.TODO(), controller.infraClusterNamespace, &cdiv1.DataVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   testVolumeName,
+					Labels: testInfraLabels,
+				},
+				Spec: cdiv1.DataVolumeSpec{
+					Storage: &cdiv1.StorageSpec{
+						StorageClassName: &testInfraStorageClassName,
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceStorage: resource.MustParse("3Gi"),
+							},
 						},
 					},
 				},
-			},
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			client.datavolumes = make(map[string]*cdiv1.DataVolume)
+			client.datavolumes[getKey(testInfraNamespace, testVolumeName)] = dv
 		})
-		Expect(err).ToNot(HaveOccurred())
-		// Attach the volume to VM 1.
-		client.datavolumes = make(map[string]*cdiv1.DataVolume)
-		client.datavolumes[getKey(testInfraNamespace, testVolumeName)] = dv
-		_, err = controller.ControllerPublishVolume(context.TODO(), getPublishVolumeRequest())
-		Expect(err).ToNot(HaveOccurred())
 
-		// Attempt to attach the volume to VM 2.
-		client.expectedVMName = testVMName2
-		client.ListVirtualMachineWithStatus = true
-		_, err = controller.ControllerPublishVolume(context.TODO(), genPublishVolumeRequest(
-			testVolumeName,
-			getKey(testInfraNamespace, testVMName2),
-			&csi.VolumeCapability{
-				AccessMode: &csi.VolumeCapability_AccessMode{
-					Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-				},
-			},
-		))
-		Expect(err).To(HaveOccurred())
-	})
+		It("should not publish a volume with unknown access mode", func() {
+			By("Attempting to attach DataVolume without valid capabilities")
+			_, err := controller.ControllerPublishVolume(context.TODO(), genPublishVolumeRequest(
+				testVolumeName,
+				getKey(testInfraNamespace, testVMName),
+				&csi.VolumeCapability{},
+			))
+			Expect(err).To(HaveOccurred())
+		})
 
-	It("should publish an RWX volume that is not yet released by another VMI", func() {
-		// Create the DataVolume we will use.
-		dv, err := client.CreateDataVolume(context.TODO(), controller.infraClusterNamespace, &cdiv1.DataVolume{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   testVolumeName,
-				Labels: testInfraLabels,
-			},
-			Spec: cdiv1.DataVolumeSpec{
-				Storage: &cdiv1.StorageSpec{
-					StorageClassName: &testInfraStorageClassName,
-					Resources: corev1.ResourceRequirements{
-						Requests: corev1.ResourceList{
-							corev1.ResourceStorage: resource.MustParse("3Gi"),
-						},
+		It("should not publish an RWO volume that is not yet released by another VMI", func() {
+			By("Attaching DataVolume to VM 1")
+			_, err := controller.ControllerPublishVolume(context.TODO(), getPublishVolumeRequest())
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Attempting to attach DataVolume to VM 2")
+			client.expectedVMName = testVMName2
+			client.ListVirtualMachineWithStatus = true
+			_, err = controller.ControllerPublishVolume(context.TODO(), genPublishVolumeRequest(
+				testVolumeName,
+				getKey(testInfraNamespace, testVMName2),
+				&csi.VolumeCapability{
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 					},
 				},
-			},
+			))
+			Expect(err).To(HaveOccurred())
 		})
-		Expect(err).ToNot(HaveOccurred())
-		// Attach the volume to VM 1.
-		client.datavolumes = make(map[string]*cdiv1.DataVolume)
-		client.datavolumes[getKey(testInfraNamespace, testVolumeName)] = dv
-		_, err = controller.ControllerPublishVolume(context.TODO(), getPublishVolumeRequest())
-		Expect(err).ToNot(HaveOccurred())
 
-		// Attempt to attach the volume to VM 2.
-		client.expectedVMName = testVMName2
-		client.ListVirtualMachineWithStatus = true
-		_, err = controller.ControllerPublishVolume(context.TODO(), genPublishVolumeRequest(
-			testVolumeName,
-			getKey(testInfraNamespace, testVMName2),
-			&csi.VolumeCapability{
-				AccessMode: &csi.VolumeCapability_AccessMode{
-					Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
-				},
-			},
-		))
-		Expect(err).ToNot(HaveOccurred())
-	})
+		It("should publish an RWX volume that is not yet released by another VMI", func() {
+			By("Attaching DataVolume to VM 1")
+			_, err := controller.ControllerPublishVolume(context.TODO(), getPublishVolumeRequest())
+			Expect(err).ToNot(HaveOccurred())
 
-	It("should not publish a volume with unknown access mode", func() {
-		dv, err := client.CreateDataVolume(context.TODO(), controller.infraClusterNamespace, &cdiv1.DataVolume{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   testVolumeName,
-				Labels: testInfraLabels,
-			},
-			Spec: cdiv1.DataVolumeSpec{
-				Storage: &cdiv1.StorageSpec{
-					StorageClassName: &testInfraStorageClassName,
-					Resources: corev1.ResourceRequirements{
-						Requests: corev1.ResourceList{
-							corev1.ResourceStorage: resource.MustParse("3Gi"),
-						},
+			By("Attaching DataVolume to VM 2")
+			client.expectedVMName = testVMName2
+			client.ListVirtualMachineWithStatus = true
+			_, err = controller.ControllerPublishVolume(context.TODO(), genPublishVolumeRequest(
+				testVolumeName,
+				getKey(testInfraNamespace, testVMName2),
+				&csi.VolumeCapability{
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
 					},
 				},
-			},
+			))
+			Expect(err).ToNot(HaveOccurred())
 		})
-		Expect(err).ToNot(HaveOccurred())
-		client.datavolumes = make(map[string]*cdiv1.DataVolume)
-		client.datavolumes[getKey(testInfraNamespace, testVolumeName)] = dv
-		_, err = controller.ControllerPublishVolume(context.TODO(), genPublishVolumeRequest(
-			testVolumeName,
-			getKey(testInfraNamespace, testVMName),
-			&csi.VolumeCapability{},
-		))
-		Expect(err).To(HaveOccurred())
 	})
 })
 
