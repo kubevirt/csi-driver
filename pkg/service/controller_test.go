@@ -415,7 +415,7 @@ var _ = Describe("PublishUnPublish", func() {
 				getKey(testInfraNamespace, testVMName),
 				&csi.VolumeCapability{},
 			))
-			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(ContainSubstring("error checking access mode")))
 		})
 
 		It("should not publish an RWO volume that is not yet released by another VMI", func() {
@@ -435,7 +435,7 @@ var _ = Describe("PublishUnPublish", func() {
 					},
 				},
 			))
-			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(ContainSubstring(ErrVolumeAttachedMessage)))
 		})
 
 		It("should publish an RWX volume that is not yet released by another VMI", func() {

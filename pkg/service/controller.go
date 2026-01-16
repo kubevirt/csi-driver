@@ -29,6 +29,8 @@ const (
 	busParameter    = "bus"
 	busDefaultValue = kubevirtv1.DiskBus("scsi")
 	serialParameter = "serial"
+
+	ErrVolumeAttachedMessage = "volume is attached to another VM"
 )
 
 var (
@@ -372,7 +374,7 @@ func (c *ControllerService) ControllerPublishVolume(
 			return nil, status.Errorf(codes.FailedPrecondition, "failed to check if volume is already attached: %s", err)
 		}
 		if alreadyAttached {
-			return nil, status.Errorf(codes.FailedPrecondition, "volume is attached to another VM")
+			return nil, status.Errorf(codes.FailedPrecondition, ErrVolumeAttachedMessage)
 		}
 	}
 
