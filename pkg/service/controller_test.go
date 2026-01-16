@@ -1061,7 +1061,10 @@ func (c *ControllerClientMock) GetDataVolume(_ context.Context, namespace string
 	}
 	return dv, nil
 }
-func (c *ControllerClientMock) GetPersistentVolumeClaim(_ context.Context, namespace string, claimName string) (*corev1.PersistentVolumeClaim, error) {
+func (c *ControllerClientMock) GetTenantPersistentVolumeClaim(_ context.Context, namespace string, claimName string) (*corev1.PersistentVolumeClaim, error) {
+	return nil, errors.New("Not implemented")
+}
+func (c *ControllerClientMock) GetInfraPersistentVolumeClaim(_ context.Context, namespace string, claimName string) (*corev1.PersistentVolumeClaim, error) {
 	return nil, errors.New("Not implemented")
 }
 func (c *ControllerClientMock) ExpandPersistentVolumeClaim(_ context.Context, namespace string, claimName string, size int64) error {

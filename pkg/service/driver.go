@@ -30,17 +30,19 @@ func NewKubevirtCSIDriver(virtClient kubevirt.Client,
 	storageClassEnforcement util.StorageClassEnforcement,
 	nodeID string,
 	runNodeService bool,
-	runControllerService bool) *KubevirtCSIDriver {
+	runControllerService bool,
+	annotationsAllowlistPath string) *KubevirtCSIDriver {
 	d := KubevirtCSIDriver{
 		IdentityService: NewIdentityService(identityClientset),
 	}
 
 	if runControllerService {
 		d.ControllerService = &ControllerService{
-			virtClient:              virtClient,
-			infraClusterNamespace:   infraClusterNamespace,
-			infraClusterLabels:      infraClusterLabels,
-			storageClassEnforcement: storageClassEnforcement,
+			virtClient:               virtClient,
+			infraClusterNamespace:    infraClusterNamespace,
+			infraClusterLabels:       infraClusterLabels,
+			storageClassEnforcement:  storageClassEnforcement,
+			annotationsAllowlistPath: annotationsAllowlistPath,
 		}
 	}
 
