@@ -418,6 +418,14 @@ var _ = Describe("PublishUnPublish", func() {
 			Expect(err).To(MatchError(ContainSubstring("error checking access mode")))
 		})
 
+		It("should not publish a volume when failing to check if volume is already attached", func() {
+			By("Introducing a failure to ListVirtualMachines")
+			client.FailListVirtualMachines = true
+			By("Attempting to attach DataVolume")
+			_, err := controller.ControllerPublishVolume(context.TODO(), getPublishVolumeRequest())
+			Expect(err).To(MatchError(ContainSubstring("failed to check if volume is already attached")))
+		})
+
 		It("should not publish an RWO volume that is not yet released by another VMI", func() {
 			By("Attaching DataVolume to VM 1")
 			_, err := controller.ControllerPublishVolume(context.TODO(), getPublishVolumeRequest())
