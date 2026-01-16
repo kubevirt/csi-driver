@@ -381,6 +381,91 @@ var _ = Describe("PublishUnPublish", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(capturingClient.hotunplugForVMIOccured).To(BeTrue())
 	})
+
+	Context("Multi-attach", func() {
+
+		BeforeEach(func() {
+			By("Creating a DataVolume")
+			dv, err := client.CreateDataVolume(context.TODO(), controller.infraClusterNamespace, &cdiv1.DataVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   testVolumeName,
+					Labels: testInfraLabels,
+				},
+				Spec: cdiv1.DataVolumeSpec{
+					Storage: &cdiv1.StorageSpec{
+						StorageClassName: &testInfraStorageClassName,
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceStorage: resource.MustParse("3Gi"),
+							},
+						},
+					},
+				},
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			client.datavolumes = make(map[string]*cdiv1.DataVolume)
+			client.datavolumes[getKey(testInfraNamespace, testVolumeName)] = dv
+		})
+
+		It("should not publish a volume with unknown access mode", func() {
+			By("Attempting to attach DataVolume without valid capabilities")
+			_, err := controller.ControllerPublishVolume(context.TODO(), genPublishVolumeRequest(
+				testVolumeName,
+				getKey(testInfraNamespace, testVMName),
+				&csi.VolumeCapability{},
+			))
+			Expect(err).To(MatchError(ContainSubstring("error checking access mode")))
+		})
+
+		It("should not publish a volume when failing to check if volume is already attached", func() {
+			By("Introducing a failure to ListVirtualMachines")
+			client.FailListVirtualMachines = true
+			By("Attempting to attach DataVolume")
+			_, err := controller.ControllerPublishVolume(context.TODO(), getPublishVolumeRequest())
+			Expect(err).To(MatchError(ContainSubstring("failed to check if volume is already attached")))
+		})
+
+		It("should not publish an RWO volume that is not yet released by another VMI", func() {
+			By("Attaching DataVolume to VM 1")
+			_, err := controller.ControllerPublishVolume(context.TODO(), getPublishVolumeRequest())
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Attempting to attach DataVolume to VM 2")
+			client.expectedVMName = testVMName2
+			client.ListVirtualMachineWithStatus = true
+			_, err = controller.ControllerPublishVolume(context.TODO(), genPublishVolumeRequest(
+				testVolumeName,
+				getKey(testInfraNamespace, testVMName2),
+				&csi.VolumeCapability{
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+					},
+				},
+			))
+			Expect(err).To(MatchError(ContainSubstring(ErrVolumeAttachedMessage)))
+		})
+
+		It("should publish an RWX volume that is not yet released by another VMI", func() {
+			By("Attaching DataVolume to VM 1")
+			_, err := controller.ControllerPublishVolume(context.TODO(), getPublishVolumeRequest())
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Attaching DataVolume to VM 2")
+			client.expectedVMName = testVMName2
+			client.ListVirtualMachineWithStatus = true
+			_, err = controller.ControllerPublishVolume(context.TODO(), genPublishVolumeRequest(
+				testVolumeName,
+				getKey(testInfraNamespace, testVMName2),
+				&csi.VolumeCapability{
+					AccessMode: &csi.VolumeCapability_AccessMode{
+						Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
+					},
+				},
+			))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
 })
 
 var _ = Describe("Snapshots", func() {
@@ -732,6 +817,7 @@ var (
 	testInfraNamespace                            = "tenant-cluster-2"
 	testNodeID                                    = getKey(testInfraNamespace, testVMName)
 	testVMName                                    = "test-vm"
+	testVMName2                                   = "test-vm2"
 	testDataVolumeUID                             = "2d0111d5-494f-4731-8f67-122b27d3c366"
 	testBusType               *kubevirtv1.DiskBus = nil // nil==do not pass bus type
 	testInfraLabels                               = map[string]string{"infra-label-name": "infra-label-value"}
@@ -796,16 +882,24 @@ func getDeleteVolumeRequest() *csi.DeleteVolumeRequest {
 	return &csi.DeleteVolumeRequest{VolumeId: testVolumeName}
 }
 
-func getPublishVolumeRequest() *csi.ControllerPublishVolumeRequest {
+func genPublishVolumeRequest(volumeName, nodeID string, capabilty *csi.VolumeCapability) *csi.ControllerPublishVolumeRequest {
 	return &csi.ControllerPublishVolumeRequest{
-		VolumeId: testVolumeName,
-		NodeId:   testNodeID,
+		VolumeId: volumeName,
+		NodeId:   nodeID,
 		VolumeContext: map[string]string{
 			busParameter:    string(getBusType()),
 			serialParameter: testDataVolumeUID,
 		},
-		VolumeCapability: &csi.VolumeCapability{},
+		VolumeCapability: capabilty,
 	}
+}
+
+func getPublishVolumeRequest() *csi.ControllerPublishVolumeRequest {
+	return genPublishVolumeRequest(testVolumeName, testNodeID, &csi.VolumeCapability{
+		AccessMode: &csi.VolumeCapability_AccessMode{
+			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+		},
+	})
 }
 
 func getUnpublishVolumeRequest() *csi.ControllerUnpublishVolumeRequest {
@@ -816,23 +910,25 @@ func getUnpublishVolumeRequest() *csi.ControllerUnpublishVolumeRequest {
 }
 
 type ControllerClientMock struct {
-	FailListVirtualMachines bool
-	FailDeleteDataVolume    bool
-	FailCreateDataVolume    bool
-	FailGetDataVolume       bool
-	FailAddVolumeToVM       bool
-	FailRemoveVolumeFromVM  bool
-	FailGetSnapshot         bool
-	FailCreateSnapshot      bool
-	FailDeleteSnapshot      bool
-	FailListSnapshots       bool
-	ShouldReturnVMNotFound  bool
-	ExpansionOccured        bool
-	ExpansionVerified       bool
-	virtualMachineStatus    kubevirtv1.VirtualMachineInstanceStatus
-	vmVolumes               []kubevirtv1.Volume
-	snapshots               map[string]*snapshotv1.VolumeSnapshot
-	datavolumes             map[string]*cdiv1.DataVolume
+	FailListVirtualMachines      bool
+	ListVirtualMachineWithStatus bool
+	FailDeleteDataVolume         bool
+	FailCreateDataVolume         bool
+	FailGetDataVolume            bool
+	FailAddVolumeToVM            bool
+	FailRemoveVolumeFromVM       bool
+	FailGetSnapshot              bool
+	FailCreateSnapshot           bool
+	FailDeleteSnapshot           bool
+	FailListSnapshots            bool
+	ShouldReturnVMNotFound       bool
+	ExpansionOccured             bool
+	ExpansionVerified            bool
+	virtualMachineStatus         kubevirtv1.VirtualMachineInstanceStatus
+	vmVolumes                    []kubevirtv1.Volume
+	snapshots                    map[string]*snapshotv1.VolumeSnapshot
+	datavolumes                  map[string]*cdiv1.DataVolume
+	expectedVMName               string
 }
 
 func (c *ControllerClientMock) Ping(ctx context.Context) error {
@@ -850,6 +946,24 @@ func (c *ControllerClientMock) GetStorageClass(ctx context.Context, name string)
 func (c *ControllerClientMock) ListVirtualMachines(_ context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
 	if c.FailListVirtualMachines {
 		return nil, errors.New("ListVirtualMachines failed")
+	}
+
+	if c.ListVirtualMachineWithStatus {
+		return []kubevirtv1.VirtualMachineInstance{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testVMName,
+					Namespace: namespace,
+				},
+				Status: kubevirtv1.VirtualMachineInstanceStatus{
+					VolumeStatus: []kubevirtv1.VolumeStatus{
+						{
+							Name: testVolumeName,
+						},
+					},
+				},
+			},
+		}, nil
 	}
 
 	return []kubevirtv1.VirtualMachineInstance{
@@ -965,8 +1079,14 @@ func (c *ControllerClientMock) AddVolumeToVM(_ context.Context, namespace string
 		return errors.New("AddVolumeToVM failed")
 	}
 
+	// Use default VM name unless one was provided.
+	expectedVMName := testVMName
+	if c.expectedVMName != "" {
+		expectedVMName = c.expectedVMName
+	}
+
 	// Test input
-	Expect(testVMName).To(Equal(vmName))
+	Expect(expectedVMName).To(Equal(vmName))
 	Expect(testVolumeName).To(Equal(addVolumeOptions.Name))
 	Expect(testVolumeName).To(Equal(addVolumeOptions.VolumeSource.DataVolume.Name))
 	Expect(getBusType()).To(Equal(addVolumeOptions.Disk.DiskDevice.Disk.Bus))

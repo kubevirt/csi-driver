@@ -619,6 +619,41 @@ func pvcSpec(pvcName, storageClassName, size string) *k8sv1.PersistentVolumeClai
 	return pvc
 }
 
+// logNewEvents will get events associated to the passed object, and filter those newer than
+// the passed timestamp. Those newer events will be logged.
+// logNewEvents returns the latest timestamp seen in an event for next iteration.
+func logNewEvents(client v1.CoreV1Interface, o metav1.Object, since time.Time) time.Time {
+	events, err := client.Events(o.GetNamespace()).List(context.Background(), metav1.ListOptions{
+		FieldSelector: "involvedObject.name=" + o.GetName(),
+	})
+	if err != nil {
+		GinkgoWriter.Printf("Failed to get events: %s\n", err)
+		return since
+	}
+
+	newest := since
+	for _, event := range events.Items {
+		if !event.LastTimestamp.After(since) {
+			continue
+		}
+
+		GinkgoWriter.Printf(
+			"[%s Event] Reason: %s | Message: %s | Count: %d | Time: %s\n",
+			event.InvolvedObject.Kind,
+			event.Reason,
+			event.Message,
+			event.Count,
+			event.LastTimestamp.Format(time.RFC3339),
+		)
+
+		if event.LastTimestamp.After(newest) {
+			newest = event.LastTimestamp.Time
+		}
+	}
+
+	return newest
+}
+
 func runPod(client v1.CoreV1Interface, namespace string, pod *k8sv1.Pod, waitComplete bool) *k8sv1.Pod {
 	pod, err := client.Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
 	Expect(err).ToNot(HaveOccurred())
@@ -628,9 +663,12 @@ func runPod(client v1.CoreV1Interface, namespace string, pod *k8sv1.Pod, waitCom
 		expectedPhase = k8sv1.PodRunning
 	}
 	By("Wait for pod to reach a completed phase")
+	lastEventTime := time.Now()
 	Eventually(func(g Gomega) k8sv1.PodPhase {
 		pod, err = client.Pods(namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
 		g.Expect(err).ToNot(HaveOccurred())
+
+		lastEventTime = logNewEvents(client, pod, lastEventTime)
 		return pod.Status.Phase
 	}, 3*time.Minute, 5*time.Second).Should(Equal(expectedPhase), "Pod should reach Succeeded state")
 
