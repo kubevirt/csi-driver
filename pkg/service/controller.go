@@ -3,7 +3,6 @@ package service
 import (
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -960,24 +959,6 @@ func (c *ControllerService) IsVolumeAttachedToOtherVMI(
 	}
 
 	return false, nil
-}
-
-// getVMNameByCSINodeID finds a VM in infra cluster by its firmware uuid. The uid is the ID that the CSI
-// node publishes in NodeGetInfo and then used by CSINode.spec.drivers[].nodeID
-func (c *ControllerService) getVMNameByCSINodeID(ctx context.Context, nodeID string) (string, error) {
-	list, err := c.virtClient.ListVirtualMachines(ctx, c.infraClusterNamespace)
-	if err != nil {
-		klog.Error("failed listing VMIs in infra cluster")
-		return "", status.Error(codes.NotFound, fmt.Sprintf("failed listing VMIs in infra cluster %v", err))
-	}
-
-	for _, vmi := range list {
-		if strings.EqualFold(string(vmi.Spec.Domain.Firmware.UUID), nodeID) {
-			return vmi.Name, nil
-		}
-	}
-
-	return "", status.Error(codes.NotFound, fmt.Sprintf("failed to find VM with domain.firmware.uuid %v", nodeID))
 }
 
 func (c *ControllerService) getAllowedZoneAndRegion(_ context.Context, requirement *csi.TopologyRequirement) (string, string, error) {

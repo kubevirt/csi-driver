@@ -426,7 +426,7 @@ func (c *client) getSnapshotClassNameFromVolumeClaimName(ctx context.Context, na
 	}
 	if storageClassName == "" {
 		return "", fmt.Errorf("unable to determine volume snapshot class name for snapshot creation, and default not allowed")
-	} else if storageClassName != "" && !(util.Contains(c.storageClassEnforcement.AllowList, storageClassName) || c.storageClassEnforcement.AllowAll) {
+	} else if storageClassName != "" && !util.Contains(c.storageClassEnforcement.AllowList, storageClassName) && !c.storageClassEnforcement.AllowAll {
 		return "", fmt.Errorf("unable to determine volume snapshot class name for snapshot creation, no valid snapshot classes found based on storage class [%s]", storageClassName)
 	}
 	snapshotClassNames, err := c.getInfraSnapshotClassesFromInfraStorageClassName(storageClassName)
@@ -436,7 +436,7 @@ func (c *client) getSnapshotClassNameFromVolumeClaimName(ctx context.Context, na
 	if util.Contains(snapshotClassNames, snapshotClassName) {
 		return snapshotClassName, nil
 	}
-	if !(c.storageClassEnforcement.AllowAll || c.storageClassEnforcement.AllowDefault) {
+	if !c.storageClassEnforcement.AllowAll && !c.storageClassEnforcement.AllowDefault {
 		tenantSnapshotClasses, err := c.getTenantSnapshotClassesFromInfraStorageClassName(storageClassName)
 		if err != nil {
 			return "", err
