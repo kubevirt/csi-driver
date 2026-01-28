@@ -5,6 +5,7 @@ SnapshotClass:
   FromName: true
 DriverInfo:
   Name: csi.kubevirt.io
+  TopologyKeys: ["topology.kubernetes.io/region", "topology.kubernetes.io/zone"]
   Capabilities:
     block: true
     controllerExpansion: true
@@ -18,7 +19,7 @@ DriverInfo:
     persistence: true
     singleNodeVolume: false
     snapshotDataSource: true
-    topology: false
+    topology: true
     capacity: false
     RWX: true
   RequiredAccessModes:

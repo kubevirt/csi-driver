@@ -42,6 +42,7 @@ type NodeService struct {
 	resizer          ResizerInterface
 	devicePathGetter DevicePathGetter
 	dirMaker         dirMaker
+	allowedTopologies map[string]string
 }
 
 type DeviceLister interface {
@@ -103,7 +104,7 @@ var NewFsMaker = func() FsMaker {
 	})
 }
 
-func NewNodeService(nodeId string) *NodeService {
+func NewNodeService(nodeId string, allowedTopologies map[string]string) *NodeService {
 	return &NodeService{
 		nodeID:           nodeId,
 		deviceLister:     NewDeviceLister(),
@@ -111,6 +112,7 @@ func NewNodeService(nodeId string) *NodeService {
 		fsMaker:          NewFsMaker(),
 		mounter:          NewNodeMounter(),
 		resizer:          NewResizer(),
+		allowedTopologies: allowedTopologies,
 		dirMaker: dirMakerFunc(func(path string, perm os.FileMode) error {
 			// MkdirAll returns nil if path already exists
 			return os.MkdirAll(path, perm)
@@ -506,7 +508,10 @@ func (n *NodeService) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 // NodeGetInfo returns the node ID
 func (n *NodeService) NodeGetInfo(context.Context, *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	// the nodeID is the VM's ID in kubevirt or VMI.spec.domain.firmware.uuid
-	return &csi.NodeGetInfoResponse{NodeId: n.nodeID}, nil
+
+	return &csi.NodeGetInfoResponse{
+		NodeId:             n.nodeID,
+		AccessibleTopology: &csi.Topology{Segments: n.allowedTopologies}}, nil
 }
 
 // NodeGetCapabilities returns the supported capabilities of the node service

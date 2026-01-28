@@ -245,8 +245,12 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	// Prepare serial for disk
 	serial := string(dv.GetUID())
 
-	// Return response
-	return &csi.CreateVolumeResponse{
+	zone, region, err := c.getAllowedZoneAndRegion(ctx, req.AccessibilityRequirements)
+	if err != nil {
+		return nil, err
+	}
+
+	cvr := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			CapacityBytes: storageSize,
 			VolumeId:      dvName,
@@ -256,7 +260,27 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 			},
 			ContentSource: req.GetVolumeContentSource(),
 		},
-	}, nil
+	}
+
+	var allowedTopologies = map[string]string{}
+	if zone != "" {
+		allowedTopologies[WellKnownZoneTopologyKey] = zone
+	}
+
+	if region != "" {
+		allowedTopologies[WellKnownRegionTopologyKey] = region
+	}
+
+	if len(allowedTopologies) > 0 {
+		cvr.Volume.AccessibleTopology = []*csi.Topology{
+			{
+				Segments: allowedTopologies,
+			},
+		}
+	}
+
+	// Return response
+	return cvr, nil
 }
 
 func (c *ControllerService) determineDvSource(ctx context.Context, req *csi.CreateVolumeRequest) (*cdiv1.DataVolumeSource, error) {
@@ -935,4 +959,39 @@ func (c *ControllerService) IsVolumeAttachedToOtherVMI(
 	}
 
 	return false, nil
+}
+
+func (c *ControllerService) getAllowedZoneAndRegion(_ context.Context, requirement *csi.TopologyRequirement) (string, string, error) {
+	var zone, region string
+
+	if requirement == nil {
+		return "", "", nil
+	}
+
+	for _, topology := range requirement.GetPreferred() {
+		preferredZone, exists := topology.GetSegments()[WellKnownZoneTopologyKey]
+		if exists {
+			zone = preferredZone
+		}
+
+		preferredRegion, exists := topology.GetSegments()[WellKnownRegionTopologyKey]
+		if exists {
+			region = preferredRegion
+		}
+	}
+
+	for _, topology := range requirement.GetRequisite() {
+		requisiteZone, exists := topology.GetSegments()[WellKnownZoneTopologyKey]
+		if exists {
+			zone = requisiteZone
+		}
+
+		requisiteRegion, exists := topology.GetSegments()[WellKnownRegionTopologyKey]
+		if exists {
+			region = requisiteRegion
+		}
+	}
+
+	return zone, region, nil
+
 }

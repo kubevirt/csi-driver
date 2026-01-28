@@ -68,6 +68,13 @@ data:
 END
 }
 
+VOLUME_BINDING_MODE=${VOLUME_BINDING_MODE:-Immediate}
+if [ "$VOLUME_BINDING_MODE" == "WaitForFirstConsumer" ]; then
+  VOLUME_BINDING_MODE="WaitForFirstConsumer"
+else
+  VOLUME_BINDING_MODE="Immediate"
+fi
+
 function cluster::generate_storageclass_overlay() {
 # ./kubevirtci kubectl get sc -o jsonpath={.items[?(@.metadata.annotations."storageclass\.kubernetes\.io/is-default-class")].metadata.name}
 # ^^^^ gets default storage class, but can't seem to store it properly in a variable, and there is no guarantee a default exists.
@@ -80,7 +87,16 @@ metadata:
   annotations:
     storageclass.kubernetes.io/is-default-class: "true"
 provisioner: csi.kubevirt.io
+allowedTopologies:
+- matchLabelExpressions:
+  - key: topology.kubernetes.io/zone
+    values:
+    - az-1
+  - key: topology.kubernetes.io/region
+    values:
+    - eu-central
 allowVolumeExpansion: true
+volumeBindingMode: $VOLUME_BINDING_MODE
 parameters:
   infraStorageClassName: $2
   bus: scsi
@@ -134,4 +150,10 @@ function tenant::deploy_snapshotresources() {
   ./kubevirtci kubectl-tenant apply -f ./deploy/tenant/base/snapshot.storage.k8s.io_volumesnapshots.yaml
   # Make sure the infra rbd snapshot class is the default snapshot class
   ./kubevirtci kubectl patch volumesnapshotclass csi-rbdplugin-snapclass --type merge -p '{"metadata": {"annotations":{"snapshot.storage.kubernetes.io/is-default-class":"true"}}}'
+}
+
+function tenant::label_all_nodes_with_allowed_topologies() {
+  for node in $(./kubevirtci kubectl-tenant get nodes -o name | sed "1d"); do
+    ./kubevirtci kubectl-tenant label $node topology.kubernetes.io/region=eu-central topology.kubernetes.io/zone=az-1 --overwrite
+  done
 }

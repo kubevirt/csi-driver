@@ -69,7 +69,8 @@ func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 	}
 
 	var addr string
-	if u.Scheme == "unix" {
+	switch u.Scheme {
+	case "unix":
 		addr = u.Path
 		if err := os.Remove(addr); err != nil && !os.IsNotExist(err) {
 			klog.Fatalf("Failed to remove %s, error: %s", addr, err.Error())
@@ -83,10 +84,9 @@ func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 				klog.Fatalf("Failed to stat %s, error: %s", listenDir, err.Error())
 			}
 		}
-
-	} else if u.Scheme == "tcp" {
+	case "tcp":
 		addr = u.Host
-	} else {
+	default:
 		klog.Fatalf("%v endpoint scheme not supported", u.Scheme)
 	}
 
