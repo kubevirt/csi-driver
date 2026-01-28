@@ -20,35 +20,45 @@ type KubevirtCSIDriver struct {
 	*IdentityService
 	*ControllerService
 	*NodeService
-	Client kubevirt.Client
 }
 
-func NewKubevirtCSIDriver(virtClient kubevirt.Client,
+// NewKubevirtCSIDriver returns a new unconfigured KubeVirtCSIDriver.
+func NewKubevirtCSIDriver() *KubevirtCSIDriver {
+	return &KubevirtCSIDriver{}
+}
+
+// WithIdentityService configures the Identity Service of the KubeVirtCSIDriver
+// with the provided clientset and provisioner name.
+func (d *KubevirtCSIDriver) WithIdentityService(
 	identityClientset kubernetes.Interface,
+) *KubevirtCSIDriver {
+	d.IdentityService = NewIdentityService(identityClientset)
+	return d
+}
+
+// WithControllerService creates a ControllerService and store it in the
+// KubeVirtCSIDriver with the provided parameters.
+func (d *KubevirtCSIDriver) WithControllerService(
+	virtClient kubevirt.Client,
 	infraClusterNamespace string,
 	infraClusterLabels map[string]string,
 	storageClassEnforcement util.StorageClassEnforcement,
+) *KubevirtCSIDriver {
+	d.ControllerService = NewControllerService(
+		virtClient,
+		infraClusterNamespace,
+		infraClusterLabels,
+		storageClassEnforcement,
+	)
+	return d
+}
+
+// WithNodeService creates a NodeService targeting the provided node.
+func (d *KubevirtCSIDriver) WithNodeService(
 	nodeID string,
-	runNodeService bool,
-	runControllerService bool) *KubevirtCSIDriver {
-	d := KubevirtCSIDriver{
-		IdentityService: NewIdentityService(identityClientset),
-	}
-
-	if runControllerService {
-		d.ControllerService = &ControllerService{
-			virtClient:              virtClient,
-			infraClusterNamespace:   infraClusterNamespace,
-			infraClusterLabels:      infraClusterLabels,
-			storageClassEnforcement: storageClassEnforcement,
-		}
-	}
-
-	if runNodeService {
-		d.NodeService = NewNodeService(nodeID)
-	}
-
-	return &d
+) *KubevirtCSIDriver {
+	d.NodeService = NewNodeService(nodeID)
+	return d
 }
 
 // Run will initiate the grpc services Identity, Controller, and Node.
