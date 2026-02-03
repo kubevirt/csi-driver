@@ -59,14 +59,19 @@ var _ = ginkgo.BeforeSuite(func() {
 		AllowDefault: true,
 	}
 
-	driver := service.NewKubevirtCSIDriver(virtClient,
-		identityClientset,
-		infraClusterNamespace,
-		infraClusterLabelsMap,
-		storagClassEnforcement,
-		getKey(infraClusterNamespace, nodeID),
-		true,
-		true)
+	driver := service.NewKubevirtCSIDriver().
+		WithIdentityService(
+			identityClientset,
+		).
+		WithControllerService(
+			virtClient,
+			infraClusterNamespace,
+			infraClusterLabelsMap,
+			storagClassEnforcement,
+		).
+		WithNodeService(
+			getKey(infraClusterNamespace, nodeID),
+		)
 	gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 	go func() {
