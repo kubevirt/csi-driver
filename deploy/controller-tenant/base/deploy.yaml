@@ -37,6 +37,8 @@ spec:
             - "--infra-cluster-namespace=$(INFRACLUSTER_NAMESPACE)"
             - "--infra-cluster-kubeconfig=/var/run/secrets/infracluster/kubeconfig"
             - "--infra-cluster-labels=$(INFRACLUSTER_LABELS)"
+            - "--run-node-service=false"
+            - "--run-controller-service=true"
             - "--v=5"
           ports:
             - name: healthz
