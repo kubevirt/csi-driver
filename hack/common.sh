@@ -135,3 +135,37 @@ function tenant::deploy_snapshotresources() {
   # Make sure the infra rbd snapshot class is the default snapshot class
   ./kubevirtci kubectl patch volumesnapshotclass csi-rbdplugin-snapclass --type merge -p '{"metadata": {"annotations":{"snapshot.storage.kubernetes.io/is-default-class":"true"}}}'
 }
+
+function wait::check_rollout() {
+    local KUBE_CMD="$1"
+    local RES_TYPE="$2"
+    local RES_NAME="$3"
+    local NS="$4"
+    local TIMEOUT="$5"
+
+    if ! $KUBE_CMD rollout status "$RES_TYPE/$RES_NAME" -n "$NS" --timeout="$TIMEOUT"; then
+        echo "Error: Rollout failed"
+
+        # 1. Describe the failing resource
+        $KUBE_CMD describe "$RES_TYPE/$RES_NAME" -n "$NS"
+
+        # 2. Get Pods specifically for this app
+        # We assume the resource name matches part of the pod name.
+        $KUBE_CMD get pods -n "$NS" -o wide | grep "$RES_NAME"
+
+        # 3. Fetch logs from the first failing pod found
+        local POD_NAME=$($KUBE_CMD get pods -n "$NS" | grep "$RES_NAME" | awk '{print $1}' | head -n 1)
+
+        if [ -n "$POD_NAME" ]; then
+            echo "Logs for pod: $POD_NAME"
+            $KUBE_CMD describe pod "$POD_NAME" -n "$NS"
+            $KUBE_CMD logs "$POD_NAME" -n "$NS" --all-containers --previous --tail=50 || true
+            $KUBE_CMD logs "$POD_NAME" -n "$NS" --all-containers --tail=50
+        else
+            echo "No pods found for $RES_NAME to fetch logs from."
+        fi
+
+        # Exit with failure
+        exit 1
+    fi
+}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -9,181 +10,200 @@ import (
 
 	"gopkg.in/yaml.v2"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	klog "k8s.io/klog/v2"
 
-	snapcli "kubevirt.io/csi-driver/pkg/generated/external-snapshotter/client-go/clientset/versioned"
-	"kubevirt.io/csi-driver/pkg/kubevirt"
 	"kubevirt.io/csi-driver/pkg/service"
 	"kubevirt.io/csi-driver/pkg/util"
 )
 
-var (
-	endpoint               = flag.String("endpoint", "unix:/csi/csi.sock", "CSI endpoint")
-	nodeName               = flag.String("node-name", "", "The node name - the node this pods runs on")
-	infraClusterNamespace  = flag.String("infra-cluster-namespace", "", "The infra-cluster namespace")
-	infraClusterKubeconfig = flag.String("infra-cluster-kubeconfig", "", "the infra-cluster kubeconfig file. If not set, defaults to in cluster config.")
-	infraClusterLabels     = flag.String("infra-cluster-labels", "", "The infra-cluster labels to use when creating resources in infra cluster. 'name=value' fields separated by a comma")
-	volumePrefix           = flag.String("volume-prefix", "pvc", "The prefix expected for persistent volumes")
-	// infraStorageClassEnforcement = flag.String("infra-storage-class-enforcement", "", "A string encoded yaml that represents the policy of enforcing which infra storage classes are allowed in persistentVolume of type kubevirt")
-	infraStorageClassEnforcement = os.Getenv("INFRA_STORAGE_CLASS_ENFORCEMENT")
-
-	tenantClusterKubeconfig = flag.String("tenant-cluster-kubeconfig", "", "the tenant cluster kubeconfig file. If not set, defaults to in cluster config.")
-
-	runNodeService       = flag.Bool("run-node-service", true, "Specifies rather or not to run the node service, the default is true")
-	runControllerService = flag.Bool("run-controller-service", true, "Specifies rather or not to run the controller service, the default is true")
-)
-
-func init() {
-	klog.InitFlags(nil)
-}
-
 func main() {
-	flag.Parse()
-	handle()
+	// Pass arguments to parseConfig skipping the binary name.
+	cfg, err := parseConfig(os.Args[1:])
+	if err != nil {
+		os.Exit(1)
+	}
+
+	if err := prechecks(); err != nil {
+		klog.Fatalf("Prechecks failed: %s", err)
+	}
+
+	driver, err := initializeDriver(cfg)
+	if err != nil {
+		klog.Fatalf("Failed to initialize driver: %s", err)
+	}
+
+	driver.Run(cfg.endpoint)
 	os.Exit(0)
 }
 
-func handle() {
-	var tenantRestConfig *rest.Config
-	var infraRestConfig *rest.Config
-	var identityClientset *kubernetes.Clientset
+// parseConfig builds the required config struct to run the driver based on the
+// flags and environment variables.
+func parseConfig(args []string) (*config, error) {
+	fs := flag.NewFlagSet("kubevirt-csi-driver", flag.ContinueOnError)
+	klog.InitFlags(fs)
 
-	if service.VendorVersion == "" {
-		klog.Fatal("VendorVersion must be set at compile time")
+	cfg := &config{}
+	fs.StringVar(&cfg.endpoint, "endpoint", "unix:/csi/csi.sock", "CSI endpoint")
+	fs.StringVar(&cfg.nodeName, "node-name", "", "The node name - the node this pods runs on")
+	fs.StringVar(&cfg.infraClusterNamespace, "infra-cluster-namespace", "", "The infra-cluster namespace")
+	fs.StringVar(&cfg.infraClusterKubeconfig, "infra-cluster-kubeconfig", "", "the infra-cluster kubeconfig file. If not set, defaults to in cluster config.")
+	fs.StringVar(&cfg.infraClusterLabels, "infra-cluster-labels", "", "The infra-cluster labels to use when creating resources in infra cluster. 'name=value' fields separated by a comma")
+	fs.StringVar(&cfg.volumePrefix, "volume-prefix", "pvc", "The prefix expected for persistent volumes")
+
+	fs.StringVar(&cfg.tenantClusterKubeconfig, "tenant-cluster-kubeconfig", "", "the tenant cluster kubeconfig file. If not set, defaults to in cluster config.")
+
+	fs.BoolVar(&cfg.runNodeService, "run-node-service", true, "Specifies whether or not to run the node service, the default is true")
+	fs.BoolVar(&cfg.runControllerService, "run-controller-service", true, "Specifies whether or not to run the controller service, the default is true")
+
+	if err := fs.Parse(args); err != nil {
+		return nil, err
 	}
+
+	cfg.infraStorageClassEnforcement = os.Getenv("INFRA_STORAGE_CLASS_ENFORCEMENT")
+
+	return cfg, nil
+}
+
+// prechecks performs validation checks on the configuration provided.
+func prechecks() error {
+	if service.VendorVersion == "" {
+		return errors.New("VendorVersion must be set at compile time")
+	}
+
+	return nil
+}
+
+// initializeDriver instantiates a KubeVirtCSIDriver.
+func initializeDriver(cfg *config) (*service.KubevirtCSIDriver, error) {
 	klog.V(2).Infof("Driver vendor %v %v", service.VendorName, service.VendorVersion)
 
-	if (infraClusterLabels == nil || *infraClusterLabels == "") && !*runNodeService {
-		klog.Fatal("infra-cluster-labels must be set")
-	}
-	if volumePrefix == nil || *volumePrefix == "" {
-		klog.Fatal("volume-prefix must be set")
-	}
+	driver := service.NewKubevirtCSIDriver()
+	var err error
 
-	inClusterConfig, err := rest.InClusterConfig()
-	if err != nil {
-		klog.Fatalf("Failed to build in cluster config: %v", err)
-	}
-
-	if *tenantClusterKubeconfig != "" {
-		tenantRestConfig, err = clientcmd.BuildConfigFromFlags("", *tenantClusterKubeconfig)
+	if cfg.runControllerService {
+		driver, err = configureControllerService(cfg, driver)
 		if err != nil {
-			klog.Fatalf("failed to build tenant cluster config: %v", err)
-		}
-	} else {
-		tenantRestConfig = inClusterConfig
-	}
-
-	if *infraClusterKubeconfig != "" {
-		infraRestConfig, err = clientcmd.BuildConfigFromFlags("", *infraClusterKubeconfig)
-		if err != nil {
-			klog.Fatalf("failed to build infra cluster config: %v", err)
-		}
-
-	} else {
-		infraRestConfig = inClusterConfig
-	}
-
-	tenantClientSet, err := kubernetes.NewForConfig(tenantRestConfig)
-	if err != nil {
-		klog.Fatalf("Failed to build tenant client set: %v", err)
-	}
-	tenantSnapshotClientSet, err := snapcli.NewForConfig(tenantRestConfig)
-	if err != nil {
-		klog.Fatalf("Failed to build tenant snapshot client set: %v", err)
-	}
-
-	infraClusterLabelsMap := parseLabels()
-	klog.V(5).Infof("Storage class enforcement string: \n%s", infraStorageClassEnforcement)
-	storageClassEnforcement := configureStorageClassEnforcement(infraStorageClassEnforcement)
-
-	virtClient, err := kubevirt.NewClient(infraRestConfig, infraClusterLabelsMap, tenantClientSet, tenantSnapshotClientSet, storageClassEnforcement, *volumePrefix)
-	if err != nil {
-		klog.Fatal(err)
-	}
-
-	var nodeID string
-	if *nodeName != "" {
-		node, err := tenantClientSet.CoreV1().Nodes().Get(context.TODO(), *nodeName, v1.GetOptions{})
-		if err != nil {
-			klog.Fatal(fmt.Errorf("failed to find node by name %v: %v", nodeName, err))
-		}
-
-		nodeID, err = resolveNodeID(*nodeName, node.Spec.ProviderID, node.Annotations)
-		if err != nil {
-			klog.Fatal(err)
-		}
-		klog.Infof("Node name: %v, Node ID: %s", *nodeName, nodeID)
-	}
-
-	identityClientset = tenantClientSet
-	if *runControllerService {
-		identityClientset, err = kubernetes.NewForConfig(infraRestConfig)
-		if err != nil {
-			klog.Fatalf("Failed to build infra client set: %v", err)
+			return nil, fmt.Errorf("failed to configure controller service: %w", err)
 		}
 	}
 
-	driver := service.NewKubevirtCSIDriver(virtClient,
-		identityClientset,
-		*infraClusterNamespace,
-		infraClusterLabelsMap,
-		storageClassEnforcement,
-		nodeID,
-		*runNodeService,
-		*runControllerService)
+	if cfg.runNodeService {
+		driver, err = configureNodeService(cfg, driver)
+		if err != nil {
+			return nil, fmt.Errorf("failed to configure node service: %w", err)
+		}
+	}
 
-	driver.Run(*endpoint)
+	return driver, nil
 }
 
-func configureStorageClassEnforcement(infraStorageClassEnforcement string) util.StorageClassEnforcement {
-	var storageClassEnforcement util.StorageClassEnforcement
+// configureControllerService prepares the required clients and configuration for a
+// KubeVirtCSIDriver with controller service.
+func configureControllerService(cfg *config, driver *service.KubevirtCSIDriver) (*service.KubevirtCSIDriver, error) {
+	// Configure labels and storage class enforcement.
+	infraClusterLabelsMap, err := parseLabels(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse labels: %w", err)
+	}
+	klog.V(5).Infof("Storage class enforcement string: \n%s", cfg.infraStorageClassEnforcement)
+	storageClassEnforcement, err := configureStorageClassEnforcement(cfg.infraStorageClassEnforcement)
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure storage class enforcement: %w", err)
+	}
 
+	identityClientset, err := cfg.getInfraClientset()
+	if err != nil {
+		return nil, err
+	}
+
+	virtClient, err := cfg.getVirtClient(infraClusterLabelsMap, storageClassEnforcement)
+	if err != nil {
+		return nil, err
+	}
+
+	return driver.
+		WithControllerService(
+			virtClient,
+			cfg.infraClusterNamespace,
+			infraClusterLabelsMap,
+			storageClassEnforcement,
+		).
+		WithIdentityService(
+			identityClientset,
+		), nil
+}
+
+// configureNodeService prepares the required clients and configuration for a
+// KubeVirtCSIDriver with node service.
+func configureNodeService(cfg *config, driver *service.KubevirtCSIDriver) (*service.KubevirtCSIDriver, error) {
+	// Get tenant clientset.
+	tenantClientset, err := cfg.getTenantClientset()
+	if err != nil {
+		return nil, err
+	}
+
+	// Get node ID.
+	if cfg.nodeName == "" {
+		return nil, errors.New("cannot start NodeService without a node name.")
+	}
+	node, err := tenantClientset.CoreV1().Nodes().Get(context.Background(), cfg.nodeName, v1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find node by name %v: %w", cfg.nodeName, err)
+	}
+	nodeID, err := resolveNodeID(node.Spec.ProviderID, node.Annotations)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve infra VM for node %q: %w", cfg.nodeName, err)
+	}
+	klog.Infof("Node name: %q, Node ID: %q", cfg.nodeName, nodeID)
+
+	return driver.
+		WithNodeService(
+			nodeID,
+		).
+		WithIdentityService(
+			tenantClientset,
+		), nil
+}
+
+func configureStorageClassEnforcement(infraStorageClassEnforcement string) (util.StorageClassEnforcement, error) {
 	if infraStorageClassEnforcement == "" {
-		storageClassEnforcement = util.StorageClassEnforcement{
+		return util.StorageClassEnforcement{
 			AllowAll:     true,
 			AllowDefault: true,
-		}
-	} else {
-		//parse yaml
-		err := yaml.Unmarshal([]byte(infraStorageClassEnforcement), &storageClassEnforcement)
-		if err != nil {
-			klog.Fatalf("Failed to parse infra-storage-class-enforcement %v", err)
-		}
+		}, nil
 	}
-	return storageClassEnforcement
+
+	// Parse yaml
+	var storageClassEnforcement util.StorageClassEnforcement
+	err := yaml.Unmarshal([]byte(infraStorageClassEnforcement), &storageClassEnforcement)
+	if err != nil {
+		return storageClassEnforcement, fmt.Errorf("failed to parse infra-storage-class-enforcement %w", err)
+	}
+	return storageClassEnforcement, nil
 }
 
-func parseLabels() map[string]string {
-
+func parseLabels(cfg *config) (map[string]string, error) {
 	infraClusterLabelsMap := map[string]string{}
 
-	if *infraClusterLabels == "" {
-		return infraClusterLabelsMap
+	if cfg.infraClusterLabels == "" {
+		return nil, errors.New("infra-cluster-labels must be set")
 	}
 
-	labelStrings := strings.Split(*infraClusterLabels, ",")
-
+	labelStrings := strings.Split(cfg.infraClusterLabels, ",")
 	for _, label := range labelStrings {
-
 		labelPair := strings.SplitN(label, "=", 2)
-
 		if len(labelPair) != 2 {
-			panic("Bad labels format. Should be 'key=value,key=value,...'")
+			return nil, errors.New("bad labels format. Should be 'key=value,key=value,...'")
 		}
-
 		infraClusterLabelsMap[labelPair[0]] = labelPair[1]
 	}
 
-	return infraClusterLabelsMap
+	return infraClusterLabelsMap, nil
 }
 
 // resolveNodeID resolves the infra cluster VM name and namespace from the node's providerID or annotations.
 // It returns the nodeID in the format "namespace/name" or an error if resolution fails.
-func resolveNodeID(nodeName, providerID string, annotations map[string]string) (string, error) {
+func resolveNodeID(providerID string, annotations map[string]string) (string, error) {
 	var vmName, vmNamespace string
 
 	if strings.HasPrefix(providerID, "kubevirt://") {
@@ -200,10 +220,10 @@ func resolveNodeID(nodeName, providerID string, annotations map[string]string) (
 	}
 
 	if vmName == "" || vmNamespace == "" {
-		return "", fmt.Errorf("failed to resolve infra VM for node %s: vmName or vmNamespace not found. "+
-			"Ensure the node has a valid providerID (kubevirt://) with annotation 'cluster.x-k8s.io/cluster-namespace', "+
-			"or set annotations 'csi.kubevirt.io/infra-vm-name' and 'csi.kubevirt.io/infra-vm-namespace' on the node. "+
-			"After setting the annotations, restart the kubevirt-csi-node pod on this node for the changes to take effect", nodeName)
+		return "", errors.New("vmName or vmNamespace not found. " +
+			"Ensure the node has a valid providerID (kubevirt://) with annotation 'cluster.x-k8s.io/cluster-namespace', " +
+			"or set annotations 'csi.kubevirt.io/infra-vm-name' and 'csi.kubevirt.io/infra-vm-namespace' on the node. " +
+			"After setting the annotations, restart the kubevirt-csi-node pod on this node for the changes to take effect")
 	}
 
 	return fmt.Sprintf("%s/%s", vmNamespace, vmName), nil

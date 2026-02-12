@@ -125,5 +125,5 @@ _kubectl_tenant apply --kustomize ./deploy/controller-tenant/dev-overlay
 # ******************************************************
 # Wait for driver to rollout
 # ******************************************************
-_kubectl_tenant rollout status ds/kubevirt-csi-node -n $CSI_DRIVER_NAMESPACE --timeout=5m
-_kubectl_tenant rollout status deployment/kubevirt-csi-controller -n $CSI_DRIVER_NAMESPACE --timeout=5m
+wait::check_rollout "_kubectl_tenant" "ds" "kubevirt-csi-node" "$CSI_DRIVER_NAMESPACE" "5m"
+wait::check_rollout "_kubectl_tenant" "deployment" "kubevirt-csi-controller" "$CSI_DRIVER_NAMESPACE" "5m"
