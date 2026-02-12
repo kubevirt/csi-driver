@@ -35,6 +35,7 @@ const (
 	annDefaultSnapshotClass         = "snapshot.storage.kubernetes.io/is-default-class"
 	InfraStorageClassNameParameter  = "infraStorageClassName"
 	InfraSnapshotClassNameParameter = "infraSnapshotClassName"
+	DataVolumeFinalizerName         = "cdi.kubevirt.io/user-volume-protection"
 )
 
 type InfraTenantStorageSnapshotMapping struct {
@@ -313,9 +314,9 @@ func (c *client) GetWorkloadManagingVirtualMachine(ctx context.Context, namespac
 func (c *client) CreateDataVolume(ctx context.Context, namespace string, dataVolume *cdiv1.DataVolume) (*cdiv1.DataVolume, error) {
 	if !strings.HasPrefix(dataVolume.GetName(), c.volumePrefix) {
 		return nil, ErrInvalidVolume
-	} else {
-		return c.cdiClient.CdiV1beta1().DataVolumes(namespace).Create(ctx, dataVolume, metav1.CreateOptions{})
 	}
+	util.AddFinalizer(dataVolume, DataVolumeFinalizerName)
+	return c.cdiClient.CdiV1beta1().DataVolumes(namespace).Create(ctx, dataVolume, metav1.CreateOptions{})
 }
 
 // Ping performs a minimal request to the infra-cluster k8s api
@@ -331,6 +332,9 @@ func (c *client) DeleteDataVolume(ctx context.Context, namespace string, name st
 	} else if err != nil {
 		return err
 	} else if dv != nil {
+		if err := c.patchFinalizerRemoval(ctx, dv, DataVolumeFinalizerName); err != nil {
+			return err
+		}
 		return c.cdiClient.CdiV1beta1().DataVolumes(namespace).Delete(ctx, dv.Name, metav1.DeleteOptions{})
 	}
 	return nil
@@ -625,6 +629,36 @@ func (c *client) EnsureVolumeAvailableVM(ctx context.Context, namespace, name, v
 	}
 
 	return false, nil
+}
+
+func (c *client) patchFinalizerRemoval(ctx context.Context, dv *cdiv1.DataVolume, finalizerName string) error {
+	changed := util.RemoveFinalizer(dv, finalizerName)
+	if !changed {
+		return nil
+	}
+	patchPayload := []map[string]interface{}{
+		{
+			"op":    "replace",
+			"path":  "/metadata/finalizers",
+			"value": dv.GetFinalizers(),
+		},
+	}
+	payload, err := json.Marshal(patchPayload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal JSON Patch payload for %s: %w", dv.Name, err)
+	}
+	_, err = c.cdiClient.CdiV1beta1().DataVolumes(dv.GetNamespace()).Patch(
+		ctx,
+		dv.GetName(),
+		types.JSONPatchType,
+		payload,
+		metav1.PatchOptions{},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to patch DataVolume %q to remove finalizer: %v", dv.Name, err)
+	}
+
+	return nil
 }
 
 var ErrInvalidSnapshot = goerrors.New("invalid snapshot name")
