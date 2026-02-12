@@ -555,12 +555,62 @@ func getDeviceBySerialID(serialID string, deviceLister DeviceLister) (device, er
 	}
 
 	for _, d := range devices.BlockDevices {
+		klog.V(5).Infof("check block device %v", d)
+		d.Path = "/dev/" + d.Name
 		if d.SerialID == serialID {
-			d.Path = "/dev/" + d.Name
 			return d, nil
+		}
+
+		// rescan devices missing serial numbers
+		// this prevents a potential deadlock where udev failed the original scan
+		if d.SerialID == "" {
+			rescanDevice(d.Path)
 		}
 	}
 	return device{}, errors.New("couldn't find device by serial id")
+}
+
+// rescanDevice triggers a udevadm rescan for the specified device path.
+// This function is crucial for ensuring the kernel updates device properties,
+// such as serial numbers, particularly when a device might have been
+// initially scanned without complete information.
+//
+// It executes the `udevadm trigger --action=change --name-match=<path>` command.
+// If klog's verbosity level is 5 or higher, the `--verbose` flag is also added
+// to the udevadm command for detailed logging.
+//
+// Any standard output or standard error from the udevadm command, along with
+// any execution errors, are logged using klog.Errorf.
+//
+// This requires NodeService daemonset to mount /sys from the host
+//
+// Parameters:
+//
+//	path: The absolute path to the device to be rescanned (e.g., "/dev/sdb").
+func rescanDevice(path string) {
+	klog.Infof("Rescanning device %s", path)
+
+	cmd := "udevadm"
+	args := []string{
+		"trigger",
+		"--action=change",
+		"--name-match=" + path,
+	}
+
+	if klog.V(5).Enabled() {
+		args = append(args, "--verbose")
+	}
+
+	var stdout, stderr bytes.Buffer
+	out := exec.Command(cmd, args...)
+	out.Stdout = &stdout
+	out.Stderr = &stderr
+
+	if err := out.Run(); err != nil {
+		klog.Errorf("stderr: %s", stderr.String())
+		klog.Errorf("udev rescan for device %s failed: %+v", path, err)
+	}
+	klog.Infof("stdout: %s", stdout.String())
 }
 
 func makeFS(device string, fsType string) error {
