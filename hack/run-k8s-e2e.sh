@@ -15,7 +15,7 @@
 set -e
 export TENANT_CLUSTER_NAME=${TENANT_CLUSTER_NAME:-kvcluster}
 export TENANT_CLUSTER_NAMESPACE=${TENANT_CLUSTER_NAMESPACE:-kvcluster}
-export KUBEVIRTCI_TAG=${KUBEVIRTCI_TAG:-2405151527-09bcd71}
+export KUBEVIRTCI_TAG=${KUBEVIRTCI_TAG:-2602020920-45c87e16}
 
 test_pod=${TENANT_CLUSTER_NAME}-k8s-e2e-suite-runnner
 test_driver_cm=${TENANT_CLUSTER_NAME}-test-driver
@@ -95,9 +95,9 @@ spec:
     - -c
     - |
       cd /tmp
-      curl --location https://dl.k8s.io/v1.30.1/kubernetes-test-linux-amd64.tar.gz | tar --strip-components=3 -zxf - kubernetes/test/bin/e2e.test kubernetes/test/bin/ginkgo
+      curl --location https://dl.k8s.io/v1.33.7/kubernetes-test-linux-amd64.tar.gz | tar --strip-components=3 -zxf - kubernetes/test/bin/e2e.test kubernetes/test/bin/ginkgo
       chmod +x e2e.test
-      curl -LO "https://dl.k8s.io/release/v1.30.1/bin/linux/amd64/kubectl"
+      curl -LO "https://dl.k8s.io/release/v1.33.7/bin/linux/amd64/kubectl"
       chmod +x kubectl
       echo \${TEST_DRIVER_PATH}
       ./e2e.test -kubeconfig \${KUBECONFIG} \

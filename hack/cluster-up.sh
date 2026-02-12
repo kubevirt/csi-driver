@@ -4,6 +4,7 @@ set -euo pipefail
 export TENANT_CLUSTER_NAMESPACE=${TENANT_CLUSTER_NAMESPACE:-kvcluster}
 # ensure we use rook ceph for the infra storage so we can test snapshots
 export KUBEVIRT_STORAGE=rook-ceph-default
+export KUBEVIRT_NFS_DIR=${KUBEVIRT_NFS_DIR:-/var/lib/containers/nfs-data}
 
 # ******************************************************
 # Start infra cluster with tenant cluster
@@ -27,7 +28,8 @@ echo "Enable hotplug"
 
 for vmi in $(./kubevirtci kubectl get vmi -A --no-headers | awk '{ print $2 }')
 do
-        # enables insecure registry
+        echo "enabling insecure registry for vm $vmi"
+	# enables insecure registry
         cat hack/vmi-insecure-registry | ./kubevirtci ssh-tenant $vmi $TENANT_CLUSTER_NAMESPACE
         # sets shell to bash
         echo 'sudo sed -i "s/home\/capk:.*/home\/capk:\/bin\/bash/g" /etc/passwd' | ./kubevirtci ssh-tenant $vmi $TENANT_CLUSTER_NAMESPACE

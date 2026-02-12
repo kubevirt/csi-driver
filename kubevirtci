@@ -2,21 +2,21 @@
 
 set -e
 
-export KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-k8s-1.30}
-export CAPK_GUEST_K8S_VERSION=${CAPK_GUEST_K8S_VERSION:-v1.30.1}
+export KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-k8s-1.33}
+export CAPK_GUEST_K8S_VERSION=${CAPK_GUEST_K8S_VERSION:-v1.33.7}
 export CAPK_GUEST_NUM_WORKER_NODES=${CAPK_GUEST_NUM_WORKER_NODES:-1}
-export KUBEVIRTCI_TAG=${KUBEVIRTCI_TAG:-2405151527-09bcd71}
+export KUBEVIRTCI_TAG=${KUBEVIRTCI_TAG:-2602020920-45c87e16}
 export KUBECONFIG=$(cluster-up/cluster-up/kubeconfig.sh)
 export KUBEVIRT_DEPLOY_PROMETHEUS=false
 export KUBEVIRT_NUM_NODES=${KUBEVIRT_NUM_NODES:-1}
 export KUBEVIRT_MEMORY_SIZE=${KUBEVIRT_MEMORY_SIZE:-15360M}
 export KUBEVIRT_DEPLOY_CDI="true"
 export METALLB_VERSION="v0.14.3"
-export CAPK_RELEASE_VERSION="v0.1.8"
+export CAPK_RELEASE_VERSION="v0.11.1"
 export CLUSTERCTL_VERSION="v1.6.1"
 export CALICO_VERSION="v3.27.0"
 export KUBEVIRT_VERSION="v1.1.1"
-export NODE_VM_IMAGE_TEMPLATE=${NODE_VM_IMAGE_TEMPLATE:-quay.io/capk/ubuntu-2204-container-disk:v1.30.1}
+export NODE_VM_IMAGE_TEMPLATE=${NODE_VM_IMAGE_TEMPLATE:-quay.io/capk/ubuntu-2404-container-disk:v1.33.5}
 
 _default_bin_path=./hack/tools/bin
 _default_tmp_path=./hack/tools/bin/tmp
@@ -177,7 +177,8 @@ function kubevirtci::create_cluster() {
 	fi
 
 	echo "Using cluster template $template"
-
+	echo "waiting 15 seconds to ensure capk webhook is running"
+	sleep 15
 	$CLUSTERCTL_PATH generate cluster ${TENANT_CLUSTER_NAME} --target-namespace ${TENANT_CLUSTER_NAMESPACE} --kubernetes-version ${CAPK_GUEST_K8S_VERSION} --control-plane-machine-count=1 --worker-machine-count=${CAPK_GUEST_NUM_WORKER_NODES} --from $template | ${_kubectl} apply -f -
 
 	echo "Wait for tenant cluster to be ready"
