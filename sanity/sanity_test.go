@@ -123,7 +123,7 @@ type fakeKubeVirtClient struct {
 func (k *fakeKubeVirtClient) Ping(ctx context.Context) error {
 	return nil
 }
-func (k *fakeKubeVirtClient) ListVirtualMachines(_ context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
+func (k *fakeKubeVirtClient) ListVirtualMachineInstances(_ context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
 	var res []kubevirtv1.VirtualMachineInstance
 	for _, v := range k.vmiMap {
 		if v != nil {
@@ -133,7 +133,7 @@ func (k *fakeKubeVirtClient) ListVirtualMachines(_ context.Context, namespace st
 	return res, nil
 }
 
-func (k *fakeKubeVirtClient) GetVirtualMachine(_ context.Context, namespace, vmName string) (*kubevirtv1.VirtualMachineInstance, error) {
+func (k *fakeKubeVirtClient) GetVirtualMachineInstance(_ context.Context, namespace, vmName string) (*kubevirtv1.VirtualMachineInstance, error) {
 	vmKey := getKey(namespace, vmName)
 	return k.vmiMap[vmKey], nil
 }

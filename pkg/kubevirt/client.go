@@ -55,8 +55,8 @@ type ClientBuilderFuncType func(kubeconfig string) (Client, error)
 // Client is a wrapper object for actual infra-cluster clients: kubernetes and the kubevirt
 type Client interface {
 	Ping(ctx context.Context) error
-	ListVirtualMachines(ctx context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error)
-	GetVirtualMachine(ctx context.Context, namespace, name string) (*kubevirtv1.VirtualMachineInstance, error)
+	ListVirtualMachineInstances(ctx context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error)
+	GetVirtualMachineInstance(ctx context.Context, namespace, name string) (*kubevirtv1.VirtualMachineInstance, error)
 	GetWorkloadManagingVirtualMachine(ctx context.Context, namespace, name string) (*kubevirtv1.VirtualMachine, error)
 	DeleteDataVolume(ctx context.Context, namespace string, name string) error
 	CreateDataVolume(ctx context.Context, namespace string, dataVolume *cdiv1.DataVolume) (*cdiv1.DataVolume, error)
@@ -217,7 +217,7 @@ func (c *client) RemoveVolumeFromVMI(ctx context.Context, namespace string, vmNa
 // EnsureVolumeAvailable checks to make sure the volume is available in the node before returning, checks for 2 minutes
 func (c *client) EnsureVolumeAvailable(ctx context.Context, namespace, vmName, volumeName string, timeout time.Duration) error {
 	return wait.PollUntilContextTimeout(ctx, time.Second, timeout, true, func(ctx context.Context) (done bool, err error) {
-		vmi, err := c.GetVirtualMachine(ctx, namespace, vmName)
+		vmi, err := c.GetVirtualMachineInstance(ctx, namespace, vmName)
 		if err != nil {
 			return false, err
 		}
@@ -234,7 +234,7 @@ func (c *client) EnsureVolumeAvailable(ctx context.Context, namespace, vmName, v
 // EnsureVolumeRemoved checks to make sure the volume is removed from the node before returning, checks for 2 minutes
 func (c *client) EnsureVolumeRemoved(ctx context.Context, namespace, vmName, volumeName string, timeout time.Duration) error {
 	return wait.PollUntilContextTimeout(ctx, time.Second, timeout, true, func(ctx context.Context) (done bool, err error) {
-		vmi, err := c.GetVirtualMachine(ctx, namespace, vmName)
+		vmi, err := c.GetVirtualMachineInstance(ctx, namespace, vmName)
 		if err != nil {
 			if !errors.IsNotFound(err) {
 				return false, err
@@ -290,8 +290,8 @@ func (c *client) EnsureControllerResize(ctx context.Context, namespace, claimNam
 	})
 }
 
-// ListVirtualMachines fetches a list of VMIs from the passed in namespace
-func (c *client) ListVirtualMachines(ctx context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
+// ListVirtualMachineInstances fetches a list of VMIs from the passed in namespace
+func (c *client) ListVirtualMachineInstances(ctx context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
 	list, err := c.virtClient.KubevirtV1().VirtualMachineInstances(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
@@ -299,8 +299,8 @@ func (c *client) ListVirtualMachines(ctx context.Context, namespace string) ([]k
 	return list.Items, nil
 }
 
-// GetVirtualMachine gets a VMIs from the passed in namespace
-func (c *client) GetVirtualMachine(ctx context.Context, namespace, name string) (*kubevirtv1.VirtualMachineInstance, error) {
+// GetVirtualMachineInstance gets a VMIs from the passed in namespace
+func (c *client) GetVirtualMachineInstance(ctx context.Context, namespace, name string) (*kubevirtv1.VirtualMachineInstance, error) {
 	return c.virtClient.KubevirtV1().VirtualMachineInstances(namespace).Get(ctx, name, metav1.GetOptions{})
 }
 

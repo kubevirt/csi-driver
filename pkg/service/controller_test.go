@@ -816,23 +816,23 @@ func getUnpublishVolumeRequest() *csi.ControllerUnpublishVolumeRequest {
 }
 
 type ControllerClientMock struct {
-	FailListVirtualMachines bool
-	FailDeleteDataVolume    bool
-	FailCreateDataVolume    bool
-	FailGetDataVolume       bool
-	FailAddVolumeToVM       bool
-	FailRemoveVolumeFromVM  bool
-	FailGetSnapshot         bool
-	FailCreateSnapshot      bool
-	FailDeleteSnapshot      bool
-	FailListSnapshots       bool
-	ShouldReturnVMNotFound  bool
-	ExpansionOccured        bool
-	ExpansionVerified       bool
-	virtualMachineStatus    kubevirtv1.VirtualMachineInstanceStatus
-	vmVolumes               []kubevirtv1.Volume
-	snapshots               map[string]*snapshotv1.VolumeSnapshot
-	datavolumes             map[string]*cdiv1.DataVolume
+	FailListVirtualMachineInstances bool
+	FailDeleteDataVolume            bool
+	FailCreateDataVolume            bool
+	FailGetDataVolume               bool
+	FailAddVolumeToVM               bool
+	FailRemoveVolumeFromVM          bool
+	FailGetSnapshot                 bool
+	FailCreateSnapshot              bool
+	FailDeleteSnapshot              bool
+	FailListSnapshots               bool
+	ShouldReturnVMNotFound          bool
+	ExpansionOccured                bool
+	ExpansionVerified               bool
+	virtualMachineStatus            kubevirtv1.VirtualMachineInstanceStatus
+	vmVolumes                       []kubevirtv1.Volume
+	snapshots                       map[string]*snapshotv1.VolumeSnapshot
+	datavolumes                     map[string]*cdiv1.DataVolume
 }
 
 func (c *ControllerClientMock) Ping(ctx context.Context) error {
@@ -847,9 +847,9 @@ func (c *ControllerClientMock) ListNamespace(ctx context.Context) (*corev1.Names
 func (c *ControllerClientMock) GetStorageClass(ctx context.Context, name string) (*storagev1.StorageClass, error) {
 	return nil, errors.New("Not implemented")
 }
-func (c *ControllerClientMock) ListVirtualMachines(_ context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
-	if c.FailListVirtualMachines {
-		return nil, errors.New("ListVirtualMachines failed")
+func (c *ControllerClientMock) ListVirtualMachineInstances(_ context.Context, namespace string) ([]kubevirtv1.VirtualMachineInstance, error) {
+	if c.FailListVirtualMachineInstances {
+		return nil, errors.New("ListVirtualMachineInstances failed")
 	}
 
 	return []kubevirtv1.VirtualMachineInstance{
@@ -862,9 +862,9 @@ func (c *ControllerClientMock) ListVirtualMachines(_ context.Context, namespace 
 	}, nil
 }
 
-func (c *ControllerClientMock) GetVirtualMachine(_ context.Context, namespace, name string) (*kubevirtv1.VirtualMachineInstance, error) {
-	if c.FailListVirtualMachines {
-		return nil, errors.New("ListVirtualMachines failed")
+func (c *ControllerClientMock) GetVirtualMachineInstance(_ context.Context, namespace, name string) (*kubevirtv1.VirtualMachineInstance, error) {
+	if c.FailListVirtualMachineInstances {
+		return nil, errors.New("ListVirtualMachineInstances failed")
 	}
 
 	return &kubevirtv1.VirtualMachineInstance{

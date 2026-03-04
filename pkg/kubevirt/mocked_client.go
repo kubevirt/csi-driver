@@ -211,19 +211,19 @@ func (mr *MockClientMockRecorder) GetPersistentVolumeClaim(ctx, namespace, claim
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPersistentVolumeClaim", reflect.TypeOf((*MockClient)(nil).GetPersistentVolumeClaim), ctx, namespace, claimName)
 }
 
-// GetVirtualMachine mocks base method.
-func (m *MockClient) GetVirtualMachine(ctx context.Context, namespace, name string) (*v11.VirtualMachineInstance, error) {
+// GetVirtualMachineInstance mocks base method.
+func (m *MockClient) GetVirtualMachineInstance(ctx context.Context, namespace, name string) (*v11.VirtualMachineInstance, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetVirtualMachine", ctx, namespace, name)
+	ret := m.ctrl.Call(m, "GetVirtualMachineInstance", ctx, namespace, name)
 	ret0, _ := ret[0].(*v11.VirtualMachineInstance)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetVirtualMachine indicates an expected call of GetVirtualMachine.
-func (mr *MockClientMockRecorder) GetVirtualMachine(ctx, namespace, name interface{}) *gomock.Call {
+// GetVirtualMachineInstance indicates an expected call of GetVirtualMachineInstance.
+func (mr *MockClientMockRecorder) GetVirtualMachineInstance(ctx, namespace, name interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVirtualMachine", reflect.TypeOf((*MockClient)(nil).GetVirtualMachine), ctx, namespace, name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVirtualMachineInstance", reflect.TypeOf((*MockClient)(nil).GetVirtualMachineInstance), ctx, namespace, name)
 }
 
 // GetVolumeSnapshot mocks base method.
@@ -256,19 +256,19 @@ func (mr *MockClientMockRecorder) GetWorkloadManagingVirtualMachine(ctx, namespa
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetWorkloadManagingVirtualMachine", reflect.TypeOf((*MockClient)(nil).GetWorkloadManagingVirtualMachine), ctx, namespace, name)
 }
 
-// ListVirtualMachines mocks base method.
-func (m *MockClient) ListVirtualMachines(ctx context.Context, namespace string) ([]v11.VirtualMachineInstance, error) {
+// ListVirtualMachineInstances mocks base method.
+func (m *MockClient) ListVirtualMachineInstances(ctx context.Context, namespace string) ([]v11.VirtualMachineInstance, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListVirtualMachines", ctx, namespace)
+	ret := m.ctrl.Call(m, "ListVirtualMachineInstances", ctx, namespace)
 	ret0, _ := ret[0].([]v11.VirtualMachineInstance)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListVirtualMachines indicates an expected call of ListVirtualMachines.
-func (mr *MockClientMockRecorder) ListVirtualMachines(ctx, namespace interface{}) *gomock.Call {
+// ListVirtualMachineInstances indicates an expected call of ListVirtualMachineInstances.
+func (mr *MockClientMockRecorder) ListVirtualMachineInstances(ctx, namespace interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListVirtualMachines", reflect.TypeOf((*MockClient)(nil).ListVirtualMachines), ctx, namespace)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListVirtualMachineInstances", reflect.TypeOf((*MockClient)(nil).ListVirtualMachineInstances), ctx, namespace)
 }
 
 // ListVolumeSnapshots mocks base method.

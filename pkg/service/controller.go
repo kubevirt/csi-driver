@@ -548,7 +548,7 @@ func (c *ControllerService) removeVolumeFromVm(ctx context.Context, dvName, vmNa
 
 	// Keep this for a few releases for upgrade handling
 	// from versions where VMI-level hotplug was being done
-	vmi, err := c.virtClient.GetVirtualMachine(ctx, c.infraClusterNamespace, vmName)
+	vmi, err := c.virtClient.GetVirtualMachineInstance(ctx, c.infraClusterNamespace, vmName)
 	if err != nil {
 		return err
 	}
