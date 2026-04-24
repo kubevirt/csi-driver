@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"os"
+	"os/exec"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"golang.org/x/net/context"
@@ -47,6 +48,54 @@ var _ = Describe("NodeService", func() {
 	})
 
 	Context("Staging a volume", func() {
+		It("should propagate non-ExitError failures from deviceLister", func() {
+			underTest.deviceLister = deviceListerFunc(func() ([]byte, error) {
+				return nil, fmt.Errorf("exec: \"lsblk\": executable file not found in $PATH")
+			})
+
+			_, err := underTest.NodeStageVolume(context.TODO(), &csi.NodeStageVolumeRequest{
+				VolumeId: "pvc-123",
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{
+							FsType: "ext4",
+						},
+					},
+				},
+				VolumeContext:     map[string]string{serialParameter: serialID},
+				StagingTargetPath: "/staging/path",
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("executable file not found"))
+		})
+
+		It("should include stderr details when deviceLister returns an ExitError", func() {
+			underTest.deviceLister = deviceListerFunc(func() ([]byte, error) {
+				return nil, &exec.ExitError{
+					ProcessState: nil,
+					Stderr:       []byte("lsblk: permission denied"),
+				}
+			})
+
+			_, err := underTest.NodeStageVolume(context.TODO(), &csi.NodeStageVolumeRequest{
+				VolumeId: "pvc-123",
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{
+						Mount: &csi.VolumeCapability_MountVolume{
+							FsType: "ext4",
+						},
+					},
+				},
+				VolumeContext:     map[string]string{serialParameter: serialID},
+				StagingTargetPath: "/staging/path",
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("lsblk failed with"))
+			Expect(err.Error()).To(ContainSubstring("lsblk: permission denied"))
+		})
+
 		It("should fail with non-matching serial ID", func() {
 			_, err := underTest.NodeStageVolume(context.TODO(), &csi.NodeStageVolumeRequest{
 				VolumeId:      "pvc-123",
@@ -263,6 +312,24 @@ var _ = Describe("NodeService", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(res).ToNot(BeNil())
 		})
+	})
+})
+
+var _ = Describe("makeFS", func() {
+	It("should return error when mkfs binary is not found", func() {
+		origPath := os.Getenv("PATH")
+		os.Setenv("PATH", "")
+		defer os.Setenv("PATH", origPath)
+
+		err := makeFS("/dev/fake", "ext4")
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("executable file not found"))
+	})
+
+	It("should return error for unsupported filesystem type", func() {
+		err := makeFS("/dev/fake", "ntfs")
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("not supported"))
 	})
 })
 
