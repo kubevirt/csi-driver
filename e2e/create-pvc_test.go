@@ -159,7 +159,9 @@ var _ = Describe("CreatePVC", func() {
 			s := tenantClient.CoreV1().Pods(namespace).GetLogs(readerPod.Name, &k8sv1.PodLogOptions{})
 			reader, err := s.Stream(context.Background())
 			g.Expect(err).ToNot(HaveOccurred())
-			defer reader.Close()
+			defer func() {
+				g.Expect(reader.Close()).ToNot(HaveOccurred())
+			}()
 			buf := new(bytes.Buffer)
 			n, err := buf.ReadFrom(reader)
 			g.Expect(err).ToNot(HaveOccurred())
@@ -223,7 +225,9 @@ var _ = Describe("CreatePVC", func() {
 			s := tenantClient.CoreV1().Pods(namespace).GetLogs(readerPod.Name, &k8sv1.PodLogOptions{})
 			reader, err := s.Stream(context.Background())
 			g.Expect(err).ToNot(HaveOccurred())
-			defer reader.Close()
+			defer func() {
+				g.Expect(reader.Close()).ToNot(HaveOccurred())
+			}()
 			buf := new(bytes.Buffer)
 			n, err := buf.ReadFrom(reader)
 			g.Expect(err).ToNot(HaveOccurred())
@@ -333,7 +337,9 @@ var _ = Describe("CreatePVC", func() {
 		s := tenantClient.CoreV1().Pods(namespace).GetLogs(readerPod.Name, &k8sv1.PodLogOptions{})
 		reader, err := s.Stream(context.Background())
 		Expect(err).ToNot(HaveOccurred())
-		defer reader.Close()
+		defer func() {
+			Expect(reader.Close()).ToNot(HaveOccurred())
+		}()
 		buf := new(bytes.Buffer)
 		n, err := buf.ReadFrom(reader)
 		Expect(err).ToNot(HaveOccurred())

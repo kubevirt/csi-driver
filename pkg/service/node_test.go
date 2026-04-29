@@ -1,12 +1,12 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"golang.org/x/net/context"
 	mount "k8s.io/mount-utils"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -316,11 +316,18 @@ var _ = Describe("NodeService", func() {
 })
 
 var _ = Describe("makeFS", func() {
-	It("should return error when mkfs binary is not found", func() {
-		origPath := os.Getenv("PATH")
-		os.Setenv("PATH", "")
-		defer os.Setenv("PATH", origPath)
+	var origPath string
 
+	BeforeEach(func() {
+		origPath = os.Getenv("PATH")
+		Expect(os.Setenv("PATH", "")).ToNot(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		Expect(os.Setenv("PATH", origPath)).ToNot(HaveOccurred())
+	})
+
+	It("should return error when mkfs binary is not found", func() {
 		err := makeFS("/dev/fake", "ext4")
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("executable file not found"))

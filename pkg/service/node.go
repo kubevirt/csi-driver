@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,7 +18,6 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
-	"golang.org/x/net/context"
 	klog "k8s.io/klog/v2"
 
 	"kubevirt.io/csi-driver/pkg/mounter"
@@ -363,7 +363,11 @@ func (n *NodeService) ensureMountFileExists(mountFile string) error {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
+		defer func() {
+			if closeErr := f.Close(); closeErr != nil {
+				klog.Errorf("failed to close file %s: %v", mountFile, closeErr)
+			}
+		}()
 	}
 	return err
 }

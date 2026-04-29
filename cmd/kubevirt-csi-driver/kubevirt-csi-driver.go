@@ -144,7 +144,7 @@ func configureNodeService(cfg *config, driver *service.KubevirtCSIDriver) (*serv
 
 	// Get node ID.
 	if cfg.nodeName == "" {
-		return nil, errors.New("cannot start NodeService without a node name.")
+		return nil, errors.New("cannot start NodeService without a node name")
 	}
 	node, err := tenantClientset.CoreV1().Nodes().Get(context.Background(), cfg.nodeName, v1.GetOptions{})
 	if err != nil {

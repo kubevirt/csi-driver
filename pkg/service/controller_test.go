@@ -1,13 +1,13 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	corev1 "k8s.io/api/core/v1"
@@ -1089,7 +1089,7 @@ func (c *ControllerClientMock) AddVolumeToVM(_ context.Context, namespace string
 	Expect(expectedVMName).To(Equal(vmName))
 	Expect(testVolumeName).To(Equal(addVolumeOptions.Name))
 	Expect(testVolumeName).To(Equal(addVolumeOptions.VolumeSource.DataVolume.Name))
-	Expect(getBusType()).To(Equal(addVolumeOptions.Disk.DiskDevice.Disk.Bus))
+	Expect(getBusType()).To(Equal(addVolumeOptions.Disk.Disk.Bus))
 	Expect(testDataVolumeUID).To(Equal(addVolumeOptions.Disk.Serial))
 
 	return nil
