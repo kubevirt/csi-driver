@@ -1,13 +1,13 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -21,7 +21,6 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
-	"kubevirt.io/csi-driver/pkg/kubevirt"
 	client "kubevirt.io/csi-driver/pkg/kubevirt"
 	"kubevirt.io/csi-driver/pkg/util"
 )
@@ -49,7 +48,7 @@ type ControllerService struct {
 
 // NewControllerService creates a new instance of ControllerService.
 func NewControllerService(
-	virtClient kubevirt.Client,
+	virtClient client.Client,
 	infraClusterNamespace string,
 	infraClusterLabels map[string]string,
 	storageClassEnforcement util.StorageClassEnforcement,

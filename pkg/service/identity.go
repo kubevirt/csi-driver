@@ -1,8 +1,9 @@
 package service
 
 import (
+	"context"
+
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"golang.org/x/net/context"
 	wrappers "google.golang.org/protobuf/types/known/wrapperspb"
 	"k8s.io/client-go/kubernetes"
 )
