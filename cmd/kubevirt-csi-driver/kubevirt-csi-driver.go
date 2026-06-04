@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v2"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -54,6 +55,13 @@ func parseConfig(args []string) (*config, error) {
 
 	fs.BoolVar(&cfg.runNodeService, "run-node-service", true, "Specifies whether or not to run the node service, the default is true")
 	fs.BoolVar(&cfg.runControllerService, "run-controller-service", true, "Specifies whether or not to run the controller service, the default is true")
+
+	fs.BoolVar(&cfg.enableDetachReconciler, "enable-detach-reconciler", false,
+		"Enable the background reconciler that detaches orphan hot-plug volumes from VMIs whose VM spec no longer references them. Opt-in.")
+	fs.DurationVar(&cfg.detachReconcilerSync, "detach-reconciler-sync-period", 5*time.Minute,
+		"How often the detach reconciler scans VMIs for orphan hot-plugs.")
+	fs.DurationVar(&cfg.detachReconcilerGrace, "detach-reconciler-grace-period", 5*time.Minute,
+		"Minimum age of an observed spec/status divergence before the detach reconciler treats it as orphan and acts.")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -121,7 +129,7 @@ func configureControllerService(cfg *config, driver *service.KubevirtCSIDriver) 
 		return nil, err
 	}
 
-	return driver.
+	driver = driver.
 		WithControllerService(
 			virtClient,
 			cfg.infraClusterNamespace,
@@ -130,7 +138,19 @@ func configureControllerService(cfg *config, driver *service.KubevirtCSIDriver) 
 		).
 		WithIdentityService(
 			identityClientset,
-		), nil
+		)
+
+	if cfg.enableDetachReconciler {
+		reconciler := service.NewDetachReconciler(
+			virtClient,
+			cfg.infraClusterNamespace,
+			cfg.detachReconcilerSync,
+			cfg.detachReconcilerGrace,
+		)
+		driver = driver.WithDetachReconciler(reconciler)
+	}
+
+	return driver, nil
 }
 
 // configureNodeService prepares the required clients and configuration for a

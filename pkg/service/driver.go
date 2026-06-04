@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+
 	"k8s.io/client-go/kubernetes"
 	klog "k8s.io/klog/v2"
 
@@ -20,6 +22,8 @@ type KubevirtCSIDriver struct {
 	*IdentityService
 	*ControllerService
 	*NodeService
+
+	detachReconciler *DetachReconciler
 }
 
 // NewKubevirtCSIDriver returns a new unconfigured KubeVirtCSIDriver.
@@ -61,8 +65,27 @@ func (d *KubevirtCSIDriver) WithNodeService(
 	return d
 }
 
-// Run will initiate the grpc services Identity, Controller, and Node.
+// WithDetachReconciler attaches an opt-in background reconciler that
+// periodically removes orphan hot-plug volumes from VMIs in the infra
+// cluster namespace. The reconciler is only started by Run() when non-nil.
+func (d *KubevirtCSIDriver) WithDetachReconciler(r *DetachReconciler) *KubevirtCSIDriver {
+	d.detachReconciler = r
+	return d
+}
+
+// Run will initiate the grpc services Identity, Controller, and Node, and
+// start the optional detach reconciler if one was configured.
 func (driver *KubevirtCSIDriver) Run(endpoint string) {
+	if driver.detachReconciler != nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go func() {
+			if err := driver.detachReconciler.Run(ctx); err != nil {
+				klog.Errorf("detach reconciler exited: %v", err)
+			}
+		}()
+	}
+
 	// run the gRPC server
 	klog.Info("Setting the rpc server")
 
