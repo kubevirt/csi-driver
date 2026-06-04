@@ -382,6 +382,27 @@ var _ = Describe("PublishUnPublish", func() {
 		Expect(capturingClient.hotunplugForVMIOccured).To(BeTrue())
 	})
 
+	It("should detach from VMI when the parent VM is gone but the VMI still has the hot-plug", func() {
+		// This simulates a CAPI/CAPK teardown race where the managing VM
+		// object is deleted before the VMI (and its hot-plug pod) finishes
+		// terminating. Pre-fix the driver returned success without calling
+		// RemoveVolumeFromVMI, leaving the hot-plug pod alive and the infra
+		// storage device exclusively attached to the source host.
+		capturingClient := &vmiUnplugCapturingClient{
+			ControllerClientMock: client,
+		}
+		controller.virtClient = capturingClient
+		capturingClient.ShouldReturnVMNotFound = true
+		capturingClient.virtualMachineStatus.VolumeStatus = []kubevirtv1.VolumeStatus{{
+			Name:          testVolumeName,
+			HotplugVolume: &kubevirtv1.HotplugVolumeStatus{},
+		}}
+
+		_, err := controller.ControllerUnpublishVolume(context.TODO(), getUnpublishVolumeRequest())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(capturingClient.hotunplugForVMIOccured).To(BeTrue(), "RemoveVolumeFromVMI must be invoked when VM is gone but VMI still has the hot-plug")
+	})
+
 	Context("Multi-attach", func() {
 
 		BeforeEach(func() {
@@ -1134,6 +1155,10 @@ func (c *ControllerClientMock) EnsureVolumeRemovedVM(_ context.Context, namespac
 	return false, nil
 }
 
+func (c *ControllerClientMock) EnsureVolumeRemovedVMI(_ context.Context, namespace, vmName, volName string) (bool, error) {
+	return false, nil
+}
+
 func (c *ControllerClientMock) CreateVolumeSnapshot(ctx context.Context, namespace, name, claimName, snapshotClassName string) (*snapshotv1.VolumeSnapshot, error) {
 	if c.FailCreateSnapshot {
 		return nil, errors.New("CreateVolumeSnapshot failed")
@@ -1288,8 +1313,9 @@ func (c *attachSkipClient) EnsureVolumeAvailableVM(_ context.Context,
 
 type detachSkipClient struct {
 	*ControllerClientMock
-	removeCnt int // RemoveVolumeFromVM called
-	ensureCnt int // EnsureVolumeRemoved(VM) called
+	removeCnt    int // RemoveVolumeFromVM called
+	ensureCnt    int // EnsureVolumeRemovedVM called
+	ensureVMICnt int // EnsureVolumeRemovedVMI called
 }
 
 func (c *detachSkipClient) RemoveVolumeFromVM(_ context.Context,
@@ -1303,5 +1329,12 @@ func (c *detachSkipClient) EnsureVolumeRemovedVM(_ context.Context,
 	ns, vm, dv string) (bool, error) {
 
 	c.ensureCnt++
-	return true, nil // volume absent
+	return true, nil // volume absent from VM spec
+}
+
+func (c *detachSkipClient) EnsureVolumeRemovedVMI(_ context.Context,
+	ns, vm, dv string) (bool, error) {
+
+	c.ensureVMICnt++
+	return true, nil // volume absent from VMI status
 }

@@ -217,6 +217,10 @@ func (c *fakeKubeVirtClient) EnsureVolumeRemovedVM(_ context.Context, namespace,
 	return false, nil
 }
 
+func (c *fakeKubeVirtClient) EnsureVolumeRemovedVMI(_ context.Context, namespace, vmName, volName string) (bool, error) {
+	return false, nil
+}
+
 func (k *fakeKubeVirtClient) EnsureVolumeRemoved(_ context.Context, namespace, vmName, volumeName string, timeout time.Duration) error {
 	return nil
 }
