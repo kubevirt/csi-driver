@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -26,6 +27,10 @@ type config struct {
 
 	runNodeService       bool
 	runControllerService bool
+
+	enableDetachReconciler bool
+	detachReconcilerSync   time.Duration
+	detachReconcilerGrace  time.Duration
 
 	// Client section.
 	tenantConfig            *rest.Config
