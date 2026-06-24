@@ -534,22 +534,17 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 		klog.Error("failed getting VM Name for node ID " + req.NodeId)
 		return nil, err
 	}
-	_, err = c.virtClient.GetWorkloadManagingVirtualMachine(ctx, c.infraClusterNamespace, vmName)
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			return nil, err
-		}
-		// VM removed, vacuously succeeded in unpublish
-		return nil, nil
-	}
-
-	// Fast-path: if the disk is no longer on the VM, succeed immediately
-	notPresent, err := c.virtClient.EnsureVolumeRemovedVM(ctx, c.infraClusterNamespace, vmName, dvName)
+	// We do NOT short-circuit on "VM not found" anymore. The VMI (and its
+	// hot-plug pod) can outlive the parent VM during a CAPI/CAPK teardown
+	// race; returning success here used to leave orphan hot-plug pods
+	// that hold the infra storage device exclusively attached to the source
+	// host — blocking subsequent attachments. See kubevirt/csi-driver#83.
+	attached, err := c.volumeStillAttached(ctx, vmName, dvName)
 	if err != nil {
 		return nil, err
 	}
-	if notPresent {
-		klog.V(3).Infof("Volume %s already detached from VM %s – skipping hot-unplug", dvName, vmName)
+	if !attached {
+		klog.V(3).Infof("Volume %s already detached from VM/VMI %s – skipping hot-unplug", dvName, vmName)
 		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
 
@@ -578,38 +573,79 @@ func (c *ControllerService) ControllerUnpublishVolume(ctx context.Context, req *
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
 
-func (c *ControllerService) removeVolumeFromVm(ctx context.Context, dvName, vmName string) error {
-	vm, err := c.virtClient.GetWorkloadManagingVirtualMachine(ctx, c.infraClusterNamespace, vmName)
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			return err
-		}
-		klog.V(3).Info("managing VM not found, remove succeeded")
-		return nil
-	}
-	removePossibleVM := false
-	for _, volume := range vm.Spec.Template.Spec.Volumes {
-		if volume.DataVolume == nil {
-			continue
-		}
-		if volume.DataVolume.Hotpluggable && volume.Name == dvName {
-			removePossibleVM = true
-		}
-	}
-	if removePossibleVM {
-		// Detach DataVolume from VM
-		err = c.virtClient.RemoveVolumeFromVM(ctx, c.infraClusterNamespace, vmName, &kubevirtv1.RemoveVolumeOptions{Name: dvName})
-		if err != nil {
-			return err
-		}
-		// We're done
-		return nil
+// volumeStillAttached returns true when the disk is still referenced by either
+// the VM spec or the VMI hot-plug status. Both surfaces must be checked: the
+// VM spec alone can lag the VMI status during a virt-api/virt-handler split,
+// and the VM object itself can be gone while the VMI is still alive.
+func (c *ControllerService) volumeStillAttached(ctx context.Context, vmName, dvName string) (bool, error) {
+	vmGone := false
+	_, err := c.virtClient.GetWorkloadManagingVirtualMachine(ctx, c.infraClusterNamespace, vmName)
+	switch {
+	case err == nil:
+	case errors.IsNotFound(err):
+		vmGone = true
+	default:
+		return false, err
 	}
 
-	// Keep this for a few releases for upgrade handling
-	// from versions where VMI-level hotplug was being done
+	if !vmGone {
+		removedFromVM, err := c.virtClient.EnsureVolumeRemovedVM(ctx, c.infraClusterNamespace, vmName, dvName)
+		if err != nil {
+			return false, err
+		}
+		if !removedFromVM {
+			return true, nil
+		}
+	}
+
+	removedFromVMI, err := c.virtClient.EnsureVolumeRemovedVMI(ctx, c.infraClusterNamespace, vmName, dvName)
+	if err != nil {
+		return false, err
+	}
+	return !removedFromVMI, nil
+}
+
+func (c *ControllerService) removeVolumeFromVm(ctx context.Context, dvName, vmName string) error {
+	vm, err := c.virtClient.GetWorkloadManagingVirtualMachine(ctx, c.infraClusterNamespace, vmName)
+	if err != nil && !errors.IsNotFound(err) {
+		return err
+	}
+
+	if vm != nil {
+		removePossibleVM := false
+		for _, volume := range vm.Spec.Template.Spec.Volumes {
+			if volume.DataVolume == nil {
+				continue
+			}
+			if volume.DataVolume.Hotpluggable && volume.Name == dvName {
+				removePossibleVM = true
+			}
+		}
+		if removePossibleVM {
+			// Detach DataVolume from VM
+			err = c.virtClient.RemoveVolumeFromVM(ctx, c.infraClusterNamespace, vmName, &kubevirtv1.RemoveVolumeOptions{Name: dvName})
+			if err != nil {
+				return err
+			}
+			// We're done
+			return nil
+		}
+	}
+
+	// VM is missing, or volume is no longer in VM.spec — check VMI status.
+	// This handles two cases:
+	//   1) Upgrade carry-over from versions that only hot-plugged at the VMI
+	//      level (pre-VM-hotplug).
+	//   2) VM teardown races where the VM object is deleted before the VMI
+	//      finishes terminating; the hot-plug pod is still active and must
+	//      be released to free the infra-side storage attachment.
 	vmi, err := c.virtClient.GetVirtualMachine(ctx, c.infraClusterNamespace, vmName)
 	if err != nil {
+		if errors.IsNotFound(err) {
+			// Both VM and VMI are gone — truly vacuous success.
+			klog.V(3).Infof("VM and VMI %s/%s both gone, considering volume %s detached", c.infraClusterNamespace, vmName, dvName)
+			return nil
+		}
 		return err
 	}
 	removePossibleVMI := false

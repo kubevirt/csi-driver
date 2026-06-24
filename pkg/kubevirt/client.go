@@ -70,6 +70,7 @@ type Client interface {
 	EnsureVolumeAvailableVM(ctx context.Context, namespace, name, volumeName string) (bool, error)
 	EnsureVolumeRemoved(ctx context.Context, namespace, vmName, volumeName string, timeout time.Duration) error
 	EnsureVolumeRemovedVM(ctx context.Context, namespace, name, volumeName string) (bool, error)
+	EnsureVolumeRemovedVMI(ctx context.Context, namespace, name, volumeName string) (bool, error)
 	EnsureSnapshotReady(ctx context.Context, namespace, name string, timeout time.Duration) error
 	EnsureControllerResize(ctx context.Context, namespace, claimName string, timeout time.Duration) error
 	CreateVolumeSnapshot(ctx context.Context, namespace, name, claimName, snapshotClassName string) (*snapshotv1.VolumeSnapshot, error)
@@ -598,6 +599,34 @@ func (c *client) EnsureVolumeRemovedVM(ctx context.Context, namespace, name, vol
 			continue
 		}
 		if volume.Name == volumeName {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+// EnsureVolumeRemovedVMI returns true when the VMI no longer reports the
+// volume as a hot-plug in its status. It is the live-state counterpart of
+// EnsureVolumeRemovedVM, which only inspects the VM spec. The two diverge
+// when the parent VM has been deleted but the VMI (and its hot-plug pod)
+// is still around, or when virt-api mutated VM.spec optimistically but
+// virt-handler has not unplugged the device yet.
+func (c *client) EnsureVolumeRemovedVMI(ctx context.Context, namespace, name, volumeName string) (bool, error) {
+	vmi, err := c.virtClient.KubevirtV1().VirtualMachineInstances(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return false, err
+		}
+		// No VMI, vacuously removed
+		return true, nil
+	}
+
+	for _, volumeStatus := range vmi.Status.VolumeStatus {
+		if volumeStatus.HotplugVolume == nil {
+			continue
+		}
+		if volumeStatus.Name == volumeName {
 			return false, nil
 		}
 	}
