@@ -15,7 +15,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"golang.org/x/net/context"
 	"k8s.io/klog/v2"
 
 	"kubevirt.io/csi-driver/pkg/mounter"
