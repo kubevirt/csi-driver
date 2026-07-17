@@ -12,12 +12,12 @@
     {
       "description": "Group all Kubernetes and CSI-related Go modules to avoid partial updates",
       "matchManagers": ["gomod"],
-      "matchPackagePatterns": [
-        "^k8s\\.io/",
-        "^sigs\\.k8s\\.io/",
-        "^github\\.com/kubernetes-csi/"
-      ],
-      "groupName": "kubernetes-and-csi-deps"
+      "groupName": "kubernetes-and-csi-deps",
+      "matchPackageNames": [
+        "/^k8s\\.io//",
+        "/^sigs\\.k8s\\.io//",
+        "/^github\\.com/kubernetes-csi//"
+      ]
     },
     {
       "description": "Automatically merge non-breaking patches and digests if CI passes",
