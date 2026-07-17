@@ -1,0 +1,35 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "github>redhat-exd-rebuilds/renovate-config"
+  ],
+  "postUpdateOptions": [
+    "gomodTidy",
+    "gomodUpdateImportPaths"
+  ],
+  "packageRules": [
+    {
+      "description": "Group all Kubernetes and CSI-related Go modules to avoid partial updates",
+      "matchManagers": ["gomod"],
+      "matchPackagePatterns": [
+        "^k8s\\.io/",
+        "^sigs\\.k8s\\.io/",
+        "^github\\.com/kubernetes-csi/"
+      ],
+      "groupName": "kubernetes-and-csi-deps"
+    },
+    {
+      "description": "Automatically merge non-breaking patches and digests if CI passes",
+      "matchUpdateTypes": ["patch", "digest"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Require manual approval on the Renovate Dashboard for major updates",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    }
+  ]
+}
