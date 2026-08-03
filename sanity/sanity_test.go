@@ -19,13 +19,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"reflect"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-
 	"github.com/google/uuid"
 	"github.com/kubernetes-csi/csi-test/v5/pkg/sanity"
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
@@ -339,9 +336,6 @@ func (m *fakeMounter) Unmount(target string) error {
 	for _, args := range *m.values {
 		if args.target != target {
 			existingValues = append(existingValues, args)
-		} else {
-			err := os.RemoveAll(target)
-			Expect(err).ToNot(HaveOccurred())
 		}
 	}
 	*m.values = existingValues
@@ -361,6 +355,11 @@ func (m *fakeMounter) List() ([]mount.MountPoint, error) {
 }
 
 func (m *fakeMounter) IsLikelyNotMountPoint(file string) (bool, error) {
+	for _, args := range *m.values {
+		if args.target == file {
+			return false, nil
+		}
+	}
 	return true, nil
 }
 
@@ -369,7 +368,7 @@ func (m *fakeMounter) GetMountRefs(pathname string) ([]string, error) {
 }
 
 func (m *fakeMounter) CanSafelySkipMountPointCheck() bool {
-	panic("shouldn't have called CanSafelySkipMountPointCheck")
+	return false
 }
 
 func (m *fakeMounter) IsMountPoint(file string) (bool, error) {
