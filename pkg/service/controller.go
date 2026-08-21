@@ -30,6 +30,15 @@ const (
 	busDefaultValue = kubevirtv1.DiskBus("scsi")
 	serialParameter = "serial"
 
+	// allowRWXFilesystemParameter is a StorageClass parameter that opts in to
+	// RWX Filesystem volume support. It must only be set on StorageClasses whose
+	// infraStorageClassName refers to a filesystem-capable infra StorageClass
+	// (e.g. CephFS). Setting this on a block-only infra StorageClass (e.g. RBD)
+	// will result in the infra PVC failing to bind — no data corruption, but the
+	// guest PVC will remain Pending. Use a Gatekeeper policy to enforce the
+	// correct pairing at admission time.
+	allowRWXFilesystemParameter = "allowRWXFilesystem"
+
 	ErrVolumeAttachedMessage = "volume is attached to another VM"
 )
 
@@ -90,7 +99,16 @@ func (c *ControllerService) validateCreateVolumeRequest(req *csi.CreateVolumeReq
 	}
 
 	if isRWX && !isBlock {
-		return false, status.Error(codes.InvalidArgument, "non-block volume with RWX access mode is not supported")
+		// RWX Filesystem is blocked by default because not all infra StorageClasses
+		// support multi-writer filesystem mounts (e.g. RBD does not). To opt in,
+		// set allowRWXFilesystem=true in the StorageClass parameters. Only do this
+		// when infraStorageClassName points to a filesystem-capable class (e.g. CephFS).
+		if req.Parameters[allowRWXFilesystemParameter] != "true" {
+			return false, status.Error(codes.InvalidArgument,
+				"non-block volume with RWX access mode is not supported. "+
+					"Set allowRWXFilesystem=true in StorageClass parameters to enable this "+
+					"for filesystem-capable infra StorageClasses such as CephFS.")
+		}
 	}
 
 	if c.storageClassEnforcement.AllowAll {

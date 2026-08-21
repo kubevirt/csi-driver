@@ -97,7 +97,7 @@ var _ = Describe("CreateVolume", func() {
 		Entry("volume mode = filesystem; [RWO]", getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER), nil),
 	)
 
-	It("should reject create volume request for FS & RWX", func() {
+	It("should reject create volume request for FS & RWX without allowRWXFilesystem flag", func() {
 		client := &ControllerClientMock{}
 		controller := ControllerService{
 			virtClient:              client,
@@ -109,6 +109,26 @@ var _ = Describe("CreateVolume", func() {
 		response, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER)))
 		Expect(err).To(MatchError(ContainSubstring("non-block volume with RWX access mode is not supported")))
 		Expect(response).To(BeNil())
+	})
+
+	It("should allow create volume request for FS & RWX when allowRWXFilesystem=true is set", func() {
+		// allowRWXFilesystem=true opts in to RWX Filesystem support. The admin is
+		// responsible for ensuring the infra StorageClass supports multi-writer
+		// filesystem mounts (e.g. CephFS). See allowRWXFilesystemParameter for details.
+		client := &ControllerClientMock{}
+		controller := ControllerService{
+			virtClient:              client,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
+
+		request := getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER))
+		request.Parameters[allowRWXFilesystemParameter] = "true"
+		response, err := controller.CreateVolume(context.TODO(), request)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(response).ToNot(BeNil())
+		Expect(response.GetVolume().GetVolumeId()).To(Equal(testVolumeName))
 	})
 
 	It("should propagate error from CreateVolume", func() {
