@@ -43,12 +43,14 @@ func (d *KubevirtCSIDriver) WithControllerService(
 	infraClusterNamespace string,
 	infraClusterLabels map[string]string,
 	storageClassEnforcement util.StorageClassEnforcement,
+	vmiHotplugFallback bool,
 ) *KubevirtCSIDriver {
 	d.ControllerService = NewControllerService(
 		virtClient,
 		infraClusterNamespace,
 		infraClusterLabels,
 		storageClassEnforcement,
+		vmiHotplugFallback,
 	)
 	return d
 }

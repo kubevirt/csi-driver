@@ -308,6 +308,7 @@ var _ = Describe("PublishUnPublish", func() {
 			infraClusterNamespace:   testInfraNamespace,
 			infraClusterLabels:      testInfraLabels,
 			storageClassEnforcement: storageClassEnforcement,
+			vmiHotplugFallback:      true,
 		}
 	})
 
@@ -368,6 +369,7 @@ var _ = Describe("PublishUnPublish", func() {
 	It("should unplug from VMI for carry over from old versions", func() {
 		capturingClient := &vmiUnplugCapturingClient{
 			ControllerClientMock: client,
+			vmiOwnerReferences:   testVMIOwnerReferences(),
 		}
 		controller.virtClient = capturingClient
 		// The driver used to only hotplug to VMI in older versions
@@ -390,6 +392,7 @@ var _ = Describe("PublishUnPublish", func() {
 		// storage device exclusively attached to the source host.
 		capturingClient := &vmiUnplugCapturingClient{
 			ControllerClientMock: client,
+			vmiOwnerReferences:   testVMIOwnerReferences(),
 		}
 		controller.virtClient = capturingClient
 		capturingClient.ShouldReturnVMNotFound = true
@@ -401,6 +404,83 @@ var _ = Describe("PublishUnPublish", func() {
 		_, err := controller.ControllerUnpublishVolume(context.TODO(), getUnpublishVolumeRequest())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(capturingClient.hotunplugForVMIOccured).To(BeTrue(), "RemoveVolumeFromVMI must be invoked when VM is gone but VMI still has the hot-plug")
+	})
+
+	Context("with the VMI hotplug fallback disabled", func() {
+		var capturingClient *vmiUnplugCapturingClient
+
+		BeforeEach(func() {
+			controller.vmiHotplugFallback = false
+			capturingClient = &vmiUnplugCapturingClient{
+				ControllerClientMock: client,
+				vmiOwnerReferences:   testVMIOwnerReferences(),
+			}
+			controller.virtClient = capturingClient
+		})
+
+		It("should not unplug from VMI when the volume is only in VMI status", func() {
+			capturingClient.virtualMachineStatus.VolumeStatus = []kubevirtv1.VolumeStatus{{
+				Name:          testVolumeName,
+				HotplugVolume: &kubevirtv1.HotplugVolumeStatus{},
+			}}
+
+			Expect(controller.removeVolumeFromVm(context.TODO(), testVolumeName, testVMName)).To(Succeed())
+			Expect(capturingClient.hotunplugForVMIOccured).To(BeFalse())
+		})
+
+		It("should not unplug from VMI when the parent VM is gone", func() {
+			capturingClient.ShouldReturnVMNotFound = true
+			capturingClient.virtualMachineStatus.VolumeStatus = []kubevirtv1.VolumeStatus{{
+				Name:          testVolumeName,
+				HotplugVolume: &kubevirtv1.HotplugVolumeStatus{},
+			}}
+
+			Expect(controller.removeVolumeFromVm(context.TODO(), testVolumeName, testVMName)).To(Succeed())
+			Expect(capturingClient.hotunplugForVMIOccured).To(BeFalse())
+		})
+
+		It("should unplug from VMI when the VMI is not owned by a VM", func() {
+			capturingClient.ShouldReturnVMNotFound = true
+			capturingClient.vmiOwnerReferences = nil
+			capturingClient.virtualMachineStatus.VolumeStatus = []kubevirtv1.VolumeStatus{{
+				Name:          testVolumeName,
+				HotplugVolume: &kubevirtv1.HotplugVolumeStatus{},
+			}}
+
+			Expect(controller.removeVolumeFromVm(context.TODO(), testVolumeName, testVMName)).To(Succeed())
+			Expect(capturingClient.hotunplugForVMIOccured).To(BeTrue())
+		})
+
+		It("should unplug from VMI when the VMI controller is not a VirtualMachine", func() {
+			capturingClient.ShouldReturnVMNotFound = true
+			capturingClient.vmiOwnerReferences = []metav1.OwnerReference{
+				*metav1.NewControllerRef(&kubevirtv1.VirtualMachineInstanceReplicaSet{ObjectMeta: metav1.ObjectMeta{Name: testVMName}}, kubevirtv1.VirtualMachineInstanceReplicaSetGroupVersionKind),
+			}
+			capturingClient.virtualMachineStatus.VolumeStatus = []kubevirtv1.VolumeStatus{{
+				Name:          testVolumeName,
+				HotplugVolume: &kubevirtv1.HotplugVolumeStatus{},
+			}}
+
+			Expect(controller.removeVolumeFromVm(context.TODO(), testVolumeName, testVMName)).To(Succeed())
+			Expect(capturingClient.hotunplugForVMIOccured).To(BeTrue())
+		})
+
+		It("should still remove the volume from the VM spec", func() {
+			capturingClient.vmVolumes = []kubevirtv1.Volume{{
+				Name: testVolumeName,
+				VolumeSource: kubevirtv1.VolumeSource{
+					DataVolume: &kubevirtv1.DataVolumeSource{
+						Name:         testVolumeName,
+						Hotpluggable: true,
+					},
+				},
+			}}
+
+			_, err := controller.ControllerUnpublishVolume(context.TODO(), getUnpublishVolumeRequest())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(capturingClient.hotunplugForVMOccured).To(BeTrue())
+			Expect(capturingClient.hotunplugForVMIOccured).To(BeFalse())
+		})
 	})
 
 	Context("Multi-attach", func() {
@@ -1226,6 +1306,30 @@ func (c *ControllerClientMock) ListVolumeSnapshots(ctx context.Context, namespac
 type vmiUnplugCapturingClient struct {
 	*ControllerClientMock
 	hotunplugForVMIOccured bool
+	hotunplugForVMOccured  bool
+	vmiOwnerReferences     []metav1.OwnerReference
+}
+
+func testVMIOwnerReferences() []metav1.OwnerReference {
+	return []metav1.OwnerReference{
+		*metav1.NewControllerRef(&kubevirtv1.VirtualMachine{ObjectMeta: metav1.ObjectMeta{Name: testVMName}}, kubevirtv1.VirtualMachineGroupVersionKind),
+	}
+}
+
+func (c *vmiUnplugCapturingClient) GetVirtualMachine(ctx context.Context, namespace, name string) (*kubevirtv1.VirtualMachineInstance, error) {
+	vmi, err := c.ControllerClientMock.GetVirtualMachine(ctx, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	vmi.OwnerReferences = c.vmiOwnerReferences
+
+	return vmi, nil
+}
+
+func (c *vmiUnplugCapturingClient) RemoveVolumeFromVM(ctx context.Context, namespace string, vmName string, removeVolumeOptions *kubevirtv1.RemoveVolumeOptions) error {
+	c.hotunplugForVMOccured = true
+
+	return c.ControllerClientMock.RemoveVolumeFromVM(ctx, namespace, vmName, removeVolumeOptions)
 }
 
 func (c *vmiUnplugCapturingClient) RemoveVolumeFromVMI(_ context.Context, namespace string, vmName string, removeVolumeOptions *kubevirtv1.RemoveVolumeOptions) error {

@@ -44,6 +44,7 @@ type ControllerService struct {
 	infraClusterNamespace   string
 	infraClusterLabels      map[string]string
 	storageClassEnforcement util.StorageClassEnforcement
+	vmiHotplugFallback      bool
 }
 
 // NewControllerService creates a new instance of ControllerService.
@@ -52,12 +53,14 @@ func NewControllerService(
 	infraClusterNamespace string,
 	infraClusterLabels map[string]string,
 	storageClassEnforcement util.StorageClassEnforcement,
+	vmiHotplugFallback bool,
 ) *ControllerService {
 	return &ControllerService{
 		virtClient:              virtClient,
 		infraClusterNamespace:   infraClusterNamespace,
 		infraClusterLabels:      infraClusterLabels,
 		storageClassEnforcement: storageClassEnforcement,
+		vmiHotplugFallback:      vmiHotplugFallback,
 	}
 }
 
@@ -648,6 +651,15 @@ func (c *ControllerService) removeVolumeFromVm(ctx context.Context, dvName, vmNa
 		}
 		return err
 	}
+	if !c.vmiHotplugFallback && ownedByVirtualMachine(vmi) {
+		// Without the HotplugVolumes gate virt-api rejects removevolume on a
+		// VM-owned VMI. Under DeclarativeHotplugVolumes virt-controller reconciles
+		// VMI hotplug volumes against VM.spec, and the garbage collector deletes
+		// the VMI with its VM, so the caller only waits for the VMI status to
+		// catch up. A VMI orphaned from its VM falls through: virt-api accepts it.
+		klog.V(3).Infof("Volume %s not in VM %s/%s spec, VMI hotplug fallback disabled", dvName, c.infraClusterNamespace, vmName)
+		return nil
+	}
 	removePossibleVMI := false
 	for _, volumeStatus := range vmi.Status.VolumeStatus {
 		if volumeStatus.HotplugVolume != nil && volumeStatus.Name == dvName {
@@ -986,4 +998,11 @@ func (c *ControllerService) IsVolumeAttachedToOtherVMI(
 	}
 
 	return false, nil
+}
+
+// ownedByVirtualMachine mirrors the virt-api check that rejects VMI volume
+// requests on a VM-owned VMI unless the HotplugVolumes gate is enabled.
+func ownedByVirtualMachine(vmi *kubevirtv1.VirtualMachineInstance) bool {
+	owner := v1.GetControllerOf(vmi)
+	return owner != nil && owner.Kind == "VirtualMachine" && owner.APIVersion == kubevirtv1.SchemeGroupVersion.String()
 }
