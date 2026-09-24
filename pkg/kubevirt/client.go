@@ -10,6 +10,8 @@ import (
 	"time"
 
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	k8sv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -73,6 +75,13 @@ type Client interface {
 	EnsureVolumeRemovedVMI(ctx context.Context, namespace, name, volumeName string) (bool, error)
 	EnsureSnapshotReady(ctx context.Context, namespace, name string, timeout time.Duration) error
 	EnsureControllerResize(ctx context.Context, namespace, claimName string, timeout time.Duration) error
+	// WaitForDataVolumeProvisionable polls the DataVolume until it is known to
+	// be provisionable (WaitForFirstConsumer / PVCBound / Succeeded), has
+	// permanently failed, or the timeout is reached.  A non-nil error is only
+	// returned when a definitive failure is detected; a timeout is treated as
+	// "unknown / transient" and returns nil so the caller can propagate success
+	// optimistically and let the retry mechanism surface the failure later.
+	WaitForDataVolumeProvisionable(ctx context.Context, namespace, name string, timeout time.Duration) error
 	CreateVolumeSnapshot(ctx context.Context, namespace, name, claimName, snapshotClassName string) (*snapshotv1.VolumeSnapshot, error)
 	GetVolumeSnapshot(ctx context.Context, namespace, name string) (*snapshotv1.VolumeSnapshot, error)
 	DeleteVolumeSnapshot(ctx context.Context, namespace, name string) error
@@ -251,6 +260,109 @@ func (c *client) EnsureVolumeRemoved(ctx context.Context, namespace, vmName, vol
 
 		return c.EnsureVolumeRemovedVM(ctx, namespace, vmName, volumeName)
 	})
+}
+
+// CDI DataVolumeBound condition reason strings.
+// These are defined in kubevirt.io/containerized-data-importer/pkg/controller/common,
+// which is not vendored here (only the API package is), so we redeclare the
+// subset we need to detect provisioning failures without parsing messages.
+const (
+	// dvBoundReasonErrExceededQuota is set when PVC creation is rejected by a
+	// ResourceQuota / ClusterResourceQuota.
+	dvBoundReasonErrExceededQuota = "ErrExceededQuota"
+
+	// dvBoundReasonErrClaimNotValid is set when the DataVolume spec is
+	// intrinsically invalid (e.g. missing storage class, incompatible access
+	// modes).
+	dvBoundReasonErrClaimNotValid = "ErrClaimNotValid"
+)
+
+// isKnownProvisioningFailure returns true for DataVolumeBound condition reasons
+// that represent definitive, non-transient provisioning failures.  Reasons not
+// listed here (e.g. "Pending") are treated as transient.
+func isKnownProvisioningFailure(reason string) bool {
+	switch reason {
+	case dvBoundReasonErrExceededQuota,
+		dvBoundReasonErrClaimNotValid:
+		return true
+	}
+	return false
+}
+
+// dataVolumeFailureMessage returns the most informative error text available
+// from a DataVolume's conditions, falling back to the phase name.  It
+// prioritises the DataVolumeBound condition because that is where CDI
+// surfaces provisioning-specific failure messages (quota, spec validation, …).
+func dataVolumeFailureMessage(dv *cdiv1.DataVolume) string {
+	for _, cond := range dv.Status.Conditions {
+		if cond.Type == cdiv1.DataVolumeBound && cond.Message != "" {
+			return cond.Message
+		}
+	}
+	for _, cond := range dv.Status.Conditions {
+		if cond.Message != "" {
+			return cond.Message
+		}
+	}
+	return string(dv.Status.Phase)
+}
+
+// WaitForDataVolumeProvisionable polls the DataVolume status until one of:
+//   - A provisionable phase is observed (WaitForFirstConsumer, PVCBound,
+//     Succeeded) – returns nil.
+//   - A known permanent failure reason is set on the DataVolumeBound condition
+//     – returns a gRPC-status error with an appropriate code.
+//   - The DataVolume enters the Failed phase – returns codes.Internal.
+//   - The timeout is reached without a definitive outcome – returns nil so the
+//     caller can propagate success optimistically.
+func (c *client) WaitForDataVolumeProvisionable(ctx context.Context, namespace, name string, timeout time.Duration) error {
+	var provisioningErr error
+
+	_ = wait.PollUntilContextTimeout(ctx, 500*time.Millisecond, timeout, true /*immediate*/, func(ctx context.Context) (bool, error) {
+		dv, err := c.cdiClient.CdiV1beta1().DataVolumes(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				// DV not visible yet (e.g. cache lag) – keep polling.
+				return false, nil
+			}
+			provisioningErr = status.Errorf(codes.Internal, "error checking DataVolume %s/%s: %v", namespace, name, err)
+			return true, nil
+		}
+
+		switch dv.Status.Phase {
+		case cdiv1.WaitForFirstConsumer, cdiv1.PVCBound, cdiv1.Succeeded:
+			// Volume is in a healthy, provisionable state.
+			return true, nil
+		case cdiv1.Failed:
+			provisioningErr = status.Errorf(codes.Internal,
+				"DataVolume %s/%s failed to provision: %s", namespace, name, dataVolumeFailureMessage(dv))
+			return true, nil
+		}
+
+		// Inspect the DataVolumeBound condition for known permanent failure reasons.
+		for _, cond := range dv.Status.Conditions {
+			if cond.Type != cdiv1.DataVolumeBound || cond.Status != k8sv1.ConditionFalse {
+				continue
+			}
+			if !isKnownProvisioningFailure(cond.Reason) {
+				// Transient reason (e.g. "Pending") – keep polling.
+				continue
+			}
+			if cond.Reason == dvBoundReasonErrExceededQuota {
+				provisioningErr = status.Errorf(codes.ResourceExhausted,
+					"DataVolume %s/%s cannot be provisioned: quota exceeded (%s)", namespace, name, cond.Message)
+			} else {
+				provisioningErr = status.Errorf(codes.Internal,
+					"DataVolume %s/%s failed to provision (%s): %s", namespace, name, cond.Reason, cond.Message)
+			}
+			return true, nil
+		}
+
+		return false, nil // still transient – keep polling
+	})
+
+	// provisioningErr is nil on timeout, which is treated as "unknown/transient".
+	return provisioningErr
 }
 
 // EnsureSnapshotReady checks to make sure the snapshot is ready before returning, checks for 2 minutes

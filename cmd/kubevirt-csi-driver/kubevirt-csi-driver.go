@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v2"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -55,6 +56,7 @@ func parseConfig(args []string) (*config, error) {
 	fs.BoolVar(&cfg.runNodeService, "run-node-service", true, "Specifies whether or not to run the node service, the default is true")
 	fs.BoolVar(&cfg.runControllerService, "run-controller-service", true, "Specifies whether or not to run the controller service, the default is true")
 	fs.BoolVar(&cfg.enableVMIHotplugFallback, "enable-vmi-hotplug-fallback", true, "Specifies whether or not to hot-unplug a volume from a VM-owned VMI when it is not in the VM spec. Requires the KubeVirt HotplugVolumes feature gate; set to false with DeclarativeHotplugVolumes. The default is true")
+	fs.DurationVar(&cfg.dvProvisioningCheckTimeout, "dv-provisioning-check-timeout", 30*time.Second, "How long CreateVolume waits to detect a definitive provisioning failure (e.g. quota exceeded) on the management cluster before returning success optimistically. Must be less than the external-provisioner --timeout value.")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -129,6 +131,7 @@ func configureControllerService(cfg *config, driver *service.KubevirtCSIDriver) 
 			infraClusterLabelsMap,
 			storageClassEnforcement,
 			cfg.enableVMIHotplugFallback,
+			cfg.dvProvisioningCheckTimeout,
 		).
 		WithIdentityService(
 			identityClientset,
