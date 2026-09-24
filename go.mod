@@ -17,7 +17,7 @@ require (
 	github.com/openshift/build-machinery-go v0.0.0-20240613134303-8359781da660
 	github.com/spf13/pflag v1.0.5
 	golang.org/x/sys v0.40.0
-	google.golang.org/grpc v1.80.0
+	google.golang.org/grpc v1.83.1
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.31.4
