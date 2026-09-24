@@ -148,3 +148,27 @@ func contains(s, substr string) bool {
 	}
 	return false
 }
+
+func TestParseConfigVMIHotplugFallback(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{name: "default", args: nil, want: true},
+		{name: "enabled", args: []string{"--enable-vmi-hotplug-fallback=true"}, want: true},
+		{name: "disabled", args: []string{"--enable-vmi-hotplug-fallback=false"}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := parseConfig(tt.args)
+			if err != nil {
+				t.Fatalf("parseConfig() error = %v", err)
+			}
+			if cfg.enableVMIHotplugFallback != tt.want {
+				t.Errorf("enableVMIHotplugFallback = %v, want %v", cfg.enableVMIHotplugFallback, tt.want)
+			}
+		})
+	}
+}

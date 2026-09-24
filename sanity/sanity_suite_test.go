@@ -68,6 +68,7 @@ var _ = ginkgo.BeforeSuite(func() {
 			infraClusterNamespace,
 			infraClusterLabelsMap,
 			storagClassEnforcement,
+			true,
 		).
 		WithNodeService(
 			getKey(infraClusterNamespace, nodeID),

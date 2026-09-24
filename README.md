@@ -176,6 +176,8 @@ Enable HotplugVolumes feature gate:
   - Otherwise, add the feature gate to the resource of type Kubevirt. There should be a single resource of this type and its name is irrelevant. See `deploy/example/kubevirt.yaml`
   - Pay attention that in some deployments there are operators that will restore previous configuration. You will have to stop these operators for editing the resources.Some operators allow configuration through their own CRD. HCO is such an operator. See [HCO cluster configuration](https://github.com/kubevirt/hyperconverged-cluster-operator/blob/master/docs/cluster-configuration.md) to understand how HCO feature gates are configured.
 
+If the infra cluster uses the DeclarativeHotplugVolumes feature gate instead of HotplugVolumes, start the controller with `--enable-vmi-hotplug-fallback=false`. Without HotplugVolumes, virt-api rejects a VMI-level hot-unplug on a VMI owned by a VM, and the controller otherwise falls back to that call when a volume is not in the VM spec.
+
 ## Building the binaries
 
 If you want to build the driver yourself, you can do so with the following command from the root directory:

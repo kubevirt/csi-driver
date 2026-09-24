@@ -24,8 +24,9 @@ type config struct {
 
 	tenantClusterKubeconfig string
 
-	runNodeService       bool
-	runControllerService bool
+	runNodeService           bool
+	runControllerService     bool
+	enableVMIHotplugFallback bool
 
 	// Client section.
 	tenantConfig            *rest.Config
