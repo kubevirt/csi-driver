@@ -2,10 +2,14 @@ package kubevirt
 
 import (
 	"context"
+	"sync/atomic"
+	"time"
 
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	k8sv1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -13,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/utils/ptr"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	cdicli "kubevirt.io/csi-driver/pkg/generated/containerized-data-importer/client-go/clientset/versioned/fake"
@@ -500,3 +505,202 @@ func createAllowDefaultStorageClassEnforcement() util.StorageClassEnforcement {
 		AllowDefault: true,
 	}
 }
+
+// --- WaitForDataVolumeProvisionable tests ---
+
+const (
+	provTestDVName    = "pvc-prov-test"
+	provTestNamespace = testNamespace
+	provTestTimeout   = 2 * time.Second
+)
+
+func createProvTestDV(phase cdiv1.DataVolumePhase, conditions []cdiv1.DataVolumeCondition) *cdiv1.DataVolume {
+	return &cdiv1.DataVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      provTestDVName,
+			Namespace: provTestNamespace,
+			Labels:    map[string]string{"test": "test"},
+		},
+		Status: cdiv1.DataVolumeStatus{
+			Phase:      phase,
+			Conditions: conditions,
+		},
+	}
+}
+
+func newProvTestClient(objects ...runtime.Object) *client {
+	c := NewFakeClient()
+	c = NewFakeCdiClient(c, objects...)
+	return c
+}
+
+var _ = Describe("WaitForDataVolumeProvisionable", func() {
+	DescribeTable("returns nil for provisionable phases",
+		func(phase cdiv1.DataVolumePhase) {
+			dv := createProvTestDV(phase, nil)
+			c := newProvTestClient(dv)
+
+			err := c.WaitForDataVolumeProvisionable(context.Background(), provTestNamespace, provTestDVName, provTestTimeout)
+			Expect(err).ToNot(HaveOccurred())
+		},
+		Entry("WaitForFirstConsumer", cdiv1.WaitForFirstConsumer),
+		Entry("PVCBound", cdiv1.PVCBound),
+		Entry("Succeeded", cdiv1.Succeeded),
+	)
+
+	It("returns codes.Internal when DataVolume is in Failed phase", func() {
+		dv := createProvTestDV(cdiv1.Failed, []cdiv1.DataVolumeCondition{
+			{
+				Type:    cdiv1.DataVolumeBound,
+				Status:  k8sv1.ConditionFalse,
+				Reason:  "some-reason",
+				Message: "something went wrong",
+			},
+		})
+		c := newProvTestClient(dv)
+
+		err := c.WaitForDataVolumeProvisionable(context.Background(), provTestNamespace, provTestDVName, provTestTimeout)
+		Expect(err).To(HaveOccurred())
+		s, ok := status.FromError(err)
+		Expect(ok).To(BeTrue())
+		Expect(s.Code()).To(Equal(codes.Internal))
+		Expect(s.Message()).To(ContainSubstring("failed to provision"))
+		Expect(s.Message()).To(ContainSubstring("something went wrong"))
+	})
+
+	It("returns codes.ResourceExhausted when DataVolumeBound has ErrExceededQuota", func() {
+		dv := createProvTestDV(cdiv1.Pending, []cdiv1.DataVolumeCondition{
+			{
+				Type:    cdiv1.DataVolumeBound,
+				Status:  k8sv1.ConditionFalse,
+				Reason:  "ErrExceededQuota",
+				Message: "exceeded quota: test-quota",
+			},
+		})
+		c := newProvTestClient(dv)
+
+		err := c.WaitForDataVolumeProvisionable(context.Background(), provTestNamespace, provTestDVName, provTestTimeout)
+		Expect(err).To(HaveOccurred())
+		s, ok := status.FromError(err)
+		Expect(ok).To(BeTrue())
+		Expect(s.Code()).To(Equal(codes.ResourceExhausted))
+		Expect(s.Message()).To(ContainSubstring("quota exceeded"))
+	})
+
+	It("returns codes.Internal when DataVolumeBound has ErrClaimNotValid", func() {
+		dv := createProvTestDV(cdiv1.Pending, []cdiv1.DataVolumeCondition{
+			{
+				Type:    cdiv1.DataVolumeBound,
+				Status:  k8sv1.ConditionFalse,
+				Reason:  "ErrClaimNotValid",
+				Message: "missing access mode",
+			},
+		})
+		c := newProvTestClient(dv)
+
+		err := c.WaitForDataVolumeProvisionable(context.Background(), provTestNamespace, provTestDVName, provTestTimeout)
+		Expect(err).To(HaveOccurred())
+		s, ok := status.FromError(err)
+		Expect(ok).To(BeTrue())
+		Expect(s.Code()).To(Equal(codes.Internal))
+		Expect(s.Message()).To(ContainSubstring("ErrClaimNotValid"))
+		Expect(s.Message()).To(ContainSubstring("missing access mode"))
+	})
+
+	It("keeps polling when DV is not found then resolves", func() {
+		dv := createProvTestDV(cdiv1.WaitForFirstConsumer, nil)
+		c := newProvTestClient(dv)
+
+		var callCount int32
+		fakeCdi := c.cdiClient.(*cdicli.Clientset)
+		fakeCdi.PrependReactor("get", "datavolumes", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			n := atomic.AddInt32(&callCount, 1)
+			if n == 1 {
+				return true, nil, errors.NewNotFound(
+					cdiv1.Resource("datavolumes"), provTestDVName)
+			}
+			return false, nil, nil
+		})
+
+		err := c.WaitForDataVolumeProvisionable(context.Background(), provTestNamespace, provTestDVName, provTestTimeout)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(atomic.LoadInt32(&callCount)).To(BeNumerically(">=", 2))
+	})
+
+	It("returns nil on timeout with transient state (Pending)", func() {
+		dv := createProvTestDV(cdiv1.Pending, []cdiv1.DataVolumeCondition{
+			{
+				Type:   cdiv1.DataVolumeBound,
+				Status: k8sv1.ConditionFalse,
+				Reason: "Pending",
+			},
+		})
+		c := newProvTestClient(dv)
+
+		err := c.WaitForDataVolumeProvisionable(context.Background(), provTestNamespace, provTestDVName, 500*time.Millisecond)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("treats Bound condition with ConditionTrue as transient (keeps polling)", func() {
+		dv := createProvTestDV(cdiv1.Pending, []cdiv1.DataVolumeCondition{
+			{
+				Type:    cdiv1.DataVolumeBound,
+				Status:  k8sv1.ConditionTrue,
+				Reason:  "ErrExceededQuota",
+				Message: "should be ignored because Status is True",
+			},
+		})
+		c := newProvTestClient(dv)
+
+		err := c.WaitForDataVolumeProvisionable(context.Background(), provTestNamespace, provTestDVName, 500*time.Millisecond)
+		Expect(err).ToNot(HaveOccurred())
+	})
+})
+
+var _ = Describe("dataVolumeFailureMessage", func() {
+	It("returns DataVolumeBound condition message first", func() {
+		dv := createProvTestDV(cdiv1.Failed, []cdiv1.DataVolumeCondition{
+			{
+				Type:    cdiv1.DataVolumeRunning,
+				Status:  k8sv1.ConditionFalse,
+				Message: "running condition message",
+			},
+			{
+				Type:    cdiv1.DataVolumeBound,
+				Status:  k8sv1.ConditionFalse,
+				Message: "bound condition message",
+			},
+		})
+		Expect(dataVolumeFailureMessage(dv)).To(Equal("bound condition message"))
+	})
+
+	It("falls back to any condition message when Bound has none", func() {
+		dv := createProvTestDV(cdiv1.Failed, []cdiv1.DataVolumeCondition{
+			{
+				Type:    cdiv1.DataVolumeRunning,
+				Status:  k8sv1.ConditionFalse,
+				Message: "running condition message",
+			},
+			{
+				Type:   cdiv1.DataVolumeBound,
+				Status: k8sv1.ConditionFalse,
+			},
+		})
+		Expect(dataVolumeFailureMessage(dv)).To(Equal("running condition message"))
+	})
+
+	It("falls back to phase name when no conditions have messages", func() {
+		dv := createProvTestDV(cdiv1.Failed, []cdiv1.DataVolumeCondition{
+			{
+				Type:   cdiv1.DataVolumeBound,
+				Status: k8sv1.ConditionFalse,
+			},
+		})
+		Expect(dataVolumeFailureMessage(dv)).To(Equal("Failed"))
+	})
+
+	It("falls back to phase name when no conditions exist", func() {
+		dv := createProvTestDV(cdiv1.Failed, nil)
+		Expect(dataVolumeFailureMessage(dv)).To(Equal("Failed"))
+	})
+})
