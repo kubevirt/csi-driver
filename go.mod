@@ -6,7 +6,6 @@ toolchain go1.24.13
 
 require (
 	github.com/container-storage-interface/spec v1.10.0
-	github.com/go-bindata/go-bindata v3.1.2+incompatible
 	github.com/golang/mock v1.6.0
 	github.com/google/uuid v1.6.0
 	github.com/kubernetes-csi/csi-lib-utils v0.18.1
