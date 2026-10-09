@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -27,6 +28,10 @@ type config struct {
 	runNodeService           bool
 	runControllerService     bool
 	enableVMIHotplugFallback bool
+	// dvProvisioningCheckTimeout controls how long CreateVolume polls the
+	// management-cluster DataVolume for early provisioning failures before
+	// returning success optimistically.  See --dv-provisioning-check-timeout.
+	dvProvisioningCheckTimeout time.Duration
 
 	// Client section.
 	tenantConfig            *rest.Config

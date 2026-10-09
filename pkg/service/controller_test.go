@@ -268,6 +268,53 @@ var _ = Describe("CreateVolume", func() {
 	})
 })
 
+var _ = DescribeTable("ControllerService provisioningCheckTimeout",
+	func(configured time.Duration, expected time.Duration) {
+		svc := &ControllerService{dvProvisioningCheckTimeout: configured}
+		Expect(svc.provisioningCheckTimeout()).To(Equal(expected))
+	},
+	Entry("returns default when not configured (zero value)",
+		time.Duration(0), defaultDVProvisioningCheckTimeout),
+	Entry("returns configured value when explicitly set",
+		10*time.Second, 10*time.Second),
+	Entry("returns configured value of 1 minute",
+		time.Minute, time.Minute),
+)
+
+var _ = DescribeTable("CreateVolume provisioning check",
+	func(provisioningErr error, expectedCode codes.Code, expectSuccess bool) {
+		cli := &ControllerClientMock{ProvisioningErr: provisioningErr}
+		controller := ControllerService{
+			virtClient:              cli,
+			infraClusterNamespace:   testInfraNamespace,
+			infraClusterLabels:      testInfraLabels,
+			storageClassEnforcement: storageClassEnforcement,
+		}
+
+		_, err := controller.CreateVolume(context.TODO(),
+			getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER)))
+		if expectSuccess {
+			Expect(err).ToNot(HaveOccurred())
+		} else {
+			Expect(err).To(HaveOccurred())
+			s, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(s.Code()).To(Equal(expectedCode))
+		}
+	},
+	Entry("returns success when provisioning check passes",
+		nil, codes.OK, true),
+	Entry("returns ResourceExhausted when quota is exceeded on management cluster",
+		status.Errorf(codes.ResourceExhausted, "DataVolume %s/%s cannot be provisioned: quota exceeded", testInfraNamespace, testVolumeName),
+		codes.ResourceExhausted, false),
+	Entry("returns Internal when DataVolume fails",
+		status.Errorf(codes.Internal, "DataVolume %s/%s failed to provision: Failed", testInfraNamespace, testVolumeName),
+		codes.Internal, false),
+	Entry("returns Internal when DataVolume spec is invalid",
+		status.Errorf(codes.Internal, "DataVolume %s/%s failed to provision (ErrClaimNotValid): missing access mode", testInfraNamespace, testVolumeName),
+		codes.Internal, false),
+)
+
 var _ = Describe("DeleteVolume", func() {
 	It("should successfully delete a volume", func() {
 		client := &ControllerClientMock{}
@@ -1025,6 +1072,9 @@ type ControllerClientMock struct {
 	ShouldReturnVMNotFound       bool
 	ExpansionOccured             bool
 	ExpansionVerified            bool
+	// ProvisioningErr, when non-nil, is returned by WaitForDataVolumeProvisionable
+	// to simulate a management-cluster provisioning failure (e.g. quota exceeded).
+	ProvisioningErr              error
 	virtualMachineStatus         kubevirtv1.VirtualMachineInstanceStatus
 	vmVolumes                    []kubevirtv1.Volume
 	snapshots                    map[string]*snapshotv1.VolumeSnapshot
@@ -1225,6 +1275,10 @@ func (c *ControllerClientMock) EnsureSnapshotReady(_ context.Context, namespace,
 func (c *ControllerClientMock) EnsureControllerResize(_ context.Context, namespace, claimName string, timeout time.Duration) error {
 	c.ExpansionVerified = true
 	return nil
+}
+
+func (c *ControllerClientMock) WaitForDataVolumeProvisionable(_ context.Context, namespace, name string, timeout time.Duration) error {
+	return c.ProvisioningErr
 }
 
 func (c *ControllerClientMock) EnsureVolumeAvailableVM(_ context.Context, namespace, vmName, volName string) (bool, error) {

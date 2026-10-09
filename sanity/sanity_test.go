@@ -230,6 +230,10 @@ func (k *fakeKubeVirtClient) EnsureControllerResize(_ context.Context, namespace
 	return nil
 }
 
+func (k *fakeKubeVirtClient) WaitForDataVolumeProvisionable(_ context.Context, namespace, name string, timeout time.Duration) error {
+	return nil
+}
+
 func (k *fakeKubeVirtClient) CreateVolumeSnapshot(_ context.Context, namespace, name, volumeName, snapclassName string) (*snapshotv1.VolumeSnapshot, error) {
 	snapshot := &snapshotv1.VolumeSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
