@@ -18,6 +18,12 @@ spec:
       enableServiceLinks: false
       serviceAccount: kubevirt-csi
       priorityClassName: system-cluster-critical
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       nodeSelector:
         node-role.kubernetes.io/control-plane: ""
       tolerations:
@@ -74,6 +80,12 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
         - name: csi-provisioner
           image: quay.io/openshift/origin-csi-external-provisioner:latest
           args:
@@ -91,6 +103,12 @@ spec:
               mountPath: /var/lib/csi/sockets/pluginproxy/
             - name: tenantcluster
               mountPath: "/var/run/secrets/tenantcluster"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
         - name: csi-attacher
           image: quay.io/openshift/origin-csi-external-attacher:latest
           args:
@@ -111,6 +129,12 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
         - name: csi-liveness-probe
           image: quay.io/openshift/origin-csi-livenessprobe:latest
           args:
@@ -126,6 +150,12 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
         - name: csi-snapshotter
           args:
           - "--v=5"
@@ -145,6 +175,12 @@ spec:
             requests:
               memory: 20Mi
               cpu: 10m
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
         - name: csi-resizer
           image: registry.k8s.io/sig-storage/csi-resizer:v1.13.1
           args:
@@ -163,6 +199,8 @@ spec:
               cpu: 10m
               memory: 20Mi
           securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop:
                 - ALL
