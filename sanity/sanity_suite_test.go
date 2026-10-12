@@ -69,6 +69,7 @@ var _ = ginkgo.BeforeSuite(func() {
 			infraClusterLabelsMap,
 			storagClassEnforcement,
 			true,
+			0, // use defaultDVProvisioningCheckTimeout
 		).
 		WithNodeService(
 			getKey(infraClusterNamespace, nodeID),

@@ -125,6 +125,21 @@ func (mr *MockClientMockRecorder) EnsureControllerResize(ctx, namespace, claimNa
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureControllerResize", reflect.TypeOf((*MockClient)(nil).EnsureControllerResize), ctx, namespace, claimName, timeout)
 }
 
+// WaitForDataVolumeProvisionable mocks base method.
+func (m *MockClient) WaitForDataVolumeProvisionable(ctx context.Context, namespace, name string, timeout time.Duration) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WaitForDataVolumeProvisionable", ctx, namespace, name, timeout)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// WaitForDataVolumeProvisionable indicates an expected call of WaitForDataVolumeProvisionable.
+func (mr *MockClientMockRecorder) WaitForDataVolumeProvisionable(ctx, namespace, name, timeout interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitForDataVolumeProvisionable",
+		reflect.TypeOf((*MockClient)(nil).WaitForDataVolumeProvisionable), ctx, namespace, name, timeout)
+}
+
 // EnsureSnapshotReady mocks base method.
 func (m *MockClient) EnsureSnapshotReady(ctx context.Context, namespace, name string, timeout time.Duration) error {
 	m.ctrl.T.Helper()
