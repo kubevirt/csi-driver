@@ -170,6 +170,12 @@ spec:
             requests:
               memory: 20Mi
               cpu: 10m
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
         - name: csi-resizer
           image: registry.k8s.io/sig-storage/csi-resizer:v1.13.1
           args:
