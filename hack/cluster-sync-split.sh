@@ -39,9 +39,6 @@ metadata:
 spec:
   template:
     spec:
-      securityContext:
-        runAsUser: 1001
-        runAsGroup: 1001
       containers:
         - name: csi-driver
           image: $INFRA_REGISTRY/$TARGET_NAME:$TAG
@@ -54,6 +51,8 @@ resources:
 - ../base
 - infra-namespace-configmap.yaml
 namespace: $2
+components:
+- ../../components/plain-kubernetes
 patches:
 - path: controller.yaml
 END

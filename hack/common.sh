@@ -104,6 +104,8 @@ function cluster::generate_controller_dev_kustomization() {
 resources:
 - ../base
 namespace: $2
+components:
+- ../../components/plain-kubernetes
 patches:
 - path: controller.yaml
 END
