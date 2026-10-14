@@ -39,6 +39,9 @@ metadata:
 spec:
   template:
     spec:
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
       containers:
         - name: csi-driver
           image: $INFRA_REGISTRY/$TARGET_NAME:$TAG
