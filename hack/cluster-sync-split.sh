@@ -51,6 +51,8 @@ resources:
 - ../base
 - infra-namespace-configmap.yaml
 namespace: $2
+components:
+- ../../components/plain-kubernetes
 patches:
 - path: controller.yaml
 END

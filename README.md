@@ -41,6 +41,13 @@ kubectl_tenant apply --kubeconfig $TENANT_KUBECONFIG --kustomize ./deploy/tenant
 # Deploy the controller resources in the tenant cluster with the overlay in deploy/controller-tenant/overlay
 kubectl apply --kubeconfig $TENANT_KUBECONFIG --kustomize ./deploy/controller-tenant/overlay
 ```
+### Plain Kubernetes
+The controller Deployments set `runAsNonRoot` but no UID, so OpenShift can assign one through its SCC. On plain Kubernetes the CSI sidecar images run as root by default, so add the component that sets the pod UID and GID to 1001 to the controller overlay:
+```yaml
+components:
+- ../../components/plain-kubernetes
+```
+
 ### Split deployment
 A split deployment is where the controller is deployed in the namespace of the tenant cluster inside of the infra cluster. This means the controller lives in the same namespace as the tenant cluster Virtual Machines. The daemonset is still deployed in the tenant cluster. This allows to not give the tenat cluster access to the infra cluster in order to manage DataVolumes in the infra cluster.
 

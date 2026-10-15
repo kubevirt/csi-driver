@@ -19,3 +19,5 @@ ARG git_sha=NONE
 LABEL multi.GIT_SHA=${git_sha}
 
 COPY --from=builder /src/kubevirt-csi-driver/kubevirt-csi-driver .
+
+USER 1001

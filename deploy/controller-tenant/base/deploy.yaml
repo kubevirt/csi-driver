@@ -17,6 +17,10 @@ spec:
       enableServiceLinks: false
       serviceAccount: kubevirt-csi-controller-sa
       priorityClassName: system-cluster-critical
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       nodeSelector:
         node-role.kubernetes.io/control-plane: ""
       tolerations:
@@ -76,6 +80,12 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
         - name: csi-provisioner
           image: registry.k8s.io/sig-storage/csi-provisioner:v6.0.2
           args:
@@ -94,6 +104,12 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
         - name: csi-attacher
           image: registry.k8s.io/sig-storage/csi-attacher:v4.10.0
           args:
@@ -111,6 +127,12 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
         - name: csi-liveness-probe
           image: registry.k8s.io/sig-storage/livenessprobe:v2.17.0
           args:
@@ -124,6 +146,12 @@ spec:
             requests:
               memory: 50Mi
               cpu: 10m
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
         - name: csi-snapshotter
           args:
           - "--v=3"
@@ -140,6 +168,12 @@ spec:
             requests:
               memory: 20Mi
               cpu: 10m
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
         - name: csi-resizer
           image: registry.k8s.io/sig-storage/csi-resizer:v1.13.1
           args:
@@ -155,6 +189,8 @@ spec:
               cpu: 10m
               memory: 20Mi
           securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop:
                 - ALL

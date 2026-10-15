@@ -194,6 +194,7 @@ spec:
         - name: csi-driver
           securityContext:
             privileged: true
+            runAsUser: 0
             allowPrivilegeEscalation: true
           imagePullPolicy: Always
           image: quay.io/kubevirt/kubevirt-csi-driver:latest
