@@ -1144,7 +1144,8 @@ func (c *ControllerClientMock) GetVirtualMachine(_ context.Context, namespace, n
 
 func (c *ControllerClientMock) GetWorkloadManagingVirtualMachine(_ context.Context, namespace, name string) (*kubevirtv1.VirtualMachine, error) {
 	if c.ShouldReturnVMNotFound {
-		return nil, k8serrors.NewNotFound(corev1.Resource("vm"), name)
+		// Like a generated client-go Get: an empty, non-nil object with the error.
+		return &kubevirtv1.VirtualMachine{}, k8serrors.NewNotFound(corev1.Resource("vm"), name)
 	}
 	volumes := make([]kubevirtv1.Volume, 0)
 	volumes = append(volumes, c.vmVolumes...)
