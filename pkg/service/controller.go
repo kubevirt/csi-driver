@@ -645,8 +645,12 @@ func (c *ControllerService) volumeStillAttached(ctx context.Context, vmName, dvN
 
 func (c *ControllerService) removeVolumeFromVm(ctx context.Context, dvName, vmName string) error {
 	vm, err := c.virtClient.GetWorkloadManagingVirtualMachine(ctx, c.infraClusterNamespace, vmName)
-	if err != nil && !errors.IsNotFound(err) {
-		return err
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		}
+		// A typed Get returns an empty, non-nil object with NotFound.
+		vm = nil
 	}
 
 	if vm != nil {
