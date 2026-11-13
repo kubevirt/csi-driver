@@ -561,11 +561,15 @@ func getDeviceBySerialID(serialID string, deviceLister DeviceLister) (device, er
 		return device{}, err
 	}
 
+	var truncated []device
 	for _, d := range devices.BlockDevices {
 		klog.V(5).Infof("check block device %v", d)
 		d.Path = "/dev/" + d.Name
 		if d.SerialID == serialID {
 			return d, nil
+		}
+		if isTruncatedVirtioSerial(d, serialID) {
+			truncated = append(truncated, d)
 		}
 
 		// rescan devices missing serial numbers
@@ -574,7 +578,28 @@ func getDeviceBySerialID(serialID string, deviceLister DeviceLister) (device, er
 			rescanDevice(d.Path)
 		}
 	}
-	return device{}, errors.New("couldn't find device by serial id")
+	switch len(truncated) {
+	case 0:
+		return device{}, errors.New("couldn't find device by serial id")
+	case 1:
+		klog.Infof("Matched device %s by truncated virtio-blk serial %s", truncated[0].Path, truncated[0].SerialID)
+		return truncated[0], nil
+	default:
+		return device{}, fmt.Errorf("found %d virtio-blk devices whose truncated serial matches %s", len(truncated), serialID)
+	}
+}
+
+// virtioBlkSerialLen is the maximum serial length virtio-blk exposes to the guest.
+// Longer serials, such as volume UUIDs, are cut to this length.
+const virtioBlkSerialLen = 20
+
+// isTruncatedVirtioSerial reports whether d is a virtio-blk disk whose serial is
+// serialID cut to the virtio-blk limit.
+func isTruncatedVirtioSerial(d device, serialID string) bool {
+	return strings.HasPrefix(d.Name, "vd") &&
+		len(d.SerialID) == virtioBlkSerialLen &&
+		len(serialID) > virtioBlkSerialLen &&
+		strings.HasPrefix(serialID, d.SerialID)
 }
 
 // rescanDevice triggers a udevadm rescan for the specified device path.

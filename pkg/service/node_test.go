@@ -646,3 +646,38 @@ func (f *failingMounter) Mount(source string, target string, fstype string, opti
 func (f *failingMounter) Unmount(target string) error {
 	return fmt.Errorf("failing unmounter always fails")
 }
+
+var _ = Describe("getDeviceBySerialID", func() {
+	lister := func(devs ...string) DeviceLister {
+		return deviceListerFunc(func() ([]byte, error) {
+			return []byte(fmt.Sprintf(`{"blockdevices": [%s]}`, strings.Join(devs, ","))), nil
+		})
+	}
+	dev := func(name, serial string) string {
+		return fmt.Sprintf(`{"name":%q, "serial":%q, "fstype":null}`, name, serial)
+	}
+	truncated := serialID[:20]
+
+	DescribeTable("should find the device",
+		func(want string, devs ...string) {
+			d, err := getDeviceBySerialID(serialID, lister(devs...))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(d.Path).To(Equal("/dev/" + want))
+		},
+		Entry("scsi disk with full serial", "sdc", dev("sda", "other"), dev("sdc", serialID)),
+		Entry("virtio disk with full serial", "vdb", dev("vdb", serialID)),
+		Entry("virtio disk with truncated serial", "vdb", dev("vda", "other"), dev("vdb", truncated)),
+		Entry("exact match over truncated match", "sdc", dev("vdb", truncated), dev("sdc", serialID)),
+	)
+
+	DescribeTable("should fail",
+		func(devs ...string) {
+			_, err := getDeviceBySerialID(serialID, lister(devs...))
+			Expect(err).To(HaveOccurred())
+		},
+		Entry("scsi disk with truncated serial", dev("sdc", truncated)),
+		Entry("virtio serial shorter than the limit", dev("vdb", serialID[:19])),
+		Entry("virtio serial that is not a prefix", dev("vdb", "4b13cebc-7406-4c19-9")),
+		Entry("two virtio disks with the same truncated serial", dev("vdb", truncated), dev("vdc", truncated)),
+	)
+})
