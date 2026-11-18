@@ -614,7 +614,9 @@ func isTruncatedVirtioSerial(d device, serialID string) bool {
 // Any standard output or standard error from the udevadm command, along with
 // any execution errors, are logged using klog.Errorf.
 //
-// This requires NodeService daemonset to mount /sys from the host
+// The trigger writes the device's uevent file in sysfs. The node plugin runs
+// privileged, and a privileged container's /sys is mounted read-write, so no
+// hostPath mount of /sys is needed; the manifests in deploy/ mount none.
 //
 // Parameters:
 //
