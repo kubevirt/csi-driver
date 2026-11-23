@@ -11,6 +11,7 @@ import (
 
 	"gopkg.in/yaml.v2"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 	klog "k8s.io/klog/v2"
 
 	"kubevirt.io/csi-driver/pkg/service"
@@ -113,6 +114,9 @@ func configureControllerService(cfg *config, driver *service.KubevirtCSIDriver) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to configure storage class enforcement: %w", err)
 	}
+	if err := validateInfraStorageClassLabels(infraClusterLabelsMap, storageClassEnforcement); err != nil {
+		return nil, fmt.Errorf("failed to configure storage class enforcement: %w", err)
+	}
 
 	identityClientset, err := cfg.getInfraClientset()
 	if err != nil {
@@ -185,6 +189,30 @@ func configureStorageClassEnforcement(infraStorageClassEnforcement string) (util
 		return storageClassEnforcement, fmt.Errorf("failed to parse infra-storage-class-enforcement %w", err)
 	}
 	return storageClassEnforcement, nil
+}
+
+// validateInfraStorageClassLabels rejects a per-class label that uses a key
+// from the cluster-wide infra labels. Those keys are the ownership check on
+// DataVolumes, PVCs and snapshots, so overriding one would make the driver
+// reject a volume it created.
+func validateInfraStorageClassLabels(clusterLabels map[string]string, enforcement util.StorageClassEnforcement) error {
+	for className, classLabels := range enforcement.InfraStorageClassLabels {
+		if className == "" {
+			return errors.New("infraStorageClassLabels contains an empty storage class name")
+		}
+		for key, value := range classLabels {
+			if errs := validation.IsQualifiedName(key); len(errs) > 0 {
+				return fmt.Errorf("infraStorageClassLabels for storage class %q has invalid label key %q: %s", className, key, strings.Join(errs, "; "))
+			}
+			if errs := validation.IsValidLabelValue(value); len(errs) > 0 {
+				return fmt.Errorf("infraStorageClassLabels for storage class %q has invalid value for label %q: %s", className, key, strings.Join(errs, "; "))
+			}
+			if _, exists := clusterLabels[key]; exists {
+				return fmt.Errorf("infraStorageClassLabels for storage class %q must not override cluster label %q", className, key)
+			}
+		}
+	}
+	return nil
 }
 
 func parseLabels(cfg *config) (map[string]string, error) {

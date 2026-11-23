@@ -68,6 +68,24 @@ func (c *ControllerService) provisioningCheckTimeout() time.Duration {
 	return defaultDVProvisioningCheckTimeout
 }
 
+// dataVolumeLabels returns the cluster-wide infra labels plus the labels
+// configured for this infra storage class. The shared cluster map is copied
+// so a per-class entry cannot change it. An empty class name is the infra
+// default class and gets no extra labels.
+func (c *ControllerService) dataVolumeLabels(storageClassName string) map[string]string {
+	labels := make(map[string]string, len(c.infraClusterLabels))
+	for key, value := range c.infraClusterLabels {
+		labels[key] = value
+	}
+	if storageClassName == "" {
+		return labels
+	}
+	for key, value := range c.storageClassEnforcement.InfraStorageClassLabels[storageClassName] {
+		labels[key] = value
+	}
+	return labels
+}
+
 // NewControllerService creates a new instance of ControllerService.
 func NewControllerService(
 	virtClient client.Client,
@@ -226,7 +244,7 @@ func (c *ControllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 		ObjectMeta: v1.ObjectMeta{
 			Name:      dvName,
 			Namespace: c.infraClusterNamespace,
-			Labels:    c.infraClusterLabels,
+			Labels:    c.dataVolumeLabels(storageClassName),
 			Annotations: map[string]string{
 				"cdi.kubevirt.io/storage.deleteAfterCompletion": "false",
 			},

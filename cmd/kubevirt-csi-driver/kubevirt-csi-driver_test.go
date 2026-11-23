@@ -1,8 +1,11 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
+
+	"kubevirt.io/csi-driver/pkg/util"
 )
 
 func TestResolveNodeID(t *testing.T) {
@@ -197,4 +200,96 @@ func TestParseConfigDVProvisioningCheckTimeout(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConfigureStorageClassEnforcementLabels(t *testing.T) {
+	raw := `
+allowList: [infra-basic, infra-standard]
+allowDefault: false
+infraStorageClassLabels:
+  infra-basic:
+    storage-tier: basic
+  infra-standard:
+    storage-tier: standard
+`
+	got, err := configureStorageClassEnforcement(raw)
+	if err != nil {
+		t.Fatalf("configureStorageClassEnforcement() error = %v", err)
+	}
+	if got.InfraStorageClassLabels["infra-basic"]["storage-tier"] != "basic" {
+		t.Fatalf("infra-basic labels = %v", got.InfraStorageClassLabels["infra-basic"])
+	}
+	if got.InfraStorageClassLabels["infra-standard"]["storage-tier"] != "standard" {
+		t.Fatalf("infra-standard labels = %v", got.InfraStorageClassLabels["infra-standard"])
+	}
+}
+
+func TestValidateInfraStorageClassLabels(t *testing.T) {
+	cluster := map[string]string{"csi-driver/cluster": "tenant"}
+
+	t.Run("accepts disjoint keys", func(t *testing.T) {
+		err := validateInfraStorageClassLabels(cluster, util.StorageClassEnforcement{
+			InfraStorageClassLabels: map[string]map[string]string{
+				"infra-basic": {"storage-tier": "basic"},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("rejects a key that overrides a cluster label", func(t *testing.T) {
+		err := validateInfraStorageClassLabels(cluster, util.StorageClassEnforcement{
+			InfraStorageClassLabels: map[string]map[string]string{
+				"infra-basic": {"csi-driver/cluster": "other"},
+			},
+		})
+		if err == nil || !strings.Contains(err.Error(), "csi-driver/cluster") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	t.Run("rejects an empty class name", func(t *testing.T) {
+		err := validateInfraStorageClassLabels(cluster, util.StorageClassEnforcement{
+			InfraStorageClassLabels: map[string]map[string]string{
+				"": {"storage-tier": "basic"},
+			},
+		})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("rejects an empty label key", func(t *testing.T) {
+		err := validateInfraStorageClassLabels(cluster, util.StorageClassEnforcement{
+			InfraStorageClassLabels: map[string]map[string]string{
+				"infra-basic": {"": "basic"},
+			},
+		})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("rejects an invalid label key", func(t *testing.T) {
+		err := validateInfraStorageClassLabels(cluster, util.StorageClassEnforcement{
+			InfraStorageClassLabels: map[string]map[string]string{
+				"infra-basic": {"storage tier": "basic"},
+			},
+		})
+		if err == nil || !strings.Contains(err.Error(), "invalid label key") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	t.Run("rejects an invalid label value", func(t *testing.T) {
+		err := validateInfraStorageClassLabels(cluster, util.StorageClassEnforcement{
+			InfraStorageClassLabels: map[string]map[string]string{
+				"infra-basic": {"storage-tier": "premium tier"},
+			},
+		})
+		if err == nil || !strings.Contains(err.Error(), "invalid value") {
+			t.Fatalf("error = %v", err)
+		}
+	})
 }

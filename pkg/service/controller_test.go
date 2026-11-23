@@ -163,6 +163,76 @@ var _ = Describe("CreateVolume", func() {
 		Expect(err).To(Equal(unallowedStorageClass))
 	})
 
+	It("should add labels for the infra storage class without changing the cluster labels", func() {
+		cli := &ControllerClientMock{
+			expectedLabels: map[string]string{
+				"infra-label-name": "infra-label-value",
+				"storage-tier":     "standard",
+			},
+		}
+		clusterLabels := map[string]string{"infra-label-name": "infra-label-value"}
+		controller := ControllerService{
+			virtClient:            cli,
+			infraClusterNamespace: testInfraNamespace,
+			infraClusterLabels:    clusterLabels,
+			storageClassEnforcement: util.StorageClassEnforcement{
+				AllowAll:     true,
+				AllowDefault: true,
+				InfraStorageClassLabels: map[string]map[string]string{
+					testInfraStorageClassName: {"storage-tier": "standard"},
+					"other-class":             {"storage-tier": "premium"},
+				},
+			},
+		}
+
+		_, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER)))
+		Expect(err).ToNot(HaveOccurred())
+		Expect(clusterLabels).To(Equal(map[string]string{"infra-label-name": "infra-label-value"}))
+	})
+
+	It("should keep only cluster labels when the infra class has no label entry", func() {
+		cli := &ControllerClientMock{}
+		controller := ControllerService{
+			virtClient:            cli,
+			infraClusterNamespace: testInfraNamespace,
+			infraClusterLabels:    testInfraLabels,
+			storageClassEnforcement: util.StorageClassEnforcement{
+				AllowAll:     true,
+				AllowDefault: true,
+				InfraStorageClassLabels: map[string]map[string]string{
+					"other-class": {"storage-tier": "premium"},
+					"":            {"storage-tier": "default"},
+				},
+			},
+		}
+
+		_, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER)))
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("should not add class labels when the volume uses the infra default class", func() {
+		origStorageClass := testInfraStorageClassName
+		testInfraStorageClassName = ""
+		defer func() { testInfraStorageClassName = origStorageClass }()
+
+		cli := &ControllerClientMock{}
+		controller := ControllerService{
+			virtClient:            cli,
+			infraClusterNamespace: testInfraNamespace,
+			infraClusterLabels:    testInfraLabels,
+			storageClassEnforcement: util.StorageClassEnforcement{
+				AllowAll:     true,
+				AllowDefault: true,
+				InfraStorageClassLabels: map[string]map[string]string{
+					origStorageClass: {"storage-tier": "standard"},
+				},
+			},
+		}
+
+		_, err := controller.CreateVolume(context.TODO(), getCreateVolumeRequest(getVolumeCapability(corev1.PersistentVolumeFilesystem, csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER)))
+		Expect(err).ToNot(HaveOccurred())
+	})
+
 	It("should create a volume with a snapshot datasource", func() {
 		client := &ControllerClientMock{}
 		client.snapshots = make(map[string]*snapshotv1.VolumeSnapshot)
@@ -1074,12 +1144,15 @@ type ControllerClientMock struct {
 	ExpansionVerified            bool
 	// ProvisioningErr, when non-nil, is returned by WaitForDataVolumeProvisionable
 	// to simulate a management-cluster provisioning failure (e.g. quota exceeded).
-	ProvisioningErr              error
-	virtualMachineStatus         kubevirtv1.VirtualMachineInstanceStatus
-	vmVolumes                    []kubevirtv1.Volume
-	snapshots                    map[string]*snapshotv1.VolumeSnapshot
-	datavolumes                  map[string]*cdiv1.DataVolume
-	expectedVMName               string
+	ProvisioningErr error
+	// expectedLabels, when set, is the label set CreateDataVolume must receive.
+	// Nil means the cluster-wide test labels.
+	expectedLabels       map[string]string
+	virtualMachineStatus kubevirtv1.VirtualMachineInstanceStatus
+	vmVolumes            []kubevirtv1.Volume
+	snapshots            map[string]*snapshotv1.VolumeSnapshot
+	datavolumes          map[string]*cdiv1.DataVolume
+	expectedVMName       string
 }
 
 func (c *ControllerClientMock) Ping(ctx context.Context) error {
@@ -1189,7 +1262,11 @@ func (c *ControllerClientMock) CreateDataVolume(_ context.Context, namespace str
 	q, ok := dataVolume.Spec.Storage.Resources.Requests[corev1.ResourceStorage]
 	Expect(ok).To(BeTrue())
 	Expect(testVolumeStorageSize).To(Equal(q.Value()))
-	Expect(testInfraLabels).To(Equal(dataVolume.Labels))
+	expectedLabels := testInfraLabels
+	if c.expectedLabels != nil {
+		expectedLabels = c.expectedLabels
+	}
+	Expect(dataVolume.Labels).To(Equal(expectedLabels))
 
 	// Input OK. Now prepare result
 	result := dataVolume.DeepCopy()

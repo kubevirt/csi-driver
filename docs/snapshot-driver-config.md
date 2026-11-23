@@ -4,6 +4,7 @@ It is possible to map multiple infra storage classes to multiple matching tenant
 * allowAll: If allow all is true, then allow all available storage classes in the infra cluster to be mapping to storage classes in the tenant cluster. If false, then use the allowList to limit which storage classes are visible to the tenant.
 * allowDefault: If true, then no explicit mapping needs to be defined, and the driver will attempt to use the default storage class and default volume snapshot class of the infra cluster to satisfy requests from the tenant cluster
 * allowList: A comma separated string list of all the allowed infra storage classes. Only used if allowAll is false.
+* infraStorageClassLabels: Optional labels added to a DataVolume created on a named infra storage class. Each key is an infra storage class name and each value is a set of labels. A class with no entry, and a volume that uses the infra default class, keep only the cluster-wide `infraClusterLabels`. Keys and values must be valid Kubernetes labels, and a per-class key must not reuse a cluster-wide label key (those keys identify volumes the driver owns); the driver refuses either configuration at startup. VolumeSnapshots are not given these labels.
 * storageSnapshotMapping: Groups lists of infra storage classes and infra volume snapshot classes together. If in the same grouping then creating a snapshot using any of the listed volume snapshot class should work with any of the listed storage classes. Should only contain volume snapshot classes that are compatible with the listed storage classes. This is needed because it is not always possible to determine using the SA of the csi driver controller which volume snapshot classes go together with which storage classes.
 
 ## Example driver configs
@@ -41,6 +42,9 @@ data:
     allowAll: false
     allowDefault: true
     allowList: [storage_class_a, storage_class_b]
+    infraStorageClassLabels:
+      storage_class_a: {storage-tier: basic}
+      storage_class_b: {storage-tier: premium}
 ```
 Note ensure that the infra cluster has a default snapshot class defined, otherwise creation of the infra cluster snapshots will fail due to a missing snapshot class value.
 
