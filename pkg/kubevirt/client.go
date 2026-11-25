@@ -308,8 +308,8 @@ func dataVolumeFailureMessage(dv *cdiv1.DataVolume) string {
 }
 
 // WaitForDataVolumeProvisionable polls the DataVolume status until one of:
-//   - A provisionable phase is observed (WaitForFirstConsumer, PVCBound,
-//     Succeeded) – returns nil.
+//   - A provisionable phase is observed (WaitForFirstConsumer,
+//     PendingPopulation, PVCBound, Succeeded) – returns nil.
 //   - A known permanent failure reason is set on the DataVolumeBound condition
 //     – returns a gRPC-status error with an appropriate code.
 //   - The DataVolume enters the Failed phase – returns codes.Internal.
@@ -325,13 +325,18 @@ func (c *client) WaitForDataVolumeProvisionable(ctx context.Context, namespace, 
 				// DV not visible yet (e.g. cache lag) – keep polling.
 				return false, nil
 			}
+			if ctx.Err() != nil {
+				// The poll deadline expired during the Get, which is the optimistic timeout below.
+				return true, nil
+			}
 			provisioningErr = status.Errorf(codes.Internal, "error checking DataVolume %s/%s: %v", namespace, name, err)
 			return true, nil
 		}
 
 		switch dv.Status.Phase {
-		case cdiv1.WaitForFirstConsumer, cdiv1.PVCBound, cdiv1.Succeeded:
-			// Volume is in a healthy, provisionable state.
+		case cdiv1.WaitForFirstConsumer, cdiv1.PendingPopulation, cdiv1.PVCBound, cdiv1.Succeeded:
+			// Volume is in a healthy, provisionable state. CDI reports PendingPopulation in place of
+			// WaitForFirstConsumer when it fills a WaitForFirstConsumer volume through a populator.
 			return true, nil
 		case cdiv1.Failed:
 			provisioningErr = status.Errorf(codes.Internal,
