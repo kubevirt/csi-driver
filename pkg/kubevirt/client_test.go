@@ -2,6 +2,7 @@ package kubevirt
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -544,9 +545,59 @@ var _ = Describe("WaitForDataVolumeProvisionable", func() {
 			Expect(err).ToNot(HaveOccurred())
 		},
 		Entry("WaitForFirstConsumer", cdiv1.WaitForFirstConsumer),
+		Entry("PendingPopulation", cdiv1.PendingPopulation),
 		Entry("PVCBound", cdiv1.PVCBound),
 		Entry("Succeeded", cdiv1.Succeeded),
 	)
+
+	// The timeout also returns nil, so only the number of Gets shows that the phase ended the wait.
+	It("stops at the first Get when the DataVolume is PendingPopulation", func() {
+		dv := createProvTestDV(cdiv1.PendingPopulation, nil)
+		c := newProvTestClient(dv)
+
+		var callCount int32
+		fakeCdi := c.cdiClient.(*cdicli.Clientset)
+		fakeCdi.PrependReactor("get", "datavolumes", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			atomic.AddInt32(&callCount, 1)
+			return false, nil, nil
+		})
+
+		err := c.WaitForDataVolumeProvisionable(context.Background(), provTestNamespace, provTestDVName, provTestTimeout)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(atomic.LoadInt32(&callCount)).To(Equal(int32(1)))
+	})
+
+	It("returns nil when the timeout expires during a Get", func() {
+		dv := createProvTestDV(cdiv1.Pending, nil)
+		c := newProvTestClient(dv)
+
+		fakeCdi := c.cdiClient.(*cdicli.Clientset)
+		fakeCdi.PrependReactor("get", "datavolumes", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			// client-go's rate limiter fails this way when the request context expires while it waits.
+			time.Sleep(700 * time.Millisecond)
+			return true, nil, fmt.Errorf("client rate limiter Wait returned an error: %w", context.DeadlineExceeded)
+		})
+
+		err := c.WaitForDataVolumeProvisionable(context.Background(), provTestNamespace, provTestDVName, 500*time.Millisecond)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("returns codes.Internal when a Get fails before the timeout", func() {
+		dv := createProvTestDV(cdiv1.Pending, nil)
+		c := newProvTestClient(dv)
+
+		fakeCdi := c.cdiClient.(*cdicli.Clientset)
+		fakeCdi.PrependReactor("get", "datavolumes", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, errors.NewInternalError(fmt.Errorf("etcd unavailable"))
+		})
+
+		err := c.WaitForDataVolumeProvisionable(context.Background(), provTestNamespace, provTestDVName, provTestTimeout)
+		Expect(err).To(HaveOccurred())
+		s, ok := status.FromError(err)
+		Expect(ok).To(BeTrue())
+		Expect(s.Code()).To(Equal(codes.Internal))
+		Expect(s.Message()).To(ContainSubstring("error checking DataVolume"))
+	})
 
 	It("returns codes.Internal when DataVolume is in Failed phase", func() {
 		dv := createProvTestDV(cdiv1.Failed, []cdiv1.DataVolumeCondition{
